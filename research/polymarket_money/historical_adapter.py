@@ -200,9 +200,31 @@ def _official_events(directory: Path) -> tuple[dict[str, tuple[Mapping[str, Any]
             slug = event.get("slug")
             if isinstance(slug, str):
                 previous = events.get(slug)
-                if previous is not None and canonical_json(previous[0]) != canonical_json(event):
-                    raise ValueError(f"conflicting official event response for {slug}")
-                events[slug] = (event, digest)
+                if previous is None:
+                    events[slug] = (event, digest)
+                else:
+                    previous_markets = previous[0].get("markets", [])
+                    current_markets = event.get("markets", [])
+                    if len(previous_markets) != 1 or len(current_markets) != 1:
+                        raise ValueError(f"ambiguous duplicate official event for {slug}")
+                    stable_fields = (
+                        "conditionId",
+                        "slug",
+                        "closed",
+                        "outcomes",
+                        "outcomePrices",
+                        "clobTokenIds",
+                        "feesEnabled",
+                        "feeSchedule",
+                        "eventStartTime",
+                        "endDate",
+                    )
+                    if any(
+                        canonical_json(previous_markets[0].get(field))
+                        != canonical_json(current_markets[0].get(field))
+                        for field in stable_fields
+                    ):
+                        raise ValueError(f"conflicting official market evidence for {slug}")
     return events, inventory
 
 

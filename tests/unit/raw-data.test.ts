@@ -145,7 +145,8 @@ test("public subscriptions contain no auth, wallet, or user-channel fields", () 
   const clob = JSON.stringify(clobMarketSubscription(["123", "456"]));
   const chainlink = JSON.stringify(rtdsSubscription("chainlink"));
   const binance = JSON.stringify(rtdsSubscription("binance"));
-  for (const payload of [clob, chainlink, binance]) {
+  const binanceAllSymbols = JSON.stringify(rtdsSubscription("binance", "all-symbols-quarantine"));
+  for (const payload of [clob, chainlink, binance, binanceAllSymbols]) {
     assert.doesNotMatch(payload, /auth|wallet|api.?key|secret|passphrase/i);
   }
   assert.match(chainlink, /btc\/usd/);
@@ -154,6 +155,10 @@ test("public subscriptions contain no auth, wallet, or user-channel fields", () 
     '{"action":"subscribe","subscriptions":[{"topic":"crypto_prices","type":"update","filters":"btcusdt"}]}',
   );
   assert.doesNotMatch(binance, /solusdt|ethusdt/);
+  assert.equal(
+    binanceAllSymbols,
+    '{"action":"subscribe","subscriptions":[{"topic":"crypto_prices","type":"update"}]}',
+  );
 });
 
 test("order book requires a new snapshot after disconnect", async () => {

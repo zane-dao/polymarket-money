@@ -108,12 +108,20 @@ test("public socket plans bind endpoint, subscription, and heartbeat to a closed
   const clob = publicSocketCapturePlan({ source: "clob-market", assetIds: ["123", "456"] });
   const chainlink = publicSocketCapturePlan({ source: "rtds-chainlink" });
   const binance = publicSocketCapturePlan({ source: "rtds-binance" });
+  const binanceAllSymbols = publicSocketCapturePlan({
+    source: "rtds-binance",
+    transportMode: "all-symbols-quarantine",
+  });
   assert.equal(clob.heartbeatMilliseconds, 10_000);
   assert.equal(chainlink.heartbeatMilliseconds, 5_000);
   assert.equal(binance.heartbeatMilliseconds, 5_000);
   assert.match(JSON.stringify(clob.subscription), /"type":"market"/);
   assert.match(JSON.stringify(chainlink.subscription), /btc\/usd/);
   assert.match(JSON.stringify(binance.subscription), /btcusdt/);
+  assert.equal(
+    JSON.stringify(binanceAllSymbols.subscription),
+    '{"action":"subscribe","subscriptions":[{"topic":"crypto_prices","type":"update"}]}',
+  );
   assert.throws(
     () => publicSocketCapturePlan({ source: "unknown" } as never),
     /unsupported public socket source/,

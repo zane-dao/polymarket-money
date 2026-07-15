@@ -277,7 +277,11 @@ test("manifest accepts only the exact public BTC RTDS subscription", async () =>
       collectionStart: `${DATE}T00:00:00.000Z`,
       collectionEnd: `${DATE}T00:00:01.000Z`,
       segments: [closed],
-      sanitizedConfig: { endpointClass: "public-read-only", symbolFilter: "btcusdt" },
+      sanitizedConfig: {
+        endpointClass: "public-read-only",
+        symbolFilter: "btcusdt",
+        transportScope: "btc-only",
+      },
     } as const;
     const valid = {
       action: "subscribe",
@@ -303,7 +307,7 @@ test("manifest accepts only the exact public BTC RTDS subscription", async () =>
           }],
         },
       }),
-      /allowlisted BTC public feed/i,
+      /allowlisted Binance public transport/i,
     );
     await assert.rejects(
       new DatasetManifestWriter(dataRoot).publish({
@@ -318,6 +322,33 @@ test("manifest accepts only the exact public BTC RTDS subscription", async () =>
         },
       }),
       /one public subscription/i,
+    );
+
+    const allSymbols = await new DatasetManifestWriter(dataRoot).publish({
+      ...base,
+      datasetId: "dataset-binance-all-symbols",
+      subscription: {
+        action: "subscribe",
+        subscriptions: [{ topic: "crypto_prices", type: "update" }],
+      },
+      sanitizedConfig: {
+        endpointClass: "public-read-only",
+        symbolFilter: "btcusdt",
+        transportScope: "all-symbols-quarantine",
+      },
+    });
+    assert.equal(allSymbols.sanitized_config.transportScope, "all-symbols-quarantine");
+
+    await assert.rejects(
+      new DatasetManifestWriter(dataRoot).publish({
+        ...base,
+        datasetId: "dataset-binance-scope-mismatch",
+        subscription: {
+          action: "subscribe",
+          subscriptions: [{ topic: "crypto_prices", type: "update" }],
+        },
+      }),
+      /transport scope/i,
     );
   } finally {
     await rm(dataRoot, { recursive: true, force: true });

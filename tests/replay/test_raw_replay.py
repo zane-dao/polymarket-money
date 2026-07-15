@@ -279,6 +279,7 @@ class RawReplayTest(unittest.TestCase):
                 sanitized_config={
                     "endpointClass": "public-read-only",
                     "symbolFilter": "btcusdt",
+                    "transportScope": "btc-only",
                 },
             )
             verified = ManifestVerifier.verify(manifest_path, root)
@@ -290,6 +291,36 @@ class RawReplayTest(unittest.TestCase):
             )
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaisesRegex(ManifestVerificationError, "declared source"):
+                ManifestVerifier.verify(manifest_path, root)
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = self._dataset(
+                root,
+                [event],
+                source="polymarket.rtds.binance",
+                stream="crypto-prices",
+                subscription={
+                    "action": "subscribe",
+                    "subscriptions": [{
+                        "topic": "crypto_prices",
+                        "type": "update",
+                    }],
+                },
+                sanitized_config={
+                    "endpointClass": "public-read-only",
+                    "symbolFilter": "btcusdt",
+                    "transportScope": "all-symbols-quarantine",
+                },
+            )
+            self.assertEqual(
+                ManifestVerifier.verify(manifest_path, root).dataset_id,
+                "dataset-fixture",
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["sanitized_config"]["transportScope"] = "btc-only"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ManifestVerificationError, "transport scope"):
                 ManifestVerifier.verify(manifest_path, root)
 
 

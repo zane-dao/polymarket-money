@@ -16,6 +16,7 @@ export {
 export { BookState, PublicOrderBook } from "./book-state.js";
 export type { PublicOrderBookOptions } from "./book-state.js";
 export type {
+  BinanceTransportMode,
   CapturedFrame,
   PublicBtcFiveMinuteMarket,
   PublicHttpRequestOptions,

@@ -563,6 +563,7 @@ const SANITIZED_CONFIG_KEYS = new Set([
   "timeoutSeconds",
   "customFeatures",
   "symbolFilter",
+  "transportScope",
   "maxFrameBytes",
   "maxTotalBytes",
   "maxResponseBytes",
@@ -624,12 +625,28 @@ function validatePublicSubscription(
       throw new Error("RTDS subscription must contain one public subscription");
     }
     const child = record(subscription.subscriptions[0], "RTDS subscription item");
-    requireExactKeys(child, ["topic", "type", "filters"], "RTDS subscription item");
-    const expected = source.endsWith("chainlink")
-      ? { topic: "crypto_prices_chainlink", type: "*", filters: '{"symbol":"btc/usd"}' }
+    if (source.endsWith("chainlink")) {
+      requireExactKeys(child, ["topic", "type", "filters"], "RTDS subscription item");
+      const expected = { topic: "crypto_prices_chainlink", type: "*", filters: '{"symbol":"btc/usd"}' };
+      if (child.topic !== expected.topic || child.type !== expected.type || child.filters !== expected.filters) {
+        throw new Error("RTDS subscription is not the allowlisted Chainlink BTC public feed");
+      }
+      return Object.freeze({
+        action: "subscribe",
+        subscriptions: Object.freeze([Object.freeze(expected)]),
+      });
+    }
+    const allSymbols = child.filters === undefined;
+    requireExactKeys(
+      child,
+      allSymbols ? ["topic", "type"] : ["topic", "type", "filters"],
+      "RTDS subscription item",
+    );
+    const expected = allSymbols
+      ? { topic: "crypto_prices", type: "update" }
       : { topic: "crypto_prices", type: "update", filters: "btcusdt" };
-    if (child.topic !== expected.topic || child.type !== expected.type || child.filters !== expected.filters) {
-      throw new Error("RTDS subscription is not the allowlisted BTC public feed");
+    if (child.topic !== expected.topic || child.type !== expected.type || (!allSymbols && child.filters !== "btcusdt")) {
+      throw new Error("RTDS subscription is not an allowlisted Binance public transport");
     }
     return Object.freeze({
       action: "subscribe",
@@ -688,9 +705,40 @@ function validateSanitizedConfig(
     if (key === "symbolFilter" && item !== "btc/usd" && item !== "btcusdt") {
       throw new Error("symbolFilter must be an allowlisted BTC symbol");
     }
+    if (key === "transportScope" && item !== "btc-only" && item !== "all-symbols-quarantine") {
+      throw new Error("transportScope must be an allowlisted bounded ingress mode");
+    }
   }
   if (config.endpointClass === undefined) throw new Error("sanitized_config.endpointClass is required");
   return Object.freeze({ ...config } as Record<string, string | number | boolean>);
+}
+
+function assertIngressConfigMatchesSubscription(
+  source: string,
+  subscription: Readonly<Record<string, unknown>>,
+  config: Readonly<Record<string, string | number | boolean>>,
+): void {
+  if (source === "polymarket.rtds.chainlink") {
+    if (config.symbolFilter !== "btc/usd" || config.transportScope !== undefined) {
+      throw new Error("Chainlink manifest must record the btc/usd effective filter");
+    }
+    return;
+  }
+  if (source === "polymarket.rtds.binance") {
+    const subscriptions = subscription.subscriptions;
+    if (!Array.isArray(subscriptions) || subscriptions.length !== 1) {
+      throw new Error("validated Binance subscription changed shape");
+    }
+    const child = record(subscriptions[0], "validated Binance subscription item");
+    const expectedScope = child.filters === undefined ? "all-symbols-quarantine" : "btc-only";
+    if (config.symbolFilter !== "btcusdt" || config.transportScope !== expectedScope) {
+      throw new Error("Binance manifest effective filter and transport scope do not match its subscription");
+    }
+    return;
+  }
+  if (config.symbolFilter !== undefined || config.transportScope !== undefined) {
+    throw new Error("symbolFilter and transportScope are reserved for RTDS manifests");
+  }
 }
 
 function assertCollectionContainsSegments(
@@ -734,6 +782,7 @@ export class DatasetManifestWriter {
     const subscription = validatePublicSubscription(source, input.subscription);
     const collectorGitCommit = validateCollectorCommit(source, input.collectorGitCommit);
     const sanitizedConfig = validateSanitizedConfig(input.sanitizedConfig);
+    assertIngressConfigMatchesSubscription(source, subscription, sanitizedConfig);
     const seenPaths = new Set<string>();
     const seenSegmentIds = new Set<string>();
     const actualSegments: ClosedSegment[] = [];

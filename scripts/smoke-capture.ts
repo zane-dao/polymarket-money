@@ -9,6 +9,7 @@ import {
   fetchPublicMarketBySlug,
   rtdsSubscription,
   validatePublicBtcFiveMinuteMarket,
+  type BinanceTransportMode,
   type CapturedFrame,
   type PublicBtcFiveMinuteMarket,
   type PublicSocketAuditEvent,
@@ -34,6 +35,7 @@ interface SmokeOptions {
   readonly maxTotalBytes: number;
   readonly maxResponseBytes: number;
   readonly collectorGitCommit: string;
+  readonly binanceTransportMode: BinanceTransportMode;
 }
 
 interface SmokeDatasetResult {
@@ -88,6 +90,14 @@ function positiveInteger(value: string | undefined, fallback: number, field: str
   return parsed;
 }
 
+function binanceTransportMode(value: string | undefined): BinanceTransportMode {
+  const mode = value ?? "btc-only";
+  if (mode !== "btc-only" && mode !== "all-symbols-quarantine") {
+    throw new Error("--binance-transport must be btc-only or all-symbols-quarantine");
+  }
+  return mode;
+}
+
 async function projectRoot(): Promise<string> {
   let current = dirname(fileURLToPath(import.meta.url));
   while (dirname(current) !== current) {
@@ -123,6 +133,7 @@ async function options(): Promise<SmokeOptions> {
     maxFrameBytes: positiveInteger(argument("--max-frame-bytes"), 1_048_576, "maxFrameBytes"),
     maxTotalBytes: positiveInteger(argument("--max-total-bytes"), 8_388_608, "maxTotalBytes"),
     maxResponseBytes: positiveInteger(argument("--max-response-bytes"), 1_048_576, "maxResponseBytes"),
+    binanceTransportMode: binanceTransportMode(argument("--binance-transport")),
     collectorGitCommit: (() => {
       const commit = argument("--git-commit");
       if (commit === undefined || !/^[0-9a-f]{40,64}$/.test(commit)) {
@@ -164,7 +175,9 @@ async function publishManifest(
       maxTotalBytes: config.maxTotalBytes,
       maxResponseBytes: config.maxResponseBytes,
       ...(source === "polymarket.rtds.chainlink" ? { symbolFilter: "btc/usd" } : {}),
-      ...(source === "polymarket.rtds.binance" ? { symbolFilter: "btcusdt" } : {}),
+      ...(source === "polymarket.rtds.binance"
+        ? { symbolFilter: "btcusdt", transportScope: config.binanceTransportMode }
+        : {}),
     },
   });
 }
@@ -372,7 +385,9 @@ async function captureRtds(
   const stream = "crypto-prices";
   const collectionStart = new Date().toISOString();
   const connectionId = `${runId}-rtds-${expectedSource}`;
-  const subscriptionId = `${expectedSource}-btc-public`;
+  const subscriptionId = expectedSource === "binance"
+    ? `binance-${config.binanceTransportMode}`
+    : "chainlink-btc-public";
   const writer = await RawSegmentWriter.open({
     dataRoot: config.dataRoot,
     segmentId: `${runId}-rtds-${expectedSource}`,
@@ -380,9 +395,10 @@ async function captureRtds(
     stream,
     partitionDate: collectionStart.slice(0, 10),
   });
-  const subscription = rtdsSubscription(expectedSource);
+  const subscription = rtdsSubscription(expectedSource, config.binanceTransportMode);
   await capturePublicSocket({
     source: expectedSource === "chainlink" ? "rtds-chainlink" : "rtds-binance",
+    ...(expectedSource === "binance" ? { transportMode: config.binanceTransportMode } : {}),
     timeoutMilliseconds: config.timeoutMilliseconds,
     maxFrames: config.maxFrames,
     maxFrameBytes: config.maxFrameBytes,

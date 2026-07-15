@@ -165,12 +165,26 @@ def _validate_subscription(source: str, value: Any) -> None:
         item = subscriptions[0]
         if not isinstance(item, dict):
             raise ManifestVerificationError("RTDS subscription item must be an object")
-        _require_exact_fields(item, frozenset({"topic", "type", "filters"}), "subscription item")
+        if source.endswith("chainlink"):
+            _require_exact_fields(
+                item,
+                frozenset({"topic", "type", "filters"}),
+                "subscription item",
+            )
+            expected = {
+                "topic": "crypto_prices_chainlink",
+                "type": "*",
+                "filters": '{"symbol":"btc/usd"}',
+            }
+            if item != expected:
+                raise ManifestVerificationError("RTDS subscription does not match its declared source")
+            return
         expected = (
-            {"topic": "crypto_prices_chainlink", "type": "*", "filters": '{"symbol":"btc/usd"}'}
-            if source.endswith("chainlink")
+            {"topic": "crypto_prices", "type": "update"}
+            if "filters" not in item
             else {"topic": "crypto_prices", "type": "update", "filters": "btcusdt"}
         )
+        _require_exact_fields(item, frozenset(expected), "subscription item")
         if item != expected:
             raise ManifestVerificationError("RTDS subscription does not match its declared source")
         return
@@ -199,6 +213,8 @@ def _validate_sanitized_config(value: Any) -> None:
         "customFeatures": lambda item: isinstance(item, bool),
         "symbolFilter": lambda item: isinstance(item, str)
         and item in {"btc/usd", "btcusdt"},
+        "transportScope": lambda item: isinstance(item, str)
+        and item in {"btc-only", "all-symbols-quarantine"},
         "maxFrameBytes": lambda item: isinstance(item, int)
         and not isinstance(item, bool)
         and 1 <= item <= 50 * 1024 * 1024,
@@ -213,6 +229,36 @@ def _validate_sanitized_config(value: Any) -> None:
         validator = validators.get(key)
         if validator is None or not validator(item):
             raise ManifestVerificationError(f"sanitized_config value is not allowlisted: {key}")
+
+
+def _assert_ingress_config_matches_subscription(
+    source: str,
+    subscription: dict[str, Any],
+    config: dict[str, Any],
+) -> None:
+    if source == "polymarket.rtds.chainlink":
+        if config.get("symbolFilter") != "btc/usd" or "transportScope" in config:
+            raise ManifestVerificationError(
+                "Chainlink manifest must record the btc/usd effective filter"
+            )
+        return
+    if source == "polymarket.rtds.binance":
+        item = subscription["subscriptions"][0]
+        expected_scope = (
+            "all-symbols-quarantine" if "filters" not in item else "btc-only"
+        )
+        if (
+            config.get("symbolFilter") != "btcusdt"
+            or config.get("transportScope") != expected_scope
+        ):
+            raise ManifestVerificationError(
+                "Binance effective filter and transport scope do not match subscription"
+            )
+        return
+    if "symbolFilter" in config or "transportScope" in config:
+        raise ManifestVerificationError(
+            "symbolFilter and transportScope are reserved for RTDS manifests"
+        )
 
 
 def _reject_symlink_components(root: Path, relative_path: Path) -> None:
@@ -263,6 +309,11 @@ class ManifestVerifier:
             raise ManifestVerificationError("collector_git_commit must be a Git object ID or UNCOMMITTED")
         _validate_subscription(source, manifest["subscription"])
         _validate_sanitized_config(manifest["sanitized_config"])
+        _assert_ingress_config_matches_subscription(
+            source,
+            manifest["subscription"],
+            manifest["sanitized_config"],
+        )
         try:
             collection_start = parse_utc_iso(manifest["collection_start"], "collection_start")
             collection_end = parse_utc_iso(manifest["collection_end"], "collection_end")

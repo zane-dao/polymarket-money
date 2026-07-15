@@ -56,11 +56,12 @@ interface PublicSocketCaptureCommon {
 }
 
 export type PublicSocketSource = "clob-market" | "rtds-chainlink" | "rtds-binance";
+export type BinanceTransportMode = "btc-only" | "all-symbols-quarantine";
 
 export type PublicSocketRequest =
   | { readonly source: "clob-market"; readonly assetIds: readonly string[] }
   | { readonly source: "rtds-chainlink" }
-  | { readonly source: "rtds-binance" };
+  | { readonly source: "rtds-binance"; readonly transportMode?: BinanceTransportMode };
 
 export type PublicSocketCaptureOptions = PublicSocketCaptureCommon & PublicSocketRequest;
 
@@ -268,11 +269,15 @@ export function clobMarketSubscription(assetIds: readonly string[]): Readonly<Re
   });
 }
 
-export function rtdsSubscription(source: "chainlink" | "binance"): Readonly<Record<string, unknown>> {
-  const subscription =
-    source === "chainlink"
-      ? { topic: "crypto_prices_chainlink", type: "*", filters: '{"symbol":"btc/usd"}' }
-      : { topic: "crypto_prices", type: "update", filters: "btcusdt" };
+export function rtdsSubscription(
+  source: "chainlink" | "binance",
+  binanceTransportMode: BinanceTransportMode = "btc-only",
+): Readonly<Record<string, unknown>> {
+  const subscription = source === "chainlink"
+    ? { topic: "crypto_prices_chainlink", type: "*", filters: '{"symbol":"btc/usd"}' }
+    : binanceTransportMode === "btc-only"
+      ? { topic: "crypto_prices", type: "update", filters: "btcusdt" }
+      : { topic: "crypto_prices", type: "update" };
   return Object.freeze({ action: "subscribe", subscriptions: Object.freeze([Object.freeze(subscription)]) });
 }
 
@@ -290,7 +295,10 @@ export function publicSocketCapturePlan(request: PublicSocketRequest): PublicSoc
     plan = {
       source: request.source,
       url: PUBLIC_ENDPOINTS.rtdsWebSocket,
-      subscription: rtdsSubscription(rtdsSource),
+      subscription: rtdsSubscription(
+        rtdsSource,
+        request.source === "rtds-binance" ? request.transportMode : undefined,
+      ),
       heartbeatMilliseconds: 5_000,
     };
   } else {

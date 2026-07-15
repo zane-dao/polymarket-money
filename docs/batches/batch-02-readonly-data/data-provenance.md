@@ -35,5 +35,9 @@ fixture 不冒充线上分布证据。price_change、market_resolved、重连等
 - 每个 source/stream 单独 segment 和 manifest；
 - external review pack 不包含 raw、manifest 或 fixture，只交付 HANDOFF。
 
+WSL 网络环境若要求标准 `HTTP_PROXY`/`HTTPS_PROXY`，smoke 由 Node 24 的
+`--use-env-proxy` 运输开关处理；采集器不读取、复制或写入代理配置，manifest 也不记录其
+值。该代理只提供公共 endpoint 连通性，不改变无 Polymarket 凭据边界。
+
 DatasetManifest 的 `collector_git_commit` 必须指向实际运行的已提交采集器版本；工作树如果
 含影响采集行为的未提交更改，smoke 结果不能作为最终验收证据。

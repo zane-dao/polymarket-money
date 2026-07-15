@@ -11,6 +11,8 @@
     "dataset_hash",
     "continuity",
     "normalizer_git_commit",
+    "normalizer_code_sha256",
+    "normalizer_worktree_state",
     "config",
     "raw_inputs",
     "row_counts",
@@ -32,6 +34,8 @@
       "type": "string",
       "pattern": "^(UNCOMMITTED|[0-9a-f]{7,64})$"
     },
+    "normalizer_code_sha256": {"$ref": "#/$defs/sha256"},
+    "normalizer_worktree_state": {"enum": ["CLEAN", "DIRTY"]},
     "config": {
       "type": "object",
       "additionalProperties": false,

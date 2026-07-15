@@ -11,12 +11,15 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import Enum
+import ctypes
+import errno
 from hashlib import sha256
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -32,7 +35,67 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT = re.compile(r"^(?:UNCOMMITTED|[0-9a-f]{7,64})$")
 _SAFE_PART = re.compile(r"^[A-Za-z0-9._-]+$")
 _DRVFS_ROOT = re.compile(r"^/mnt/[a-zA-Z](?:/|$)")
+_WINDOWS_BACKED_FILESYSTEMS = frozenset({"9p", "drvfs", "fuseblk", "ntfs", "ntfs3"})
 _PARSER_STATES = frozenset({"parsed", "unparsed", "error", "quarantined"})
+_CLOB_AUDIT_NOOPS = frozenset(
+    {"subscription_sent", "heartbeat_ping", "heartbeat_pong"}
+)
+_CLOB_AUDIT_STATES = {
+    "connection_open": "CONNECTED",
+    "connection_error": "DISCONNECTED",
+    "connection_closed_early": "DISCONNECTED",
+    "capture_timeout": "DISCONNECTED",
+    "capture_complete": "DISCONNECTED",
+}
+_CLOB_AUDIT_EVENTS = frozenset((*_CLOB_AUDIT_NOOPS, *_CLOB_AUDIT_STATES))
+_PERMANENT_QUARANTINE_REASONS = frozenset(
+    {
+        "CONFLICTING_BUSINESS_KEY",
+        "INVALID_MARKET_IDENTITY",
+        "MARKET_IDENTITY_REVISION_CONFLICT",
+        "MARKET_IDENTITY_COLLISION",
+        "GAMMA_IDENTITY_BINDING_MISMATCH",
+    }
+)
+_BUILD_PROOF = object()
+_UNSET = object()
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+_NORMALIZER_CONTRACT_PATHS = (
+    _REPOSITORY_ROOT / "contracts" / "raw-event-v1.schema.json",
+    _REPOSITORY_ROOT / "contracts" / "normalized-record-v1.schema.json",
+    _REPOSITORY_ROOT / "contracts" / "normalized-dataset-manifest-v1.schema.json",
+)
+_NORMALIZER_CODE_PATHS = tuple(
+    sorted((_REPOSITORY_ROOT / "research" / "polymarket_money").glob("*.py"))
+) + _NORMALIZER_CONTRACT_PATHS
+try:
+    _LOADED_NORMALIZER_SOURCES = {
+        path: path.read_bytes() for path in _NORMALIZER_CODE_PATHS
+    }
+except OSError as exc:  # pragma: no cover - import cannot proceed without its source contract
+    raise RuntimeError("normalizer source snapshot cannot be captured") from exc
+_NORMALIZED_MANIFEST_FIELDS = frozenset(
+    {
+        "schema_version",
+        "normalized_schema_version",
+        "dataset_id",
+        "dataset_hash",
+        "continuity",
+        "normalizer_git_commit",
+        "normalizer_code_sha256",
+        "normalizer_worktree_state",
+        "config",
+        "raw_inputs",
+        "row_counts",
+        "quarantine_count",
+        "quality_counts",
+        "min_source_time",
+        "max_source_time",
+        "min_visible_at",
+        "max_visible_at",
+        "outputs",
+    }
+)
 
 
 class RecordType(str, Enum):
@@ -51,6 +114,7 @@ class BookState(str, Enum):
     STALE = "STALE"
     DISCONNECTED = "DISCONNECTED"
     RESET_REQUIRED = "RESET_REQUIRED"
+    UNTRADEABLE = "UNTRADEABLE"
 
 
 class DatasetPublicationError(RuntimeError):
@@ -109,6 +173,134 @@ def _canonical_json(value: Any) -> str:
     )
 
 
+def _rename_no_replace(source: Path, destination: Path) -> None:
+    """Atomically publish a directory without replacing even an empty destination."""
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise DatasetPublicationError(
+            "Linux renameat2(RENAME_NOREPLACE) is required for atomic publication"
+        )
+    renameat2.argtypes = [
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    ]
+    renameat2.restype = ctypes.c_int
+    at_fdcwd = -100
+    rename_noreplace = 1
+    result = renameat2(
+        at_fdcwd,
+        os.fsencode(source),
+        at_fdcwd,
+        os.fsencode(destination),
+        rename_noreplace,
+    )
+    if result == 0:
+        return
+    error_number = ctypes.get_errno()
+    if error_number == errno.EEXIST:
+        raise DatasetPublicationError(
+            "completed normalized dataset version already exists"
+        )
+    raise OSError(error_number, os.strerror(error_number), str(destination))
+
+
+def _mount_filesystem_type(path: Path, mountinfo_text: str | None = None) -> str:
+    """Return the longest-prefix Linux mount type, including bind-mounted DrvFS/9p."""
+
+    try:
+        text = (
+            Path("/proc/self/mountinfo").read_text(encoding="utf-8")
+            if mountinfo_text is None
+            else mountinfo_text
+        )
+    except OSError as exc:
+        raise DatasetPublicationError("filesystem type cannot be verified") from exc
+
+    def unescape(value: str) -> str:
+        return re.sub(
+            r"\\([0-7]{3})",
+            lambda match: chr(int(match.group(1), 8)),
+            value,
+        )
+
+    best: tuple[int, str] | None = None
+    for line in text.splitlines():
+        fields = line.split()
+        try:
+            separator = fields.index("-")
+            mount_point = Path(unescape(fields[4]))
+            filesystem_type = fields[separator + 1]
+            path.relative_to(mount_point)
+        except (ValueError, IndexError):
+            continue
+        candidate = (len(mount_point.parts), filesystem_type)
+        if best is None or candidate[0] > best[0]:
+            best = candidate
+    if best is None:
+        raise DatasetPublicationError("filesystem type cannot be verified")
+    return best[1]
+
+
+def _normalizer_repository_state() -> tuple[str, str, str]:
+    """Bind a build to the actual Git HEAD and exact normalizer source bytes."""
+
+    repository = _REPOSITORY_ROOT
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                "research/polymarket_money",
+                "contracts/raw-event-v1.schema.json",
+                "contracts/normalized-record-v1.schema.json",
+                "contracts/normalized-dataset-manifest-v1.schema.json",
+            ],
+            cwd=repository,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ManifestVerificationError(
+            "normalizer repository provenance cannot be verified"
+        ) from exc
+    if _SHA256.fullmatch(commit) is None and not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ManifestVerificationError("normalizer repository HEAD is invalid")
+    digest = sha256()
+    try:
+        for path in _NORMALIZER_CODE_PATHS:
+            content = path.read_bytes()
+            if content != _LOADED_NORMALIZER_SOURCES[path]:
+                raise ManifestVerificationError(
+                    "normalizer source changed after import; restart before building"
+                )
+            relative = path.relative_to(repository).as_posix().encode("utf-8")
+            digest.update(relative)
+            digest.update(b"\0")
+            digest.update(content)
+            digest.update(b"\0")
+    except KeyError as exc:
+        raise ManifestVerificationError("normalizer loaded-source snapshot is incomplete") from exc
+    except OSError as exc:
+        raise ManifestVerificationError("normalizer source bytes are unreadable") from exc
+    return commit, "DIRTY" if status else "CLEAN", digest.hexdigest()
+
+
 def _parse_time(value: Any, field_name: str) -> datetime:
     try:
         return parse_utc_iso(value, field_name)
@@ -128,6 +320,10 @@ class RawLineage:
     event_id: str
     raw_sha256: str
     visible_at: datetime
+    raw_persist_time: datetime | None = None
+    segment_ordinal: int = 0
+    line_ordinal: int = 0
+    message_ordinal: int = 0
 
     def __post_init__(self) -> None:
         _require_text(self.source_manifest_id, "source_manifest_id")
@@ -136,14 +332,43 @@ class RawLineage:
         _require_text(self.event_id, "event_id")
         _require_digest(self.raw_sha256, "raw_sha256")
         _require_utc(self.visible_at, "lineage.visible_at")
+        raw_persist_time = self.raw_persist_time or self.visible_at
+        _require_utc(raw_persist_time, "lineage.raw_persist_time")
+        if raw_persist_time > self.visible_at:
+            raise ValueError("raw_persist_time must not be later than lineage visible_at")
+        object.__setattr__(self, "raw_persist_time", raw_persist_time)
+        for field_name, value in (
+            ("segment_ordinal", self.segment_ordinal),
+            ("line_ordinal", self.line_ordinal),
+            ("message_ordinal", self.message_ordinal),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{field_name} must be a non-negative integer")
+
+    @property
+    def order_key(self) -> tuple[datetime, str, str, int, int, int, str, str]:
+        return (
+            self.raw_persist_time,
+            self.source_manifest_id,
+            self.source_manifest_sha256,
+            self.segment_ordinal,
+            self.line_ordinal,
+            self.message_ordinal,
+            self.segment_sha256,
+            self.event_id,
+        )
 
     def to_mapping(self) -> dict[str, Any]:
         return {
             "source_manifest_id": self.source_manifest_id,
             "source_manifest_sha256": self.source_manifest_sha256,
             "segment_sha256": self.segment_sha256,
+            "segment_ordinal": self.segment_ordinal,
+            "line_ordinal": self.line_ordinal,
+            "message_ordinal": self.message_ordinal,
             "event_id": self.event_id,
             "raw_sha256": self.raw_sha256,
+            "raw_persist_time": utc_iso(self.raw_persist_time),
             "visible_at": utc_iso(self.visible_at),
         }
 
@@ -153,8 +378,12 @@ class RawLineage:
             "source_manifest_id",
             "source_manifest_sha256",
             "segment_sha256",
+            "segment_ordinal",
+            "line_ordinal",
+            "message_ordinal",
             "event_id",
             "raw_sha256",
+            "raw_persist_time",
             "visible_at",
         }
         if set(value) != expected:
@@ -163,8 +392,14 @@ class RawLineage:
             source_manifest_id=value["source_manifest_id"],
             source_manifest_sha256=value["source_manifest_sha256"],
             segment_sha256=value["segment_sha256"],
+            segment_ordinal=value["segment_ordinal"],
+            line_ordinal=value["line_ordinal"],
+            message_ordinal=value["message_ordinal"],
             event_id=value["event_id"],
             raw_sha256=value["raw_sha256"],
+            raw_persist_time=_parse_time(
+                value["raw_persist_time"], "lineage.raw_persist_time"
+            ),
             visible_at=_parse_time(value["visible_at"], "lineage.visible_at"),
         )
 
@@ -193,6 +428,7 @@ _RECORD_FIELDS = frozenset(
         "payload",
         "duplicate_count",
         "raw_lineage",
+        "dependency_lineage",
     }
 )
 
@@ -219,6 +455,7 @@ class NormalizedRecord:
     valid_from: datetime | None
     payload_json: str = field(repr=False)
     lineage: tuple[RawLineage, ...]
+    dependency_lineage: tuple[RawLineage, ...]
 
     @classmethod
     def create(
@@ -241,6 +478,7 @@ class NormalizedRecord:
         parser_state: str,
         payload: Mapping[str, Any],
         lineage: Sequence[RawLineage],
+        dependency_lineage: Sequence[RawLineage] = (),
         observed_at: datetime | None = None,
         valid_from: datetime | None = None,
     ) -> "NormalizedRecord":
@@ -278,6 +516,8 @@ class NormalizedRecord:
             raise ValueError("normalized ingress clocks must be monotonic")
         if visible_at < max(receive_time, process_time, persist_time):
             raise ValueError("visible_at must not precede any ingress clock")
+        if observed_at is not None and observed_at > visible_at:
+            raise ValueError("observed_at must not be later than visible_at")
         if continuity != CONTINUITY:
             raise ValueError("public normalized continuity must remain UNVERIFIED")
         if parser_state not in _PARSER_STATES:
@@ -287,19 +527,21 @@ class NormalizedRecord:
         ordered_lineage = tuple(
             sorted(
                 set(lineage),
-                key=lambda item: (
-                    item.visible_at,
-                    item.source_manifest_id,
-                    item.segment_sha256,
-                    item.event_id,
-                    item.raw_sha256,
-                ),
+                key=lambda item: (*item.order_key, item.raw_sha256),
+            )
+        )
+        ordered_dependencies = tuple(
+            sorted(
+                set(dependency_lineage),
+                key=lambda item: (*item.order_key, item.raw_sha256),
             )
         )
         if min(item.visible_at for item in ordered_lineage) < persist_time:
             raise ValueError("raw lineage visibility cannot precede record persistence")
         if visible_at != min(item.visible_at for item in ordered_lineage):
             raise ValueError("visible_at must equal the earliest usable lineage time")
+        if any(item.visible_at > visible_at for item in ordered_dependencies):
+            raise ValueError("dependency lineage must be visible before the normalized fact")
         payload_json = _canonical_json(payload)
         semantic = {
             "record_type": record_type.value,
@@ -339,6 +581,7 @@ class NormalizedRecord:
             valid_from=valid_from,
             payload_json=payload_json,
             lineage=ordered_lineage,
+            dependency_lineage=ordered_dependencies,
         )
 
     @property
@@ -376,6 +619,9 @@ class NormalizedRecord:
             "payload": self.payload,
             "duplicate_count": self.duplicate_count,
             "raw_lineage": [item.to_mapping() for item in self.lineage],
+            "dependency_lineage": [
+                item.to_mapping() for item in self.dependency_lineage
+            ],
         }
 
     def to_json_line(self) -> str:
@@ -392,8 +638,9 @@ class NormalizedRecord:
         if value["schema_version"] != NORMALIZED_SCHEMA_VERSION:
             raise ValueError("unsupported normalized schema")
         lineages = value["raw_lineage"]
-        if not isinstance(lineages, list):
-            raise ValueError("raw_lineage must be a list")
+        dependencies = value["dependency_lineage"]
+        if not isinstance(lineages, list) or not isinstance(dependencies, list):
+            raise ValueError("raw_lineage and dependency_lineage must be lists")
         record = cls.create(
             record_type=RecordType(value["record_type"]),
             business_key=value["business_key"],
@@ -414,6 +661,9 @@ class NormalizedRecord:
             valid_from=_nullable_time(value["valid_from"], "valid_from"),
             payload=value["payload"],
             lineage=tuple(RawLineage.from_mapping(item) for item in lineages),
+            dependency_lineage=tuple(
+                RawLineage.from_mapping(item) for item in dependencies
+            ),
         )
         if value["record_id"] != record.record_id:
             raise ValueError("normalized record_id does not match semantic content")
@@ -442,10 +692,18 @@ class NormalizedRecord:
             valid_from=self.valid_from,
             payload=self.payload,
             lineage=self.lineage,
+            dependency_lineage=self.dependency_lineage,
         )
 
-    def with_lineage(self, lineage: Sequence[RawLineage]) -> "NormalizedRecord":
+    def with_lineage(
+        self,
+        lineage: Sequence[RawLineage],
+        dependency_lineage: Sequence[RawLineage] = (),
+    ) -> "NormalizedRecord":
         combined = tuple(set((*self.lineage, *lineage)))
+        combined_dependencies = tuple(
+            set((*self.dependency_lineage, *dependency_lineage))
+        )
         earliest = min(combined, key=lambda item: item.visible_at)
         return replace(
             self,
@@ -453,13 +711,13 @@ class NormalizedRecord:
             lineage=tuple(
                 sorted(
                     combined,
-                    key=lambda item: (
-                        item.visible_at,
-                        item.source_manifest_id,
-                        item.segment_sha256,
-                        item.event_id,
-                        item.raw_sha256,
-                    ),
+                    key=lambda item: (*item.order_key, item.raw_sha256),
+                )
+            ),
+            dependency_lineage=tuple(
+                sorted(
+                    combined_dependencies,
+                    key=lambda item: (*item.order_key, item.raw_sha256),
                 )
             ),
         )
@@ -468,7 +726,14 @@ class NormalizedRecord:
         visible_lineage = tuple(item for item in self.lineage if item.visible_at <= decision_time)
         if not visible_lineage:
             raise ValueError("record has no lineage visible at decision_time")
-        return replace(self, lineage=visible_lineage)
+        visible_dependencies = tuple(
+            item for item in self.dependency_lineage if item.visible_at <= decision_time
+        )
+        return replace(
+            self,
+            lineage=visible_lineage,
+            dependency_lineage=visible_dependencies,
+        )
 
 
 _QUARANTINE_FIELDS = frozenset(
@@ -482,6 +747,7 @@ _QUARANTINE_FIELDS = frozenset(
         "visible_at",
         "affected_record_ids",
         "raw_lineage",
+        "dependency_lineage",
     }
 )
 
@@ -496,6 +762,7 @@ class QuarantineRecord:
     visible_at: datetime
     affected_record_ids: tuple[str, ...]
     lineage: tuple[RawLineage, ...]
+    dependency_lineage: tuple[RawLineage, ...]
 
     @classmethod
     def create(
@@ -508,24 +775,34 @@ class QuarantineRecord:
         visible_at: datetime,
         affected_record_ids: Sequence[str],
         lineage: Sequence[RawLineage],
+        dependency_lineage: Sequence[RawLineage] = (),
     ) -> "QuarantineRecord":
         _require_text(reason_code, "reason_code")
         _require_text(business_key, "business_key")
+        for field_name, value in (("market_id", market_id), ("asset_id", asset_id)):
+            if value is not None:
+                _require_text(value, field_name)
         _require_utc(visible_at, "visible_at")
         ordered_ids = tuple(sorted(set(affected_record_ids)))
+        for affected_record_id in ordered_ids:
+            _require_digest(affected_record_id, "affected_record_id")
         ordered_lineage = tuple(
             sorted(
                 set(lineage),
-                key=lambda item: (
-                    item.visible_at,
-                    item.source_manifest_id,
-                    item.segment_sha256,
-                    item.event_id,
-                ),
+                key=lambda item: item.order_key,
             )
         )
         if not ordered_lineage:
             raise ValueError("quarantine requires raw lineage")
+        if max(item.visible_at for item in ordered_lineage) != visible_at:
+            raise ValueError(
+                "quarantine visible_at must equal its triggering raw lineage time"
+            )
+        ordered_dependencies = tuple(
+            sorted(set(dependency_lineage), key=lambda item: item.order_key)
+        )
+        if any(item.visible_at > visible_at for item in ordered_dependencies):
+            raise ValueError("quarantine dependency lineage must already be visible")
         identity = {
             "reason_code": reason_code,
             "business_key": business_key,
@@ -534,6 +811,9 @@ class QuarantineRecord:
             "visible_at": utc_iso(visible_at),
             "affected_record_ids": ordered_ids,
             "raw_lineage": [item.to_mapping() for item in ordered_lineage],
+            "dependency_lineage": [
+                item.to_mapping() for item in ordered_dependencies
+            ],
         }
         return cls(
             quarantine_id=sha256(_canonical_json(identity).encode("utf-8")).hexdigest(),
@@ -544,6 +824,7 @@ class QuarantineRecord:
             visible_at=visible_at,
             affected_record_ids=ordered_ids,
             lineage=ordered_lineage,
+            dependency_lineage=ordered_dependencies,
         )
 
     def to_mapping(self) -> dict[str, Any]:
@@ -557,6 +838,9 @@ class QuarantineRecord:
             "visible_at": utc_iso(self.visible_at),
             "affected_record_ids": list(self.affected_record_ids),
             "raw_lineage": [item.to_mapping() for item in self.lineage],
+            "dependency_lineage": [
+                item.to_mapping() for item in self.dependency_lineage
+            ],
         }
 
     def to_json_line(self) -> str:
@@ -566,7 +850,14 @@ class QuarantineRecord:
         visible_lineage = tuple(item for item in self.lineage if item.visible_at <= decision_time)
         if not visible_lineage:
             raise ValueError("quarantine has no lineage visible at decision_time")
-        return replace(self, lineage=visible_lineage)
+        visible_dependencies = tuple(
+            item for item in self.dependency_lineage if item.visible_at <= decision_time
+        )
+        return replace(
+            self,
+            lineage=visible_lineage,
+            dependency_lineage=visible_dependencies,
+        )
 
     @classmethod
     def from_json_line(cls, line: str) -> "QuarantineRecord":
@@ -578,6 +869,12 @@ class QuarantineRecord:
             raise ValueError("quarantine record fields do not match schema")
         if value["schema_version"] != NORMALIZED_SCHEMA_VERSION:
             raise ValueError("unsupported quarantine schema")
+        if not isinstance(value["raw_lineage"], list) or not isinstance(
+            value["dependency_lineage"], list
+        ):
+            raise ValueError("quarantine lineage fields must be lists")
+        if not isinstance(value["affected_record_ids"], list):
+            raise ValueError("affected_record_ids must be a list")
         result = cls.create(
             reason_code=value["reason_code"],
             business_key=value["business_key"],
@@ -586,6 +883,10 @@ class QuarantineRecord:
             visible_at=_parse_time(value["visible_at"], "visible_at"),
             affected_record_ids=value["affected_record_ids"],
             lineage=tuple(RawLineage.from_mapping(item) for item in value["raw_lineage"]),
+            dependency_lineage=tuple(
+                RawLineage.from_mapping(item)
+                for item in value["dependency_lineage"]
+            ),
         )
         if result.quarantine_id != value["quarantine_id"]:
             raise ValueError("quarantine_id does not match content")
@@ -611,9 +912,7 @@ def canonicalize_records(
                 item.receive_time,
                 item.process_time,
                 item.persist_time,
-                item.lineage[0].source_manifest_id,
-                item.lineage[0].segment_sha256,
-                item.lineage[0].event_id,
+                item.lineage[0].order_key,
             ),
         )
         baseline_id = ordered[0].record_id
@@ -621,11 +920,18 @@ def canonicalize_records(
         conflicts = [item for item in ordered if item.record_id != baseline_id]
         merged = same[0]
         for duplicate in same[1:]:
-            merged = merged.with_lineage(duplicate.lineage)
+            merged = merged.with_lineage(
+                duplicate.lineage, duplicate.dependency_lineage
+            )
         canonical.append(merged)
         for conflict in conflicts:
             causal_baseline_lineage = tuple(
                 item for item in merged.lineage if item.visible_at <= conflict.visible_at
+            )
+            causal_dependencies = tuple(
+                item
+                for item in (*merged.dependency_lineage, *conflict.dependency_lineage)
+                if item.visible_at <= conflict.visible_at
             )
             quarantines.append(
                 QuarantineRecord.create(
@@ -636,6 +942,7 @@ def canonicalize_records(
                     visible_at=conflict.visible_at,
                     affected_record_ids=[merged.record_id, conflict.record_id],
                     lineage=(*causal_baseline_lineage, *conflict.lineage),
+                    dependency_lineage=causal_dependencies,
                 )
             )
     return (
@@ -739,6 +1046,45 @@ class PointInTimeDataset:
         self.dataset_hash = dataset_hash
 
     @staticmethod
+    def _record_order(record: NormalizedRecord) -> tuple[Any, ...]:
+        return (record.visible_at, *max(item.order_key for item in record.lineage))
+
+    @staticmethod
+    def _causal_frontier(record: NormalizedRecord | QuarantineRecord) -> tuple[datetime, datetime]:
+        return (
+            record.visible_at,
+            max(item.raw_persist_time for item in record.lineage),
+        )
+
+    @staticmethod
+    def _manifest_identity(
+        record: NormalizedRecord | QuarantineRecord,
+    ) -> tuple[str, str]:
+        tail = max(record.lineage, key=lambda item: item.order_key)
+        return tail.source_manifest_id, tail.source_manifest_sha256
+
+    @staticmethod
+    def _causally_not_before(
+        candidate: NormalizedRecord | QuarantineRecord,
+        baseline: NormalizedRecord | QuarantineRecord,
+    ) -> bool:
+        candidate_frontier = PointInTimeDataset._causal_frontier(candidate)
+        baseline_frontier = PointInTimeDataset._causal_frontier(baseline)
+        if candidate_frontier != baseline_frontier:
+            return candidate_frontier > baseline_frontier
+        candidate_tail = max(candidate.lineage, key=lambda item: item.order_key)
+        baseline_tail = max(baseline.lineage, key=lambda item: item.order_key)
+        if (
+            candidate_tail.source_manifest_id,
+            candidate_tail.source_manifest_sha256,
+        ) != (
+            baseline_tail.source_manifest_id,
+            baseline_tail.source_manifest_sha256,
+        ):
+            return False
+        return candidate_tail.order_key >= baseline_tail.order_key
+
+    @staticmethod
     def _latest(records: Iterable[NormalizedRecord]) -> NormalizedRecord | None:
         materialized = list(records)
         if not materialized:
@@ -749,6 +1095,7 @@ class PointInTimeDataset:
                 item.valid_from or item.visible_at,
                 item.observed_at or item.visible_at,
                 item.visible_at,
+                PointInTimeDataset._record_order(item),
                 item.record_id,
             ),
         )
@@ -759,11 +1106,7 @@ class PointInTimeDataset:
         visible_quarantine = tuple(
             item.at_time(decision_time)
             for item in self._quarantines
-            if item.visible_at <= decision_time and item.market_id in {None, market_id}
-        )
-        market_quarantine = any(
-            item.market_id == market_id and item.asset_id is None
-            for item in visible_quarantine
+            if item.visible_at <= decision_time and item.market_id == market_id
         )
         conflict_keys = {
             item.business_key
@@ -775,6 +1118,7 @@ class PointInTimeDataset:
             for item in self._records
             if item.visible_at <= decision_time
             and item.market_id == market_id
+            and (item.source_time is None or item.source_time <= decision_time)
             and item.business_key not in conflict_keys
         ]
         metadata_record = self._latest(
@@ -796,57 +1140,163 @@ class PointInTimeDataset:
             for outcome, key in (("up", "up_token_id"), ("down", "down_token_id"))
             if isinstance(mapping_payload.get(key), str)
         }
-        latest_connection = self._latest(
+        connection_candidates = [
             item for item in visible if item.record_type is RecordType.CONNECTION_STATE
-        )
+        ]
+        latest_connection = self._latest(connection_candidates)
+        connection_ambiguous = False
+        if latest_connection is not None:
+            frontier = self._causal_frontier(latest_connection)
+            contenders = [
+                item
+                for item in connection_candidates
+                if self._causal_frontier(item) == frontier
+            ]
+            contender_manifests = {
+                self._manifest_identity(item) for item in contenders
+            }
+            contender_states = {
+                (item.connection_id, item.payload.get("state")) for item in contenders
+            }
+            connection_ambiguous = bool(
+                len(contender_manifests) > 1 and len(contender_states) > 1
+            )
         connection_state = (
             latest_connection.payload.get("state") if latest_connection is not None else "DISCONNECTED"
         )
+        if connection_ambiguous:
+            connection_state = "RESET_REQUIRED"
         connection_id = latest_connection.connection_id if latest_connection is not None else None
-        books: dict[str, BookView] = {}
-        for asset_id in sorted(set(token_by_outcome.values())):
+
+        def quarantine_is_active(item: QuarantineRecord) -> bool:
+            return bool(
+                item.reason_code in _PERMANENT_QUARANTINE_REASONS
+                or latest_connection is None
+                or not self._causally_not_before(latest_connection, item)
+            )
+
+        market_quarantine = any(
+            item.market_id == market_id
+            and item.asset_id is None
+            and quarantine_is_active(item)
+            for item in visible_quarantine
+        )
+        expected_assets = set(token_by_outcome.values())
+        latest_books_by_asset: dict[str, NormalizedRecord | None] = {}
+        ambiguous_books: set[str] = set()
+        for asset_id in expected_assets:
             candidates = [
                 item
                 for item in visible
                 if item.record_type is RecordType.CLOB_BOOK_STATE
                 and item.asset_id == asset_id
                 and item.connection_id == connection_id
+                and (
+                    latest_connection is None
+                    or self._causally_not_before(item, latest_connection)
+                )
             ]
             latest_book = self._latest(candidates)
-            relevant_quarantine = market_quarantine or any(
+            latest_books_by_asset[asset_id] = latest_book
+            if latest_book is not None:
+                frontier = self._causal_frontier(latest_book)
+                contenders = [
+                    item
+                    for item in candidates
+                    if self._causal_frontier(item) == frontier
+                ]
+                contender_manifests = {
+                    self._manifest_identity(item) for item in contenders
+                }
+                contender_payloads = {
+                    (item.connection_id, item.payload_json) for item in contenders
+                }
+                if len(contender_manifests) > 1 and len(contender_payloads) > 1:
+                    ambiguous_books.add(asset_id)
+        parsed_books: dict[
+            str,
+            tuple[
+                tuple[tuple[Decimal, Decimal], ...],
+                tuple[tuple[Decimal, Decimal], ...],
+                bool,
+                bool,
+                int,
+            ],
+        ] = {}
+        relevant_quarantine_by_asset: dict[str, bool] = {}
+        for asset_id in expected_assets:
+            latest_book = latest_books_by_asset[asset_id]
+            relevant_quarantine_by_asset[asset_id] = market_quarantine or any(
                 item.asset_id == asset_id
                 or (latest_book is not None and item.business_key == latest_book.business_key)
                 for item in visible_quarantine
+                if quarantine_is_active(item)
             )
-            state = BookState.DISCONNECTED
             bids: tuple[tuple[Decimal, Decimal], ...] = ()
             asks: tuple[tuple[Decimal, Decimal], ...] = ()
+            contract_valid = True
             lineage_count = 0
-            if connection_state == "RESET_REQUIRED" or relevant_quarantine:
-                state = BookState.RESET_REQUIRED
-            elif connection_state == "STALE":
-                state = BookState.STALE
-            elif connection_state != "CONNECTED":
-                state = BookState.DISCONNECTED
-            elif latest_book is None:
-                state = BookState.WAITING_FOR_SNAPSHOT
-            elif latest_book.payload.get("snapshot_received") is not True:
-                state = BookState.WAITING_FOR_SNAPSHOT
-            else:
+            if latest_book is not None:
                 lineage_count = latest_book.duplicate_count
                 try:
                     bids = _levels(latest_book.payload.get("bids"), "bids")
                     asks = _levels(latest_book.payload.get("asks"), "asks")
                 except ValueError:
-                    state = BookState.RESET_REQUIRED
-                else:
-                    crossed = bool(bids and asks and bids[0][0] > asks[0][0])
-                    if crossed:
-                        state = BookState.RESET_REQUIRED
-                    elif decision_time - latest_book.receive_time >= self._stale_after:
-                        state = BookState.STALE
-                    else:
-                        state = BookState.ACTIVE_UNVERIFIED
+                    contract_valid = False
+            crossed = bool(
+                contract_valid and bids and asks and bids[0][0] > asks[0][0]
+            )
+            parsed_books[asset_id] = (
+                bids,
+                asks,
+                contract_valid,
+                crossed,
+                lineage_count,
+            )
+
+        snapshots_ready = bool(expected_assets) and all(
+            item is not None and item.payload.get("snapshot_received") is True
+            for item in latest_books_by_asset.values()
+        )
+        market_reset_required = bool(
+            connection_state == "RESET_REQUIRED"
+            or any(relevant_quarantine_by_asset.values())
+            or ambiguous_books
+            or any(
+                not contract_valid or crossed
+                for _, _, contract_valid, crossed, _ in parsed_books.values()
+            )
+        )
+        market_stale = bool(
+            connection_state == "STALE"
+            or any(
+                latest_book is not None
+                and decision_time - latest_book.receive_time >= self._stale_after
+                for latest_book in latest_books_by_asset.values()
+            )
+        )
+        market_has_empty_side = bool(
+            snapshots_ready
+            and any(not bids or not asks for bids, asks, _, _, _ in parsed_books.values())
+        )
+        if market_reset_required:
+            market_book_state = BookState.RESET_REQUIRED
+        elif connection_state == "STALE":
+            market_book_state = BookState.STALE
+        elif connection_state != "CONNECTED":
+            market_book_state = BookState.DISCONNECTED
+        elif not snapshots_ready:
+            market_book_state = BookState.WAITING_FOR_SNAPSHOT
+        elif market_stale:
+            market_book_state = BookState.STALE
+        elif market_has_empty_side:
+            market_book_state = BookState.UNTRADEABLE
+        else:
+            market_book_state = BookState.ACTIVE_UNVERIFIED
+
+        books: dict[str, BookView] = {}
+        for asset_id in sorted(expected_assets):
+            bids, asks, _, _, lineage_count = parsed_books[asset_id]
             best_bid = bids[0][0] if bids else None
             best_ask = asks[0][0] if asks else None
             midpoint = (
@@ -854,17 +1304,39 @@ class PointInTimeDataset:
                 if best_bid is not None and best_ask is not None
                 else None
             )
+            interval_start: datetime | None = None
+            interval_end: datetime | None = None
+            if metadata is not None:
+                try:
+                    interval_start = _parse_time(
+                        metadata.get("interval_start"), "metadata.interval_start"
+                    )
+                    interval_end = _parse_time(
+                        metadata.get("interval_end"), "metadata.interval_end"
+                    )
+                except ValueError:
+                    interval_start = interval_end = None
+            lifecycle_eligible = bool(
+                metadata is not None
+                and metadata.get("active") is True
+                and metadata.get("closed") is False
+                and metadata.get("accepting_orders") is True
+                and interval_start is not None
+                and interval_end is not None
+                and interval_start <= decision_time < interval_end
+            )
             execution_eligible = bool(
-                state is BookState.ACTIVE_UNVERIFIED
+                market_book_state is BookState.ACTIVE_UNVERIFIED
                 and best_bid is not None
                 and best_ask is not None
                 and metadata is not None
                 and metadata.get("identity_valid") is True
+                and lifecycle_eligible
                 and mapping_record is not None
             )
             books[asset_id] = BookView(
                 asset_id=asset_id,
-                state=state,
+                state=market_book_state,
                 bids=bids,
                 asks=asks,
                 best_bid=best_bid,
@@ -877,7 +1349,20 @@ class PointInTimeDataset:
             )
 
         def latest_price(record_type: RecordType) -> Decimal | None:
-            record = self._latest(item for item in visible if item.record_type is record_type)
+            candidates = [item for item in visible if item.record_type is record_type]
+            record = (
+                max(
+                    candidates,
+                    key=lambda item: (
+                        item.source_time or item.visible_at,
+                        item.visible_at,
+                        self._record_order(item),
+                        item.record_id,
+                    ),
+                )
+                if candidates
+                else None
+            )
             if record is None:
                 return None
             return _decimal(record.payload.get("price"), "price", positive=True)
@@ -934,13 +1419,23 @@ class NormalizedBuild:
     quarantine_bytes: bytes = field(repr=False)
     manifest: dict[str, Any]
     manifest_bytes: bytes = field(repr=False)
+    _proof: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._proof is not _BUILD_PROOF:
+            raise DatasetPublicationError(
+                "NormalizedBuild can only be created from manifest-verified raw data"
+            )
 
 
 @dataclass(frozen=True, slots=True)
 class _RawObservation:
     dataset: VerifiedDataset
+    segment_ordinal: int
+    line_ordinal: int
     segment_sha256: str
     event: RawEventEnvelopeV1
+    message_ordinal: int = 0
 
     @property
     def lineage(self) -> RawLineage:
@@ -951,7 +1446,21 @@ class _RawObservation:
             event_id=self.event.event_id,
             raw_sha256=self.event.raw_sha256,
             visible_at=self.event.persist_time,
+            raw_persist_time=self.event.persist_time,
+            segment_ordinal=self.segment_ordinal,
+            line_ordinal=self.line_ordinal,
+            message_ordinal=self.message_ordinal,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingGammaBindingClaim:
+    observation: _RawObservation
+    payload_market_id: str
+    claimed_market_id: str | None
+    claimed_condition_id: str | None
+    claimed_asset_id: str | None
+    claimed_slug: str | None
 
 
 @dataclass(slots=True)
@@ -965,10 +1474,12 @@ def _raw_observations(dataset: VerifiedDataset) -> list[_RawObservation]:
     result: list[_RawObservation] = []
     for segment in sorted(dataset.segments, key=lambda item: item.ordinal):
         text = segment.raw_bytes.decode("utf-8")
-        for line in text[:-1].split("\n"):
+        for line_ordinal, line in enumerate(text[:-1].split("\n")):
             result.append(
                 _RawObservation(
                     dataset=dataset,
+                    segment_ordinal=segment.ordinal,
+                    line_ordinal=line_ordinal,
                     segment_sha256=segment.sha256,
                     event=RawEventEnvelopeV1.from_json_line(line),
                 )
@@ -990,6 +1501,7 @@ def _record_from_event(
     visible_at: datetime | None = None,
     observed_at: datetime | None = None,
     valid_from: datetime | None = None,
+    dependency_lineage: Sequence[RawLineage] = (),
 ) -> NormalizedRecord:
     event = observation.event
     effective_visible_at = visible_at or event.persist_time
@@ -1013,6 +1525,7 @@ def _record_from_event(
         valid_from=valid_from,
         payload=payload,
         lineage=(replace(observation.lineage, visible_at=effective_visible_at),),
+        dependency_lineage=tuple(dependency_lineage),
     )
 
 
@@ -1021,18 +1534,22 @@ def _quarantine_from_event(
     reason_code: str,
     *,
     business_key: str | None = None,
-    market_id: str | None = None,
-    asset_id: str | None = None,
+    market_id: Any = _UNSET,
+    asset_id: Any = _UNSET,
+    visible_at: datetime | None = None,
+    dependency_lineage: Sequence[RawLineage] = (),
 ) -> QuarantineRecord:
     event = observation.event
+    effective_visible_at = visible_at or event.persist_time
     return QuarantineRecord.create(
         reason_code=reason_code,
         business_key=business_key or f"raw:{event.event_id}",
-        market_id=market_id if market_id is not None else event.market_id,
-        asset_id=asset_id if asset_id is not None else event.asset_id,
-        visible_at=event.persist_time,
+        market_id=event.market_id if market_id is _UNSET else market_id,
+        asset_id=event.asset_id if asset_id is _UNSET else asset_id,
+        visible_at=effective_visible_at,
         affected_record_ids=(),
-        lineage=(observation.lineage,),
+        lineage=(replace(observation.lineage, visible_at=effective_visible_at),),
+        dependency_lineage=dependency_lineage,
     )
 
 
@@ -1082,8 +1599,16 @@ class NormalizedDatasetBuilder:
             raise ValueError("config must be NormalizerConfig")
         if _SAFE_PART.fullmatch(dataset_id) is None or dataset_id in {".", ".."}:
             raise ValueError("dataset_id must be path-safe")
+        input_dataset_ids = [item.dataset_id for item in datasets]
+        if len(set(input_dataset_ids)) != len(input_dataset_ids):
+            raise ManifestVerificationError("raw input dataset_id values must be unique")
         if _COMMIT.fullmatch(normalizer_commit) is None:
             raise ValueError("normalizer_commit must be a Git object ID or UNCOMMITTED")
+        actual_commit, worktree_state, code_sha256 = _normalizer_repository_state()
+        if normalizer_commit != actual_commit:
+            raise ValueError(
+                "normalizer_commit must equal the repository HEAD used for this build"
+            )
         for dataset in datasets:
             cls._assert_current(dataset)
             if dataset.continuity != CONTINUITY:
@@ -1101,15 +1626,32 @@ class NormalizedDatasetBuilder:
             key=lambda item: (
                 item.event.persist_time,
                 item.dataset.dataset_id,
+                item.segment_ordinal,
+                item.line_ordinal,
                 item.segment_sha256,
                 item.event.event_id,
             ),
         )
+        raw_event_fingerprints: dict[tuple[str, str], str] = {}
+        for observation in observations:
+            event = observation.event
+            fingerprint = sha256(
+                _canonical_json(event.to_mapping()).encode("utf-8")
+            ).hexdigest()
+            key = (event.source, event.event_id)
+            prior = raw_event_fingerprints.setdefault(key, fingerprint)
+            if prior != fingerprint:
+                raise ManifestVerificationError(
+                    "cross-manifest raw event_id has conflicting content"
+                )
         records: list[NormalizedRecord] = []
         quarantines: list[QuarantineRecord] = []
         markets: dict[str, dict[str, Any]] = {}
         token_to_market: dict[str, str] = {}
         condition_to_market: dict[str, str] = {}
+        slug_to_market: dict[str, str] = {}
+        partition_to_market: dict[tuple[datetime, datetime], str] = {}
+        pending_gamma_binding_claims: list[_PendingGammaBindingClaim] = []
 
         # Identity is normalized first only to establish explicit dependencies.  A fact enriched
         # by metadata receives max(raw persist, metadata visible) as visible_at, so this pass does
@@ -1124,6 +1666,111 @@ class NormalizedDatasetBuilder:
                 continue
             market = result.market
             mapping = result.normalized_mapping
+            subscription = json.loads(observation.dataset.subscription_json)
+            subscription_slug = subscription.get("slug")
+            binding_mismatch = bool(
+                (event.market_id is not None and event.market_id != market.market_id)
+                or (
+                    event.condition_id is not None
+                    and event.condition_id != market.condition_id
+                )
+                or event.asset_id is not None
+                or subscription_slug != market.slug
+            )
+            if binding_mismatch:
+                pending_gamma_binding_claims.append(
+                    _PendingGammaBindingClaim(
+                        observation=observation,
+                        payload_market_id=market.market_id,
+                        claimed_market_id=(
+                            event.market_id
+                            if event.market_id != market.market_id
+                            else None
+                        ),
+                        claimed_condition_id=(
+                            event.condition_id
+                            if event.condition_id != market.condition_id
+                            else None
+                        ),
+                        claimed_asset_id=event.asset_id,
+                        claimed_slug=(
+                            subscription_slug
+                            if subscription_slug != market.slug
+                            else None
+                        ),
+                    )
+                )
+                existing_binding_ids = {
+                    existing_market_id
+                    for existing_market_id in (
+                        event.market_id if event.market_id in markets else None,
+                        condition_to_market.get(event.condition_id),
+                        slug_to_market.get(subscription_slug),
+                    )
+                    if existing_market_id is not None
+                }
+                for existing_market_id in sorted(existing_binding_ids):
+                    quarantines.append(
+                        _quarantine_from_event(
+                            observation,
+                            "GAMMA_IDENTITY_BINDING_MISMATCH",
+                            market_id=existing_market_id,
+                            dependency_lineage=(
+                                markets[existing_market_id]["lineage"],
+                            ),
+                        )
+                    )
+                quarantines.append(
+                    _quarantine_from_event(
+                        observation,
+                        "GAMMA_IDENTITY_BINDING_MISMATCH",
+                        market_id=market.market_id,
+                        dependency_lineage=tuple(
+                            markets[item]["lineage"]
+                            for item in sorted(existing_binding_ids)
+                        ),
+                    )
+                )
+                continue
+            conflicting_market_ids = {
+                existing_market_id
+                for existing_market_id in (
+                    condition_to_market.get(market.condition_id),
+                    slug_to_market.get(market.slug),
+                    partition_to_market.get(
+                        (market.interval_start, market.interval_end)
+                    ),
+                    *(
+                        token_to_market.get(token.token_id)
+                        for token in market.outcome_tokens
+                    ),
+                )
+                if existing_market_id not in {None, market.market_id}
+            }
+            if conflicting_market_ids:
+                for conflicting_market_id in sorted(conflicting_market_ids):
+                    quarantines.append(
+                        _quarantine_from_event(
+                            observation,
+                            "MARKET_IDENTITY_COLLISION",
+                            market_id=conflicting_market_id,
+                            dependency_lineage=(
+                                markets[conflicting_market_id]["lineage"],
+                            ),
+                        )
+                    )
+                quarantines.append(
+                    _quarantine_from_event(
+                        observation,
+                        "MARKET_IDENTITY_COLLISION",
+                        market_id=market.market_id,
+                        dependency_lineage=tuple(
+                            markets[item]["lineage"]
+                            for item in sorted(conflicting_market_ids)
+                        ),
+                    )
+                )
+                continue
             prior_identity = markets.get(market.market_id)
             if prior_identity is not None:
                 prior_market = prior_identity["market"]
@@ -1140,6 +1787,7 @@ class NormalizedDatasetBuilder:
                             observation,
                             "MARKET_IDENTITY_REVISION_CONFLICT",
                             market_id=market.market_id,
+                            dependency_lineage=(prior_identity["lineage"],),
                         )
                     )
                     continue
@@ -1150,10 +1798,16 @@ class NormalizedDatasetBuilder:
                     "market": market,
                     "mapping": mapping,
                     "visible_at": event.persist_time,
+                    "lineage": observation.lineage,
                 }
-            condition_to_market[market.condition_id] = market.market_id
+            condition_to_market.setdefault(market.condition_id, market.market_id)
+            slug_to_market.setdefault(market.slug, market.market_id)
+            partition_to_market.setdefault(
+                (market.interval_start, market.interval_end),
+                market.market_id,
+            )
             for token in market.outcome_tokens:
-                token_to_market[token.token_id] = market.market_id
+                token_to_market.setdefault(token.token_id, market.market_id)
             records.append(
                 _record_from_event(
                     observation,
@@ -1194,26 +1848,156 @@ class NormalizedDatasetBuilder:
                 )
             )
 
-        connections: dict[str, str] = {}
+        # A malformed Gamma envelope can claim an identity that is only learned from a later
+        # manifest. Resolve those claims after the identity pass, but lift their visibility to
+        # the later identity dependency. This prevents a future market from escaping a prior
+        # binding quarantine without leaking that future identity into an earlier view.
+        for claim in pending_gamma_binding_claims:
+            claimed_market_ids = {
+                item
+                for item in (
+                    (
+                        claim.claimed_market_id
+                        if claim.claimed_market_id in markets
+                        else None
+                    ),
+                    condition_to_market.get(claim.claimed_condition_id),
+                    token_to_market.get(claim.claimed_asset_id),
+                    slug_to_market.get(claim.claimed_slug),
+                )
+                if item is not None and item != claim.payload_market_id
+            }
+            for claimed_market_id in sorted(claimed_market_ids):
+                dependency = markets[claimed_market_id]
+                quarantines.append(
+                    _quarantine_from_event(
+                        claim.observation,
+                        "GAMMA_IDENTITY_BINDING_MISMATCH",
+                        market_id=claimed_market_id,
+                        visible_at=max(
+                            claim.observation.event.persist_time,
+                            dependency["visible_at"],
+                        ),
+                        dependency_lineage=(dependency["lineage"],),
+                    )
+                )
+
+        connections: dict[tuple[str, str], str] = {}
         books: dict[tuple[str, str, str], _MutableBook] = {}
 
-        def market_for_event(event: RawEventEnvelopeV1, payload: Mapping[str, Any] | None = None) -> str | None:
-            if event.market_id in markets:
-                return event.market_id
-            condition = event.condition_id
-            asset = event.asset_id
+        def market_for_event(
+            event: RawEventEnvelopeV1,
+            payload: Mapping[str, Any] | None = None,
+        ) -> str | None:
+            claims: set[str] = set()
+            invalid_claim = False
+
+            def add_claim(value: Any, mapping: Mapping[str, str], *, present: bool) -> None:
+                nonlocal invalid_claim
+                if not present or value is None:
+                    return
+                if not isinstance(value, str) or value not in mapping:
+                    invalid_claim = True
+                    return
+                claims.add(mapping[value])
+
+            add_claim(
+                event.market_id,
+                {market_id: market_id for market_id in markets},
+                present=event.market_id is not None,
+            )
+            add_claim(
+                event.condition_id,
+                condition_to_market,
+                present=event.condition_id is not None,
+            )
+            add_claim(
+                event.asset_id,
+                token_to_market,
+                present=event.asset_id is not None,
+            )
             if payload is not None:
-                raw_condition = payload.get("market", payload.get("condition_id"))
-                raw_asset = payload.get("asset_id")
-                if isinstance(raw_condition, str):
-                    condition = raw_condition
-                if isinstance(raw_asset, str):
-                    asset = raw_asset
-            if condition in condition_to_market:
-                return condition_to_market[condition]
-            if asset in token_to_market:
-                return token_to_market[asset]
-            return None
+                add_claim(
+                    payload.get("market"),
+                    condition_to_market,
+                    present="market" in payload,
+                )
+                add_claim(
+                    payload.get("condition_id"),
+                    condition_to_market,
+                    present="condition_id" in payload,
+                )
+                add_claim(
+                    payload.get("asset_id"),
+                    token_to_market,
+                    present="asset_id" in payload,
+                )
+            if invalid_claim or len(claims) != 1:
+                return None
+            return next(iter(claims))
+
+        def subscription_market_for_observation(
+            observation: _RawObservation,
+        ) -> str | None:
+            candidates = {
+                token_to_market[asset]
+                for asset in observation.dataset.asset_ids
+                if asset in token_to_market
+            }
+            return next(iter(candidates)) if len(candidates) == 1 else None
+
+        def classified_quarantine(
+            observation: _RawObservation,
+            reason_code: str,
+            *,
+            market_id: str | None,
+            asset_id: str | None = None,
+        ) -> QuarantineRecord:
+            if market_id is None or market_id not in markets:
+                return _quarantine_from_event(
+                    observation,
+                    reason_code,
+                    market_id=market_id,
+                    asset_id=asset_id,
+                )
+            dependency_visible = max(
+                observation.event.persist_time,
+                markets[market_id]["visible_at"],
+            )
+            return _quarantine_from_event(
+                observation,
+                reason_code,
+                market_id=market_id,
+                asset_id=asset_id,
+                visible_at=dependency_visible,
+                dependency_lineage=(markets[market_id]["lineage"],),
+            )
+
+        def reset_connection_for_market(
+            observation: _RawObservation,
+            market_id: str,
+        ) -> None:
+            event = observation.event
+            market = markets[market_id]["market"]
+            dependency_visible = max(
+                event.persist_time,
+                markets[market_id]["visible_at"],
+            )
+            connections[(event.connection_id, market_id)] = "RESET_REQUIRED"
+            records.append(
+                _record_from_event(
+                    observation,
+                    record_type=RecordType.CONNECTION_STATE,
+                    business_key=(
+                        f"connection:{event.connection_id}:reset:{event.event_id}"
+                    ),
+                    market_id=market_id,
+                    condition_id=market.condition_id,
+                    visible_at=dependency_visible,
+                    payload={"state": "RESET_REQUIRED"},
+                    dependency_lineage=(markets[market_id]["lineage"],),
+                )
+            )
 
         for observation in observations:
             event = observation.event
@@ -1222,7 +2006,19 @@ class NormalizedDatasetBuilder:
                     quarantines.append(_quarantine_from_event(observation, "RAW_PARSER_REJECTED"))
                 continue
             if event.parser_status != "parsed":
-                quarantines.append(_quarantine_from_event(observation, "RAW_PARSER_REJECTED"))
+                market_id = (
+                    market_for_event(event)
+                    or subscription_market_for_observation(observation)
+                    if event.source == "polymarket.clob.market"
+                    else None
+                )
+                quarantines.append(
+                    classified_quarantine(
+                        observation,
+                        "RAW_PARSER_REJECTED",
+                        market_id=market_id,
+                    )
+                )
                 continue
 
             if event.source in {"polymarket.rtds.chainlink", "polymarket.rtds.binance"}:
@@ -1240,7 +2036,7 @@ class NormalizedDatasetBuilder:
                     for item in markets.values()
                     if item["market"].interval_start
                     <= parsed.source_time
-                    <= item["market"].interval_end
+                    < item["market"].interval_end
                 ]
                 if not matches:
                     quarantines.append(_quarantine_from_event(observation, "NO_MATCHING_MARKET_WINDOW"))
@@ -1269,6 +2065,7 @@ class NormalizedDatasetBuilder:
                                 "symbol": parsed.symbol,
                                 "price": parsed.value,
                             },
+                            dependency_lineage=(item["lineage"],),
                         )
                     )
                 continue
@@ -1277,30 +2074,76 @@ class NormalizedDatasetBuilder:
                 quarantines.append(_quarantine_from_event(observation, "UNSUPPORTED_RAW_SOURCE"))
                 continue
 
-            if event.event_type in {
-                "connection_open",
-                "connection_stale",
-                "connection_error",
-                "connection_closed_early",
-                "capture_timeout",
-            }:
-                state = {
-                    "connection_open": "CONNECTED",
-                    "connection_stale": "STALE",
-                    "connection_error": "DISCONNECTED",
-                    "connection_closed_early": "DISCONNECTED",
-                    "capture_timeout": "DISCONNECTED",
-                }[event.event_type]
-                connections[event.connection_id] = state
-                matching_markets = {
+            if event.event_type in _CLOB_AUDIT_EVENTS:
+                try:
+                    audit_payload = json.loads(event.raw_payload)
+                except json.JSONDecodeError:
+                    audit_payload = None
+                audit_valid = bool(
+                    isinstance(audit_payload, dict)
+                    and set(audit_payload) == {"audit_event", "details"}
+                    and audit_payload.get("audit_event") == event.event_type
+                    and isinstance(audit_payload.get("details"), dict)
+                )
+                subscription_markets = {
                     token_to_market[asset]
                     for asset in observation.dataset.asset_ids
                     if asset in token_to_market
                 }
-                if event.market_id in markets:
-                    matching_markets.add(event.market_id)
+                envelope_has_identity = any(
+                    value is not None
+                    for value in (event.market_id, event.condition_id, event.asset_id)
+                )
+                envelope_market = market_for_event(event)
+                matching_markets = set(subscription_markets)
+                if envelope_market is not None:
+                    matching_markets.add(envelope_market)
+                identity_invalid = (
+                    (envelope_has_identity and envelope_market is None)
+                    or len(matching_markets) != 1
+                )
+                if not audit_valid or identity_invalid:
+                    targets = matching_markets or subscription_markets
+                    reason = (
+                        "INVALID_CONNECTION_AUDIT"
+                        if not audit_valid
+                        else "INCONSISTENT_CONNECTION_IDENTITY"
+                    )
+                    if targets:
+                        for market_id in sorted(targets):
+                            quarantines.append(
+                                classified_quarantine(
+                                    observation,
+                                    reason,
+                                    market_id=market_id,
+                                )
+                            )
+                            reset_connection_for_market(observation, market_id)
+                    else:
+                        quarantines.append(
+                            _quarantine_from_event(
+                                observation,
+                                reason,
+                            )
+                        )
+                    continue
+                if event.event_type in _CLOB_AUDIT_NOOPS:
+                    continue
+                state = _CLOB_AUDIT_STATES[event.event_type]
                 for market_id in sorted(matching_markets):
                     market = markets[market_id]["market"]
+                    if event.event_type == "connection_open":
+                        for key in [
+                            key
+                            for key in books
+                            if key[0] == event.connection_id and key[1] == market_id
+                        ]:
+                            del books[key]
+                    connections[(event.connection_id, market_id)] = state
+                    dependency_visible = max(
+                        event.persist_time,
+                        markets[market_id]["visible_at"],
+                    )
                     records.append(
                         _record_from_event(
                             observation,
@@ -1308,7 +2151,9 @@ class NormalizedDatasetBuilder:
                             business_key=f"connection:{event.connection_id}:{event.event_id}",
                             market_id=market_id,
                             condition_id=market.condition_id,
+                            visible_at=dependency_visible,
                             payload={"state": state},
+                            dependency_lineage=(markets[market_id]["lineage"],),
                         )
                     )
                     if state != "CONNECTED":
@@ -1319,6 +2164,7 @@ class NormalizedDatasetBuilder:
                                 business_key=f"quality:{event.connection_id}:{event.event_id}",
                                 market_id=market_id,
                                 condition_id=market.condition_id,
+                                visible_at=dependency_visible,
                                 observed_at=event.persist_time,
                                 valid_from=event.persist_time,
                                 payload={
@@ -1326,6 +2172,7 @@ class NormalizedDatasetBuilder:
                                     "interval_start": event.persist_time,
                                     "interval_end": None,
                                 },
+                                dependency_lineage=(markets[market_id]["lineage"],),
                             )
                         )
                 continue
@@ -1333,23 +2180,63 @@ class NormalizedDatasetBuilder:
             try:
                 decoded = json.loads(event.raw_payload)
             except json.JSONDecodeError:
-                quarantines.append(_quarantine_from_event(observation, "INVALID_CLOB_JSON"))
+                market_id = (
+                    market_for_event(event)
+                    or subscription_market_for_observation(observation)
+                )
+                quarantines.append(
+                    classified_quarantine(
+                        observation,
+                        "INVALID_CLOB_JSON",
+                        market_id=market_id,
+                    )
+                )
+                if market_id is not None:
+                    reset_connection_for_market(observation, market_id)
                 continue
             messages = decoded if isinstance(decoded, list) else [decoded]
-            for message in messages:
+            for message_ordinal, message in enumerate(messages):
+                observation = replace(
+                    observation,
+                    message_ordinal=message_ordinal,
+                )
                 if not isinstance(message, dict):
-                    quarantines.append(_quarantine_from_event(observation, "INVALID_CLOB_MESSAGE"))
+                    market_id = (
+                        market_for_event(event)
+                        or subscription_market_for_observation(observation)
+                    )
+                    quarantines.append(
+                        classified_quarantine(
+                            observation,
+                            "INVALID_CLOB_MESSAGE",
+                            market_id=market_id,
+                        )
+                    )
+                    if market_id is not None:
+                        reset_connection_for_market(observation, market_id)
                     continue
                 event_type = message.get("event_type")
                 market_id = market_for_event(event, message)
                 if market_id is None:
-                    quarantines.append(_quarantine_from_event(observation, "UNKNOWN_MARKET_IDENTITY"))
+                    fallback_market_id = (
+                        market_for_event(event)
+                        or subscription_market_for_observation(observation)
+                    )
+                    quarantines.append(
+                        classified_quarantine(
+                            observation,
+                            "UNKNOWN_MARKET_IDENTITY",
+                            market_id=fallback_market_id,
+                        )
+                    )
+                    if fallback_market_id is not None:
+                        reset_connection_for_market(observation, fallback_market_id)
                     continue
                 market = markets[market_id]["market"]
                 dependency_visible = max(event.persist_time, markets[market_id]["visible_at"])
-                if connections.get(event.connection_id) != "CONNECTED":
+                if connections.get((event.connection_id, market_id)) != "CONNECTED":
                     quarantines.append(
-                        _quarantine_from_event(
+                        classified_quarantine(
                             observation,
                             "BOOK_EVENT_WITHOUT_ACTIVE_CONNECTION",
                             market_id=market_id,
@@ -1360,55 +2247,36 @@ class NormalizedDatasetBuilder:
                     asset_id = message.get("asset_id")
                     if not isinstance(asset_id, str) or token_to_market.get(asset_id) != market_id:
                         quarantines.append(
-                            _quarantine_from_event(
+                            classified_quarantine(
                                 observation, "UNKNOWN_OUTCOME_TOKEN", market_id=market_id
                             )
                         )
+                        reset_connection_for_market(observation, market_id)
                         continue
                     try:
                         bid_levels = dict(_levels(message.get("bids"), "bids"))
                         ask_levels = dict(_levels(message.get("asks"), "asks"))
                     except ValueError:
                         quarantines.append(
-                            _quarantine_from_event(
+                            classified_quarantine(
                                 observation,
                                 "INVALID_BOOK_SNAPSHOT",
                                 market_id=market_id,
                                 asset_id=asset_id,
                             )
                         )
-                        connections[event.connection_id] = "RESET_REQUIRED"
-                        records.append(
-                            _record_from_event(
-                                observation,
-                                record_type=RecordType.CONNECTION_STATE,
-                                business_key=f"connection:{event.connection_id}:reset:{event.event_id}",
-                                market_id=market_id,
-                                condition_id=market.condition_id,
-                                payload={"state": "RESET_REQUIRED"},
-                            )
-                        )
+                        reset_connection_for_market(observation, market_id)
                         continue
                     if bid_levels and ask_levels and max(bid_levels) > min(ask_levels):
                         quarantines.append(
-                            _quarantine_from_event(
+                            classified_quarantine(
                                 observation,
                                 "CROSSED_BOOK",
                                 market_id=market_id,
                                 asset_id=asset_id,
                             )
                         )
-                        connections[event.connection_id] = "RESET_REQUIRED"
-                        records.append(
-                            _record_from_event(
-                                observation,
-                                record_type=RecordType.CONNECTION_STATE,
-                                business_key=f"connection:{event.connection_id}:reset:{event.event_id}",
-                                market_id=market_id,
-                                condition_id=market.condition_id,
-                                payload={"state": "RESET_REQUIRED"},
-                            )
-                        )
+                        reset_connection_for_market(observation, market_id)
                         continue
                     key = (event.connection_id, market_id, asset_id)
                     books[key] = _MutableBook(bids=bid_levels, asks=ask_levels)
@@ -1432,17 +2300,20 @@ class NormalizedDatasetBuilder:
                                     for price, size in sorted(ask_levels.items())
                                 ],
                                 "snapshot_received": True,
+                                "provider_timestamp_raw": message.get("timestamp"),
                             },
+                            dependency_lineage=(markets[market_id]["lineage"],),
                         )
                     )
                 elif event_type == "price_change":
                     changes = message.get("price_changes")
                     if not isinstance(changes, list) or not changes:
                         quarantines.append(
-                            _quarantine_from_event(
+                            classified_quarantine(
                                 observation, "INVALID_BOOK_DELTA", market_id=market_id
                             )
                         )
+                        reset_connection_for_market(observation, market_id)
                         continue
                     staged: dict[str, _MutableBook] = {}
                     failed = False
@@ -1490,24 +2361,14 @@ class NormalizedDatasetBuilder:
                             affected_assets = {None}
                         for affected_asset in affected_assets:
                             quarantines.append(
-                                _quarantine_from_event(
+                                classified_quarantine(
                                     observation,
                                     "INVALID_BOOK_DELTA",
                                     market_id=market_id,
                                     asset_id=affected_asset,
                                 )
                             )
-                        connections[event.connection_id] = "RESET_REQUIRED"
-                        records.append(
-                            _record_from_event(
-                                observation,
-                                record_type=RecordType.CONNECTION_STATE,
-                                business_key=f"connection:{event.connection_id}:reset:{event.event_id}",
-                                market_id=market_id,
-                                condition_id=market.condition_id,
-                                payload={"state": "RESET_REQUIRED"},
-                            )
-                        )
+                        reset_connection_for_market(observation, market_id)
                         continue
                     for asset_id, staged_book in sorted(staged.items()):
                         books[(event.connection_id, market_id, asset_id)] = staged_book
@@ -1531,15 +2392,18 @@ class NormalizedDatasetBuilder:
                                         for price, size in sorted(staged_book.asks.items())
                                     ],
                                     "snapshot_received": True,
+                                    "provider_timestamp_raw": message.get("timestamp"),
                                 },
+                                dependency_lineage=(markets[market_id]["lineage"],),
                             )
                         )
                 else:
                     quarantines.append(
-                        _quarantine_from_event(
+                        classified_quarantine(
                             observation, "UNSUPPORTED_NORMALIZED_CLOB_EVENT", market_id=market_id
                         )
                     )
+                    reset_connection_for_market(observation, market_id)
 
         canonical, conflicts = canonicalize_records(records)
         all_quarantines = tuple(
@@ -1551,6 +2415,8 @@ class NormalizedDatasetBuilder:
         return cls._assemble(
             dataset_id=dataset_id,
             normalizer_commit=normalizer_commit,
+            normalizer_code_sha256=code_sha256,
+            normalizer_worktree_state=worktree_state,
             config=config,
             inputs=datasets,
             records=canonical,
@@ -1562,6 +2428,8 @@ class NormalizedDatasetBuilder:
         *,
         dataset_id: str,
         normalizer_commit: str,
+        normalizer_code_sha256: str,
+        normalizer_worktree_state: str,
         config: NormalizerConfig,
         inputs: Sequence[VerifiedDataset],
         records: Sequence[NormalizedRecord],
@@ -1621,6 +2489,8 @@ class NormalizedDatasetBuilder:
             "dataset_id": dataset_id,
             "continuity": CONTINUITY,
             "normalizer_git_commit": normalizer_commit,
+            "normalizer_code_sha256": normalizer_code_sha256,
+            "normalizer_worktree_state": normalizer_worktree_state,
             "config": config.to_mapping(),
             "raw_inputs": raw_inputs,
             "row_counts": dict(sorted(row_counts.items())),
@@ -1644,6 +2514,7 @@ class NormalizedDatasetBuilder:
             quarantine_bytes=quarantine_bytes,
             manifest=manifest,
             manifest_bytes=manifest_bytes,
+            _proof=_BUILD_PROOF,
         )
 
     @staticmethod
@@ -1656,25 +2527,82 @@ class NormalizedDatasetBuilder:
             if current.exists() and current.is_symlink():
                 raise DatasetPublicationError("normalized data root must not traverse symlinks")
             current = current.parent
+        if _mount_filesystem_type(absolute) in _WINDOWS_BACKED_FILESYSTEMS:
+            raise DatasetPublicationError(
+                "DrvFS/Windows-backed filesystems are unsupported; use a Linux-native filesystem"
+            )
         return absolute
+
+    @staticmethod
+    def _validate_build_artifact(build: NormalizedBuild) -> None:
+        """Revalidate the complete in-memory artifact immediately before publication."""
+
+        records_bytes = b"".join(
+            (item.to_json_line() + "\n").encode("utf-8") for item in build.records
+        )
+        quarantine_bytes = b"".join(
+            (item.to_json_line() + "\n").encode("utf-8")
+            for item in build.quarantines
+        )
+        if records_bytes != build.records_bytes or quarantine_bytes != build.quarantine_bytes:
+            raise DatasetPublicationError("normalized build rows changed after assembly")
+        if not isinstance(build.manifest, dict) or set(build.manifest) != _NORMALIZED_MANIFEST_FIELDS:
+            raise DatasetPublicationError("normalized build manifest fields are invalid")
+        expected_manifest_bytes = (
+            _canonical_json(build.manifest) + "\n"
+        ).encode("utf-8")
+        if expected_manifest_bytes != build.manifest_bytes:
+            raise DatasetPublicationError("normalized build manifest changed after assembly")
+        if build.manifest.get("dataset_id") != build.dataset_id:
+            raise DatasetPublicationError("normalized build dataset_id mismatch")
+        if build.manifest.get("dataset_hash") != build.dataset_hash:
+            raise DatasetPublicationError("normalized build dataset_hash mismatch")
+        if _SHA256.fullmatch(build.dataset_hash) is None:
+            raise DatasetPublicationError("normalized build dataset_hash is invalid")
+        core = {
+            key: value
+            for key, value in build.manifest.items()
+            if key != "dataset_hash"
+        }
+        if sha256(_canonical_json(core).encode("utf-8")).hexdigest() != build.dataset_hash:
+            raise DatasetPublicationError("normalized build manifest hash mismatch")
+        expected_outputs = {
+            "records.jsonl": {
+                "sha256": sha256(records_bytes).hexdigest(),
+                "byte_count": len(records_bytes),
+                "row_count": len(build.records),
+            },
+            "quarantine.jsonl": {
+                "sha256": sha256(quarantine_bytes).hexdigest(),
+                "byte_count": len(quarantine_bytes),
+                "row_count": len(build.quarantines),
+            },
+        }
+        if build.manifest.get("outputs") != expected_outputs:
+            raise DatasetPublicationError("normalized build output inventory mismatch")
 
     @classmethod
     def publish(cls, build: NormalizedBuild, poly_data_root: Path) -> Path:
+        if not isinstance(build, NormalizedBuild) or build._proof is not _BUILD_PROOF:
+            raise DatasetPublicationError("publish requires a verified normalized build")
+        cls._validate_build_artifact(build)
         root = cls._reject_unsupported_root(poly_data_root)
         normalized_root = root / "normalized"
         dataset_root = normalized_root / f"dataset_id={build.dataset_id}"
         destination = dataset_root / f"version={build.dataset_hash}"
         normalized_root.mkdir(parents=True, exist_ok=True)
         dataset_root.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
+        cls._reject_unsupported_root(dataset_root)
+        if os.path.lexists(destination):
             raise DatasetPublicationError("completed normalized dataset version already exists")
         lock_path = dataset_root / ".single-writer.lock"
         try:
             lock_fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError as exc:
             raise DatasetPublicationError("another single writer is active") from exc
-        temporary = Path(tempfile.mkdtemp(prefix=".partial-", dir=dataset_root))
+        temporary: Path | None = None
         try:
+            temporary = Path(tempfile.mkdtemp(prefix=".partial-", dir=dataset_root))
             os.write(lock_fd, f"pid={os.getpid()}\n".encode("ascii"))
             os.fsync(lock_fd)
             for name, content in (
@@ -1692,9 +2620,9 @@ class NormalizedDatasetBuilder:
                 os.fsync(directory_fd)
             finally:
                 os.close(directory_fd)
-            if destination.exists():
+            if os.path.lexists(destination):
                 raise DatasetPublicationError("completed normalized dataset version already exists")
-            os.rename(temporary, destination)
+            _rename_no_replace(temporary, destination)
             parent_fd = os.open(dataset_root, os.O_RDONLY | os.O_DIRECTORY)
             try:
                 os.fsync(parent_fd)
@@ -1711,7 +2639,7 @@ class NormalizedDatasetBuilder:
                 lock_path.unlink()
             except FileNotFoundError:
                 pass
-            if temporary.exists():
+            if temporary is not None and temporary.exists():
                 shutil.rmtree(temporary)
 
     @classmethod
@@ -1720,32 +2648,66 @@ class NormalizedDatasetBuilder:
         try:
             if directory.is_symlink() or not directory.is_dir():
                 raise DatasetPublicationError("normalized version must be a final directory")
-            manifest_bytes = (directory / "manifest.json").read_bytes()
+            manifest_path = directory / "manifest.json"
+            if manifest_path.is_symlink():
+                raise DatasetPublicationError("normalized manifest must not be a symlink")
+            manifest_bytes = manifest_path.read_bytes()
             manifest = json.loads(manifest_bytes.decode("utf-8"))
         except DatasetPublicationError:
             raise
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise DatasetPublicationError("normalized manifest is unreadable") from exc
-        if not isinstance(manifest, dict) or manifest.get("schema_version") != NORMALIZED_MANIFEST_VERSION:
+        if (
+            not isinstance(manifest, dict)
+            or set(manifest) != _NORMALIZED_MANIFEST_FIELDS
+            or manifest.get("schema_version") != NORMALIZED_MANIFEST_VERSION
+            or manifest.get("normalized_schema_version") != NORMALIZED_SCHEMA_VERSION
+            or manifest.get("continuity") != CONTINUITY
+        ):
             raise DatasetPublicationError("unsupported normalized manifest")
+        if manifest_bytes != (_canonical_json(manifest) + "\n").encode("utf-8"):
+            raise DatasetPublicationError("normalized manifest is not canonical JSON")
         dataset_hash = manifest.get("dataset_hash")
         if not isinstance(dataset_hash, str) or _SHA256.fullmatch(dataset_hash) is None:
             raise DatasetPublicationError("normalized dataset_hash is invalid")
+        normalizer_commit = manifest.get("normalizer_git_commit")
+        if not isinstance(normalizer_commit, str) or _COMMIT.fullmatch(normalizer_commit) is None:
+            raise DatasetPublicationError("normalized normalizer_git_commit is invalid")
+        normalizer_code_sha256 = manifest.get("normalizer_code_sha256")
+        if (
+            not isinstance(normalizer_code_sha256, str)
+            or _SHA256.fullmatch(normalizer_code_sha256) is None
+        ):
+            raise DatasetPublicationError("normalized normalizer_code_sha256 is invalid")
+        if manifest.get("normalizer_worktree_state") not in {"CLEAN", "DIRTY"}:
+            raise DatasetPublicationError("normalized normalizer_worktree_state is invalid")
         core = {key: value for key, value in manifest.items() if key != "dataset_hash"}
         if sha256(_canonical_json(core).encode("utf-8")).hexdigest() != dataset_hash:
             raise DatasetPublicationError("normalized manifest hash mismatch")
         if directory.name != f"version={dataset_hash}":
             raise DatasetPublicationError("normalized version directory does not match dataset_hash")
         outputs = manifest.get("outputs")
-        if not isinstance(outputs, dict):
+        if not isinstance(outputs, dict) or set(outputs) != {
+            "records.jsonl",
+            "quarantine.jsonl",
+        }:
             raise DatasetPublicationError("normalized output inventory is missing")
         loaded: dict[str, bytes] = {}
         for name in ("records.jsonl", "quarantine.jsonl"):
             expected = outputs.get(name)
-            if not isinstance(expected, dict):
+            if not isinstance(expected, dict) or set(expected) != {
+                "sha256",
+                "byte_count",
+                "row_count",
+            }:
                 raise DatasetPublicationError("normalized output inventory is incomplete")
             try:
-                content = (directory / name).read_bytes()
+                output_path = directory / name
+                if output_path.is_symlink():
+                    raise DatasetPublicationError("normalized output must not be a symlink")
+                content = output_path.read_bytes()
+            except DatasetPublicationError:
+                raise
             except OSError as exc:
                 raise DatasetPublicationError("normalized output is unreadable") from exc
             if (
@@ -1779,12 +2741,93 @@ class NormalizedDatasetBuilder:
             raise DatasetPublicationError("normalized record row count mismatch")
         if len(quarantines) != outputs["quarantine.jsonl"].get("row_count"):
             raise DatasetPublicationError("normalized quarantine row count mismatch")
+        computed_rows: dict[str, int] = {}
+        for record in records:
+            computed_rows[record.record_type.value] = (
+                computed_rows.get(record.record_type.value, 0) + 1
+            )
+        computed_quality: dict[str, int] = {}
+        for quarantine in quarantines:
+            computed_quality[quarantine.reason_code] = (
+                computed_quality.get(quarantine.reason_code, 0) + 1
+            )
+        if manifest.get("row_counts") != dict(sorted(computed_rows.items())):
+            raise DatasetPublicationError("normalized manifest row_counts mismatch")
+        if manifest.get("quarantine_count") != len(quarantines):
+            raise DatasetPublicationError("normalized manifest quarantine_count mismatch")
+        if manifest.get("quality_counts") != dict(sorted(computed_quality.items())):
+            raise DatasetPublicationError("normalized manifest quality_counts mismatch")
+        source_times = [record.source_time for record in records if record.source_time is not None]
+        visible_times = [
+            *(record.visible_at for record in records),
+            *(quarantine.visible_at for quarantine in quarantines),
+        ]
+        expected_ranges = {
+            "min_source_time": utc_iso(min(source_times)) if source_times else None,
+            "max_source_time": utc_iso(max(source_times)) if source_times else None,
+            "min_visible_at": utc_iso(min(visible_times)) if visible_times else None,
+            "max_visible_at": utc_iso(max(visible_times)) if visible_times else None,
+        }
+        if any(manifest.get(key) != value for key, value in expected_ranges.items()):
+            raise DatasetPublicationError("normalized manifest time range mismatch")
+        raw_inputs = manifest.get("raw_inputs")
+        if not isinstance(raw_inputs, list) or not raw_inputs:
+            raise DatasetPublicationError("normalized raw input provenance is missing")
+        allowed_lineage = {
+            (
+                item.get("dataset_id"),
+                item.get("manifest_sha256"),
+                segment.get("sha256"),
+                segment.get("ordinal"),
+            )
+            for item in raw_inputs
+            if isinstance(item, dict)
+            for segment in item.get("segments", [])
+            if isinstance(segment, dict)
+        }
+        for lineage in (
+            item
+            for record in records
+            for item in (*record.lineage, *record.dependency_lineage)
+        ):
+            if (
+                lineage.source_manifest_id,
+                lineage.source_manifest_sha256,
+                lineage.segment_sha256,
+                lineage.segment_ordinal,
+            ) not in allowed_lineage:
+                raise DatasetPublicationError("normalized record lineage is absent from raw_inputs")
+        for lineage in (
+            item
+            for quarantine in quarantines
+            for item in (*quarantine.lineage, *quarantine.dependency_lineage)
+        ):
+            if (
+                lineage.source_manifest_id,
+                lineage.source_manifest_sha256,
+                lineage.segment_sha256,
+                lineage.segment_ordinal,
+            ) not in allowed_lineage:
+                raise DatasetPublicationError("normalized quarantine lineage is absent from raw_inputs")
         config = manifest.get("config")
-        if not isinstance(config, dict):
+        if not isinstance(config, dict) or set(config) != {
+            "book_stale_after_ms",
+            "binance_default_transport_scope",
+            "allow_binance_all_symbols_fallback",
+            "storage_coordination",
+            "supported_filesystem",
+        }:
             raise DatasetPublicationError("normalized config is missing")
         stale_ms = config.get("book_stale_after_ms")
         if isinstance(stale_ms, bool) or not isinstance(stale_ms, int) or stale_ms <= 0:
             raise DatasetPublicationError("normalized stale configuration is invalid")
+        if (
+            config.get("binance_default_transport_scope") != "btc-only"
+            or not isinstance(config.get("allow_binance_all_symbols_fallback"), bool)
+            or config.get("storage_coordination") != "single-writer"
+            or config.get("supported_filesystem") != "linux-native"
+        ):
+            raise DatasetPublicationError("normalized configuration contract is invalid")
         return PointInTimeDataset(
             records,
             quarantines=quarantines,

@@ -34,16 +34,24 @@
         "source_manifest_id",
         "source_manifest_sha256",
         "segment_sha256",
+        "segment_ordinal",
+        "line_ordinal",
+        "message_ordinal",
         "event_id",
         "raw_sha256",
+        "raw_persist_time",
         "visible_at"
       ],
       "properties": {
         "source_manifest_id": {"type": "string", "minLength": 1},
         "source_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "segment_sha256": {"$ref": "#/$defs/sha256"},
+        "segment_ordinal": {"type": "integer", "minimum": 0},
+        "line_ordinal": {"type": "integer", "minimum": 0},
+        "message_ordinal": {"type": "integer", "minimum": 0},
         "event_id": {"type": "string", "minLength": 1},
         "raw_sha256": {"$ref": "#/$defs/sha256"},
+        "raw_persist_time": {"$ref": "#/$defs/utcTime"},
         "visible_at": {"$ref": "#/$defs/utcTime"}
       }
     },
@@ -72,7 +80,8 @@
         "valid_from",
         "payload",
         "duplicate_count",
-        "raw_lineage"
+        "raw_lineage",
+        "dependency_lineage"
       ],
       "properties": {
         "schema_version": {"const": "normalized-record-v1"},
@@ -110,6 +119,11 @@
           "type": "array",
           "minItems": 1,
           "items": {"$ref": "#/$defs/lineage"}
+        },
+        "dependency_lineage": {
+          "description": "Raw facts used to classify or enrich this record, such as the Gamma identity that binds a token or price to a five-minute market.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/lineage"}
         }
       }
     },
@@ -125,7 +139,8 @@
         "asset_id",
         "visible_at",
         "affected_record_ids",
-        "raw_lineage"
+        "raw_lineage",
+        "dependency_lineage"
       ],
       "properties": {
         "schema_version": {"const": "normalized-record-v1"},
@@ -143,6 +158,11 @@
         "raw_lineage": {
           "type": "array",
           "minItems": 1,
+          "items": {"$ref": "#/$defs/lineage"}
+        },
+        "dependency_lineage": {
+          "description": "Raw facts needed to assign this quarantine to a market or token.",
+          "type": "array",
           "items": {"$ref": "#/$defs/lineage"}
         }
       }

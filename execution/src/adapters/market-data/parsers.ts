@@ -39,7 +39,7 @@ export interface ParsedClobMarketFrame {
 }
 
 export interface ParsedRtdsPriceMessage {
-  readonly eventType: "rtds_price_update" | "parse_error";
+  readonly eventType: "rtds_price_update" | "rtds_message_quarantined" | "parse_error";
   readonly parserStatus: ParserStatus;
   readonly parserError: string | null;
   readonly quarantineReason: string | null;
@@ -396,9 +396,47 @@ export function parseRtdsPriceMessage(
     });
     const message = record(parsed, "RTDS message");
     const payload = record(message.payload, "payload");
-    const topic = string(message.topic, "topic");
-    const type = string(message.type, "type");
-    const symbol = string(payload.symbol, "payload.symbol");
+    const topic = typeof message.topic === "string" && message.topic !== "" ? message.topic : null;
+    const type = typeof message.type === "string" && message.type !== "" ? message.type : null;
+    const symbol = typeof payload.symbol === "string" && payload.symbol !== "" ? payload.symbol : null;
+    const expectedTopic = expectedSource === "chainlink" ? "crypto_prices_chainlink" : "crypto_prices";
+    const expectedSymbol = expectedSource === "chainlink" ? "btc/usd" : "btcusdt";
+    const reasons: string[] = [];
+    if (type !== "update") reasons.push(`unexpected type ${type}`);
+    if (topic !== expectedTopic) reasons.push(`unexpected topic ${topic}`);
+    if (symbol !== expectedSymbol) reasons.push(`unexpected symbol ${symbol}`);
+    if (reasons.length > 0) {
+      const sourceTime = (() => {
+        try {
+          return millisecondsIso(payload.timestamp, "payload.timestamp");
+        } catch {
+          return null;
+        }
+      })();
+      const serverTime = (() => {
+        try {
+          return millisecondsIso(message.timestamp, "timestamp");
+        } catch {
+          return null;
+        }
+      })();
+      const valueDecimal =
+        typeof payload.value === "number" && Number.isFinite(payload.value)
+          ? (valueLexemesByHolder.get(payload) ?? null)
+          : null;
+      return Object.freeze({
+        eventType: "rtds_message_quarantined",
+        parserStatus: "quarantined",
+        parserError: null,
+        quarantineReason: reasons.join("; "),
+        rawPayload,
+        topic,
+        symbol,
+        sourceTime,
+        serverTime,
+        valueDecimal,
+      });
+    }
     if (typeof payload.value !== "number" || !Number.isFinite(payload.value)) {
       throw new Error("payload.value must be a finite JSON number");
     }
@@ -407,17 +445,11 @@ export function parseRtdsPriceMessage(
       throw new Error("Node runtime did not expose the RTDS numeric source lexeme");
     }
     decimal(valueDecimal, "payload.value");
-    const expectedTopic = expectedSource === "chainlink" ? "crypto_prices_chainlink" : "crypto_prices";
-    const expectedSymbol = expectedSource === "chainlink" ? "btc/usd" : "btcusdt";
-    const reasons: string[] = [];
-    if (type !== "update") reasons.push(`unexpected type ${type}`);
-    if (topic !== expectedTopic) reasons.push(`unexpected topic ${topic}`);
-    if (symbol !== expectedSymbol) reasons.push(`unexpected symbol ${symbol}`);
     return Object.freeze({
       eventType: "rtds_price_update",
-      parserStatus: reasons.length > 0 ? "quarantined" : "parsed",
+      parserStatus: "parsed",
       parserError: null,
-      quarantineReason: reasons.length > 0 ? reasons.join("; ") : null,
+      quarantineReason: null,
       rawPayload,
       topic,
       symbol,

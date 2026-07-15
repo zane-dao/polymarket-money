@@ -329,6 +329,24 @@ test("RTDS enforces update type and binds the numeric lexeme to payload.value", 
   assert.equal(parsed.valueDecimal, "67234.50");
 });
 
+test("RTDS quarantines a valid off-topic subscription frame without requiring scalar price fields", () => {
+  const raw = JSON.stringify({
+    topic: "crypto_prices",
+    type: "subscribe",
+    timestamp: 1753314088421,
+    payload: {
+      symbol: "btc/usd",
+      data: [{ timestamp: 1753314088395, value: 67234.5 }],
+    },
+  });
+  const parsed = parseRtdsPriceMessage(raw, "chainlink");
+  assert.equal(parsed.eventType, "rtds_message_quarantined");
+  assert.equal(parsed.parserStatus, "quarantined");
+  assert.equal(parsed.parserError, null);
+  assert.match(parsed.quarantineReason ?? "", /unexpected type subscribe.*unexpected topic crypto_prices/);
+  assert.equal(parsed.rawPayload, raw);
+});
+
 test("CLOB array frames are explicit unverified batches and retain the outer raw frame", () => {
   const raw = `[${clobBook("1", "100")},${clobBook("2", "100")}]`;
   const frame = parseClobMarketFrame(raw);

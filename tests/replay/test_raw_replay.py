@@ -251,7 +251,7 @@ class RawReplayTest(unittest.TestCase):
             with self.assertRaisesRegex(ManifestVerificationError, "conflicting"):
                 ManifestVerifier.verify(self._dataset(root, [original, parsed]), root)
 
-    def test_binance_manifest_requires_the_exact_btc_public_subscription(self) -> None:
+    def test_binance_manifest_requires_an_allowlisted_transport_and_btc_filter(self) -> None:
         original = RawEventEnvelopeV1.from_json_line(
             (FIXTURES / "raw-event-v1.golden.jsonl").read_text(encoding="utf-8").rstrip("\n")
         )

@@ -211,10 +211,10 @@ class RawEventEnvelopeV1:
 @dataclass(frozen=True, slots=True)
 class RtdsPriceObservation:
     source: str
-    symbol: str
-    value: Decimal
-    source_time: datetime
-    server_time: datetime
+    symbol: str | None
+    value: Decimal | None
+    source_time: datetime | None
+    server_time: datetime | None
     parser_status: str
     raw_payload: str
     parser_error: str | None = None
@@ -256,6 +256,26 @@ def parse_rtds_price(raw_payload: str, *, expected_source: str) -> RtdsPriceObse
         reasons.append(f"unexpected message type {message_type!r}")
     if symbol != expected_symbol:
         reasons.append(f"unexpected symbol {symbol!r}")
+    if reasons:
+        value = payload.get("value")
+        return RtdsPriceObservation(
+            source=expected_source,
+            symbol=symbol if isinstance(symbol, str) else None,
+            value=value if isinstance(value, Decimal) and value.is_finite() else None,
+            source_time=(
+                _milliseconds_to_utc(payload.get("timestamp"), "payload.timestamp")
+                if payload.get("timestamp") is not None
+                else None
+            ),
+            server_time=(
+                _milliseconds_to_utc(message.get("timestamp"), "timestamp")
+                if message.get("timestamp") is not None
+                else None
+            ),
+            parser_status="quarantined",
+            raw_payload=raw_payload,
+            parser_error="; ".join(reasons),
+        )
     value = payload.get("value")
     if not isinstance(value, Decimal) or not value.is_finite() or value <= 0:
         raise RawContractViolation("RTDS value must be a positive Decimal")
@@ -265,7 +285,7 @@ def parse_rtds_price(raw_payload: str, *, expected_source: str) -> RtdsPriceObse
         value=value,
         source_time=_milliseconds_to_utc(payload.get("timestamp"), "payload.timestamp"),
         server_time=_milliseconds_to_utc(message.get("timestamp"), "timestamp"),
-        parser_status="quarantined" if reasons else "parsed",
+        parser_status="parsed",
         raw_payload=raw_payload,
         parser_error=None,
     )

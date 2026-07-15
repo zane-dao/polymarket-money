@@ -72,6 +72,21 @@ class RawContractTest(unittest.TestCase):
         parsed = parse_rtds_price(raw, expected_source="chainlink")
         self.assertEqual(parsed.parser_status, "quarantined")
 
+    def test_off_topic_snapshot_without_scalar_value_is_quarantined(self) -> None:
+        raw = json.dumps({
+            "topic": "crypto_prices",
+            "type": "subscribe",
+            "timestamp": 1753314088421,
+            "payload": {
+                "symbol": "btc/usd",
+                "data": [{"timestamp": 1753314088395, "value": 67234.5}],
+            },
+        })
+        parsed = parse_rtds_price(raw, expected_source="chainlink")
+        self.assertEqual(parsed.parser_status, "quarantined")
+        self.assertIn("unexpected topic", parsed.parser_error or "")
+        self.assertIsNone(parsed.value)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -262,7 +262,7 @@ test("manifest accepts only the allowlisted public CLOB subscription shape", asy
   }
 });
 
-test("manifest accepts only the exact public BTC RTDS subscription", async () => {
+test("manifest accepts only allowlisted public RTDS transports with an effective BTC filter", async () => {
   const dataRoot = await mkdtemp(join(tmpdir(), "poly-manifest-rtds-schema-"));
   try {
     const source = "polymarket.rtds.binance";

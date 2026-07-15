@@ -169,11 +169,7 @@ def _validate_subscription(source: str, value: Any) -> None:
         expected = (
             {"topic": "crypto_prices_chainlink", "type": "*", "filters": '{"symbol":"btc/usd"}'}
             if source.endswith("chainlink")
-            else {
-                "topic": "crypto_prices",
-                "type": "update",
-                "filters": "solusdt,btcusdt,ethusdt",
-            }
+            else {"topic": "crypto_prices", "type": "update", "filters": "btcusdt"}
         )
         if item != expected:
             raise ManifestVerificationError("RTDS subscription does not match its declared source")

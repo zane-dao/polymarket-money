@@ -261,3 +261,65 @@ test("manifest accepts only the allowlisted public CLOB subscription shape", asy
     await rm(dataRoot, { recursive: true, force: true });
   }
 });
+
+test("manifest accepts only the exact public BTC RTDS subscription", async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "poly-manifest-rtds-schema-"));
+  try {
+    const source = "polymarket.rtds.binance";
+    const stream = "crypto-prices";
+    const writer = await openWriter(dataRoot, "segment-binance", source, stream);
+    await writer.append(draft("event-binance", source, stream));
+    const closed = await writer.close();
+    const base = {
+      source,
+      stream,
+      collectorGitCommit: "abcdef0",
+      collectionStart: `${DATE}T00:00:00.000Z`,
+      collectionEnd: `${DATE}T00:00:01.000Z`,
+      segments: [closed],
+      sanitizedConfig: { endpointClass: "public-read-only", symbolFilter: "btcusdt" },
+    } as const;
+    const valid = {
+      action: "subscribe",
+      subscriptions: [{ topic: "crypto_prices", type: "update", filters: "btcusdt" }],
+    } as const;
+    const manifest = await new DatasetManifestWriter(dataRoot).publish({
+      ...base,
+      datasetId: "dataset-binance-valid",
+      subscription: valid,
+    });
+    assert.deepEqual(manifest.subscription, valid);
+
+    await assert.rejects(
+      new DatasetManifestWriter(dataRoot).publish({
+        ...base,
+        datasetId: "dataset-binance-extra-symbols",
+        subscription: {
+          action: "subscribe",
+          subscriptions: [{
+            topic: "crypto_prices",
+            type: "update",
+            filters: "solusdt,btcusdt,ethusdt",
+          }],
+        },
+      }),
+      /allowlisted BTC public feed/i,
+    );
+    await assert.rejects(
+      new DatasetManifestWriter(dataRoot).publish({
+        ...base,
+        datasetId: "dataset-binance-extra-subscription",
+        subscription: {
+          action: "subscribe",
+          subscriptions: [
+            { topic: "crypto_prices", type: "update", filters: "btcusdt" },
+            { topic: "crypto_prices", type: "update", filters: "ethusdt" },
+          ],
+        },
+      }),
+      /one public subscription/i,
+    );
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});

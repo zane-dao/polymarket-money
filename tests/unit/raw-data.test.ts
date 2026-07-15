@@ -151,8 +151,9 @@ test("public subscriptions contain no auth, wallet, or user-channel fields", () 
   assert.match(chainlink, /btc\/usd/);
   assert.equal(
     binance,
-    '{"action":"subscribe","subscriptions":[{"topic":"crypto_prices","type":"update","filters":"solusdt,btcusdt,ethusdt"}]}',
+    '{"action":"subscribe","subscriptions":[{"topic":"crypto_prices","type":"update","filters":"btcusdt"}]}',
   );
+  assert.doesNotMatch(binance, /solusdt|ethusdt/);
 });
 
 test("order book requires a new snapshot after disconnect", async () => {

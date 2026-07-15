@@ -20,12 +20,21 @@ FIXTURES = ROOT / "data" / "fixtures" / "batch-2"
 
 
 class RawReplayTest(unittest.TestCase):
-    def _dataset(self, root: Path, events=None) -> Path:
+    def _dataset(
+        self,
+        root: Path,
+        events=None,
+        *,
+        source: str = "fixture.cross-language",
+        stream: str = "unknown-events",
+        subscription=None,
+        sanitized_config=None,
+    ) -> Path:
         segment = (
             root
-            / "fixture.cross-language"
+            / source
             / "2026-07-15"
-            / "unknown-events"
+            / stream
             / "segment.jsonl"
         )
         segment.parent.mkdir(parents=True)
@@ -45,9 +54,9 @@ class RawReplayTest(unittest.TestCase):
         manifest = {
             "dataset_id": "dataset-fixture",
             "schema_version": "dataset-manifest-v1",
-            "source": "fixture.cross-language",
-            "stream": "unknown-events",
-            "subscription": {"topic": "public-fixture"},
+            "source": source,
+            "stream": stream,
+            "subscription": subscription or {"topic": "public-fixture"},
             "collector_git_commit": "a" * 40,
             "collection_start": receive_times[0],
             "collection_end": persist_times[-1],
@@ -70,7 +79,7 @@ class RawReplayTest(unittest.TestCase):
             "market_ids": [],
             "asset_ids": [],
             "continuity": "UNVERIFIED",
-            "sanitized_config": {"endpointClass": "fixture"},
+            "sanitized_config": sanitized_config or {"endpointClass": "fixture"},
         }
         manifest_path = root / "manifests" / "dataset-fixture.manifest.json"
         manifest_path.parent.mkdir()
@@ -241,6 +250,47 @@ class RawReplayTest(unittest.TestCase):
             root = Path(directory)
             with self.assertRaisesRegex(ManifestVerificationError, "conflicting"):
                 ManifestVerifier.verify(self._dataset(root, [original, parsed]), root)
+
+    def test_binance_manifest_requires_the_exact_btc_public_subscription(self) -> None:
+        original = RawEventEnvelopeV1.from_json_line(
+            (FIXTURES / "raw-event-v1.golden.jsonl").read_text(encoding="utf-8").rstrip("\n")
+        )
+        event = replace(
+            original,
+            source="polymarket.rtds.binance",
+            stream="crypto-prices",
+        )
+        subscription = {
+            "action": "subscribe",
+            "subscriptions": [{
+                "topic": "crypto_prices",
+                "type": "update",
+                "filters": "btcusdt",
+            }],
+        }
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = self._dataset(
+                root,
+                [event],
+                source="polymarket.rtds.binance",
+                stream="crypto-prices",
+                subscription=subscription,
+                sanitized_config={
+                    "endpointClass": "public-read-only",
+                    "symbolFilter": "btcusdt",
+                },
+            )
+            verified = ManifestVerifier.verify(manifest_path, root)
+            self.assertEqual(verified.dataset_id, "dataset-fixture")
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["subscription"]["subscriptions"][0]["filters"] = (
+                "solusdt,btcusdt,ethusdt"
+            )
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ManifestVerificationError, "declared source"):
+                ManifestVerifier.verify(manifest_path, root)
 
 
 if __name__ == "__main__":

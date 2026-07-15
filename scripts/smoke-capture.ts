@@ -163,6 +163,8 @@ async function publishManifest(
       maxFrameBytes: config.maxFrameBytes,
       maxTotalBytes: config.maxTotalBytes,
       maxResponseBytes: config.maxResponseBytes,
+      ...(source === "polymarket.rtds.chainlink" ? { symbolFilter: "btc/usd" } : {}),
+      ...(source === "polymarket.rtds.binance" ? { symbolFilter: "btcusdt" } : {}),
     },
   });
 }

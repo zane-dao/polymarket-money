@@ -407,13 +407,20 @@ class ExternalHistoricalDatasetAdapter:
             end = int(market["market_end"].timestamp())
             market_rows: list[dict[str, Any]] = []
             complete = True
+            features_by_horizon: dict[int, dict[str, Any] | None] = {}
             for horizon in HORIZONS:
                 decision = end - horizon
                 feature_values = binance.features(start, decision)
+                features_by_horizon[horizon] = feature_values
+                if feature_values is not None:
+                    available_binance += 1
+            if any(value is None for value in features_by_horizon.values()):
+                complete = False
+            for horizon in HORIZONS:
+                decision = end - horizon
+                feature_values = features_by_horizon[horizon]
                 if feature_values is None:
-                    complete = False
                     break
-                available_binance += 1
                 books = {
                     "decision_plus_1s_visibility": tick_lookup.get((condition_id, decision - 1)),
                     "decision_plus_2s_visibility": tick_lookup.get((condition_id, decision - 2)),
@@ -422,25 +429,12 @@ class ExternalHistoricalDatasetAdapter:
                     "execution_conservative_2s": tick_lookup.get((condition_id, decision + 1)),
                 }
                 decision_book = books["decision_plus_1s_visibility"]
-                required_decision_fields = ("bu", "au", "bd", "ad", "su", "sd", "sau", "sad")
-                execution_books = (
-                    books["execution_debug_0s"],
-                    books["execution_base_1s"],
-                    books["execution_conservative_2s"],
-                )
+                required_decision_fields = ("bu", "au", "bd", "ad")
                 if (
                     decision_book is None
                     or any(decision_book.get(field) is None for field in required_decision_fields)
                     or Decimal(decision_book["bu"]) > Decimal(decision_book["au"])
                     or Decimal(decision_book["bd"]) > Decimal(decision_book["ad"])
-                    or any(
-                        book is None
-                        or book.get("au") is None
-                        or book.get("ad") is None
-                        or book.get("sau") is None
-                        or book.get("sad") is None
-                        for book in execution_books
-                    )
                 ):
                     complete = False
                     break

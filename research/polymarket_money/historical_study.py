@@ -56,8 +56,9 @@ def feature_vector(row: Mapping[str, Any]) -> tuple[float, ...]:
     book = _book(row)
     bu, au = float(book["bu"]), float(book["au"])
     bd, ad = float(book["bd"]), float(book["ad"])
-    su, sau = float(book["su"]), float(book["sau"])
-    sad = float(book["sad"])
+    su = float(book["su"]) if book["su"] is not None else 0.0
+    sau = float(book["sau"]) if book["sau"] is not None else 0.0
+    sad = float(book["sad"]) if book["sad"] is not None else 0.0
     imbalance = (su - sau) / (su + sau) if su + sau else 0.0
     return (
         float(row["binance"]["log_return_from_start"]),

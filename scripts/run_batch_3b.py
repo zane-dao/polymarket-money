@@ -69,10 +69,12 @@ def main() -> int:
     )
     experiment.mkdir(parents=True, exist_ok=False)
     (experiment / "result.json").write_bytes(result_bytes)
+    audit_summary = audit.to_mapping()
+    audit_summary["excluded_market_count"] = len(audit_summary.pop("excluded_markets"))
     summary = {
         "normalized_version": str(version),
         "dataset_hash": receipt.dataset_hash,
-        "audit": audit.to_mapping(),
+        "audit": audit_summary,
         "experiment_directory": str(experiment),
         "result_sha256": sha256(result_bytes).hexdigest(),
         "conclusion": result["conclusion"],

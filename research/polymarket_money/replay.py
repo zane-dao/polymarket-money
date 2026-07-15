@@ -80,6 +80,15 @@ class VerifiedDataset:
     market_ids: frozenset[str]
     asset_ids: frozenset[str]
     _proof: object = field(repr=False, compare=False)
+    manifest_path: Path | None = None
+    manifest_bytes: bytes = field(default=b"", repr=False)
+    manifest_sha256: str = ""
+    source: str = ""
+    stream: str = ""
+    subscription_json: str = "{}"
+    collector_git_commit: str = ""
+    continuity: str = "UNVERIFIED"
+    sanitized_config_json: str = "{}"
 
     def __post_init__(self) -> None:
         if self._proof is not _VERIFICATION_PROOF:
@@ -287,7 +296,8 @@ class ManifestVerifier:
             manifest_directory = (root / "manifests").resolve(strict=True)
             if resolved_manifest.parent != manifest_directory:
                 raise ManifestVerificationError("manifest must be directly inside data_root/manifests")
-            manifest = json.loads(resolved_manifest.read_text(encoding="utf-8"))
+            manifest_bytes = resolved_manifest.read_bytes()
+            manifest = json.loads(manifest_bytes.decode("utf-8"))
         except ManifestVerificationError:
             raise
         except (OSError, json.JSONDecodeError) as exc:
@@ -473,6 +483,19 @@ class ManifestVerifier:
             market_ids=frozenset(market_ids),
             asset_ids=frozenset(asset_ids),
             _proof=_VERIFICATION_PROOF,
+            manifest_path=resolved_manifest,
+            manifest_bytes=manifest_bytes,
+            manifest_sha256=sha256(manifest_bytes).hexdigest(),
+            source=source,
+            stream=stream,
+            subscription_json=json.dumps(
+                manifest["subscription"], sort_keys=True, separators=(",", ":")
+            ),
+            collector_git_commit=collector_commit,
+            continuity="UNVERIFIED",
+            sanitized_config_json=json.dumps(
+                manifest["sanitized_config"], sort_keys=True, separators=(",", ":")
+            ),
         )
 
     @staticmethod

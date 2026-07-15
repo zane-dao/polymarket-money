@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import datetime, timezone
+from decimal import Decimal
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -99,12 +99,311 @@ def verified_gamma(root: Path, *, event: RawEventEnvelopeV1 | None = None):
         "sanitized_config": {"endpointClass": "public-read-only"},
     }
     manifest_path = root / "manifests" / f"gamma-{envelope.event_id}.manifest.json"
-    manifest_path.parent.mkdir(parents=True)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
     return ManifestVerifier.verify(manifest_path, root), manifest_path, segment
 
 
+def raw_event(
+    *,
+    source: str,
+    stream: str,
+    event_type: str,
+    event_id: str,
+    raw_payload: str,
+    receive_ms: int,
+    connection_id: str,
+    market_id: str | None = None,
+    condition_id: str | None = None,
+    asset_id: str | None = None,
+    parser_status: str = "parsed",
+) -> RawEventEnvelopeV1:
+    return RawEventEnvelopeV1.from_mapping(
+        {
+            "schema_version": "raw-event-v1",
+            "event_id": event_id,
+            "source": source,
+            "stream": stream,
+            "event_type": event_type,
+            "connection_id": connection_id,
+            "subscription_id": f"subscription-{source}",
+            "market_id": market_id,
+            "condition_id": condition_id,
+            "asset_id": asset_id,
+            "source_time": None,
+            "server_time": None,
+            "receive_time": f"2026-07-15T00:00:00.{receive_ms:03d}Z",
+            "process_time": f"2026-07-15T00:00:00.{receive_ms + 10:03d}Z",
+            "persist_time": f"2026-07-15T00:00:00.{receive_ms + 20:03d}Z",
+            "source_sequence": None,
+            "source_hash": None,
+            "raw_payload": raw_payload,
+            "raw_sha256": sha256(raw_payload.encode("utf-8")).hexdigest(),
+            "parser_status": parser_status,
+            "parser_error": None,
+        }
+    )
+
+
+def verified_events(
+    root: Path,
+    *,
+    dataset_id: str,
+    source: str,
+    stream: str,
+    events: list[RawEventEnvelopeV1],
+    subscription: dict[str, object],
+    sanitized_config: dict[str, object],
+    declared_asset_ids: list[str] | None = None,
+):
+    data = b"".join(
+        (
+            json.dumps(event.to_mapping(), ensure_ascii=False, separators=(",", ":"))
+            + "\n"
+        ).encode("utf-8")
+        for event in events
+    )
+    relative = Path(source) / "2026-07-15" / stream / f"{dataset_id}.jsonl"
+    segment = root / relative
+    segment.parent.mkdir(parents=True)
+    segment.write_bytes(data)
+    receive_times = [
+        event.receive_time.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        for event in events
+    ]
+    persist_times = [
+        event.persist_time.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        for event in events
+    ]
+    market_ids = sorted({event.market_id for event in events if event.market_id is not None})
+    asset_ids = sorted(
+        {
+            *(event.asset_id for event in events if event.asset_id is not None),
+            *(declared_asset_ids or []),
+        }
+    )
+    error_count = sum(event.parser_status == "error" for event in events)
+    unknown_count = sum(event.parser_status == "unparsed" for event in events)
+    manifest = {
+        "dataset_id": dataset_id,
+        "schema_version": "dataset-manifest-v1",
+        "source": source,
+        "stream": stream,
+        "subscription": subscription,
+        "collector_git_commit": "a" * 40,
+        "collection_start": min(receive_times),
+        "collection_end": max(persist_times),
+        "segments": [
+            {
+                "ordinal": 0,
+                "relative_path": str(relative),
+                "sha256": sha256(data).hexdigest(),
+                "byte_count": len(data),
+                "event_count": len(events),
+                "parse_error_count": error_count,
+                "unknown_event_count": unknown_count,
+                "first_receive_time": min(receive_times),
+                "last_receive_time": max(receive_times),
+            }
+        ],
+        "event_count": len(events),
+        "parse_error_count": error_count,
+        "unknown_event_count": unknown_count,
+        "first_receive_time": min(receive_times),
+        "last_receive_time": max(receive_times),
+        "market_ids": market_ids,
+        "asset_ids": asset_ids,
+        "continuity": "UNVERIFIED",
+        "sanitized_config": sanitized_config,
+    }
+    manifest_path = root / "manifests" / f"{dataset_id}.manifest.json"
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
+    return ManifestVerifier.verify(manifest_path, root)
+
+
 class NormalizedDatasetReplayTest(unittest.TestCase):
+    def test_normalized_contract_schemas_are_valid_versioned_json(self) -> None:
+        record_schema = json.loads(
+            (ROOT / "contracts" / "normalized-record-v1.schema.json").read_text(encoding="utf-8")
+        )
+        manifest_schema = json.loads(
+            (ROOT / "contracts" / "normalized-dataset-manifest-v1.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(record_schema["$defs"]["fact"]["properties"]["continuity"]["const"], "UNVERIFIED")
+        self.assertEqual(manifest_schema["properties"]["schema_version"]["const"], "normalized-dataset-manifest-v1")
+
+    def test_verified_clob_and_chainlink_build_an_executable_point_in_time_view(self) -> None:
+        gamma_payload = json.loads(GAMMA.read_text(encoding="utf-8"))
+        up_token, down_token = json.loads(gamma_payload["clobTokenIds"])
+        condition_id = gamma_payload["conditionId"]
+        market_id = gamma_payload["id"]
+        connection_payload = json.dumps(
+            {"event_type": "connection_open", "public": True}, separators=(",", ":")
+        )
+        book_payload = json.dumps(
+            {
+                "event_type": "book",
+                "asset_id": up_token,
+                "market": condition_id,
+                "bids": [{"price": "0.49", "size": "10.000"}],
+                "asks": [{"price": "0.51", "size": "12.500"}],
+                "timestamp": "1775181060000",
+                "hash": "public-book-hash",
+            },
+            separators=(",", ":"),
+        )
+        chainlink_payload = (
+            '{"topic":"crypto_prices_chainlink","type":"update",'
+            '"timestamp":1775181060020,"payload":{"symbol":"btc/usd",'
+            '"timestamp":1775181060000,"value":67234.50000001}}'
+        )
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            gamma, _, _ = verified_gamma(root)
+            clob = verified_events(
+                root,
+                dataset_id="clob-public",
+                source="polymarket.clob.market",
+                stream="market-channel",
+                events=[
+                    raw_event(
+                        source="polymarket.clob.market",
+                        stream="market-channel",
+                        event_type="connection_open",
+                        event_id="clob-open",
+                        raw_payload=connection_payload,
+                        receive_ms=130,
+                        connection_id="clob-connection",
+                        market_id=market_id,
+                        condition_id=condition_id,
+                    ),
+                    raw_event(
+                        source="polymarket.clob.market",
+                        stream="market-channel",
+                        event_type="book",
+                        event_id="clob-book",
+                        raw_payload=book_payload,
+                        receive_ms=160,
+                        connection_id="clob-connection",
+                        market_id=market_id,
+                        condition_id=condition_id,
+                        asset_id=up_token,
+                    ),
+                ],
+                subscription={
+                    "assets_ids": [up_token, down_token],
+                    "type": "market",
+                    "custom_feature_enabled": True,
+                },
+                sanitized_config={
+                    "endpointClass": "public-read-only",
+                    "customFeatures": True,
+                },
+                declared_asset_ids=[up_token, down_token],
+            )
+            chainlink = verified_events(
+                root,
+                dataset_id="chainlink-public",
+                source="polymarket.rtds.chainlink",
+                stream="crypto-prices-chainlink",
+                events=[
+                    raw_event(
+                        source="polymarket.rtds.chainlink",
+                        stream="crypto-prices-chainlink",
+                        event_type="crypto_price",
+                        event_id="chainlink-price",
+                        raw_payload=chainlink_payload,
+                        receive_ms=200,
+                        connection_id="chainlink-connection",
+                    )
+                ],
+                subscription={
+                    "action": "subscribe",
+                    "subscriptions": [
+                        {
+                            "topic": "crypto_prices_chainlink",
+                            "type": "*",
+                            "filters": '{"symbol":"btc/usd"}',
+                        }
+                    ],
+                },
+                sanitized_config={
+                    "endpointClass": "public-read-only",
+                    "symbolFilter": "btc/usd",
+                },
+            )
+            build = NormalizedDatasetBuilder.normalize_verified(
+                [gamma, clob, chainlink], "integrated", "b" * 40, NormalizerConfig()
+            )
+            view = PointInTimeDataset(
+                build.records, quarantines=build.quarantines
+            ).as_of(utc(999), market_id)
+            self.assertEqual(view.chainlink_price, Decimal("67234.50000001"))
+            self.assertEqual(view.books[up_token].best_bid, Decimal("0.49"))
+            self.assertEqual(view.books[up_token].best_ask, Decimal("0.51"))
+            self.assertTrue(view.books[up_token].execution_eligible)
+            self.assertEqual(view.books[up_token].continuity, "UNVERIFIED")
+
+    def test_all_symbols_binance_input_requires_explicit_manifested_opt_in(self) -> None:
+        off_topic = (
+            '{"topic":"crypto_prices","type":"update","timestamp":1775181060020,'
+            '"payload":{"symbol":"ethusdt","timestamp":1775181060000,"value":3500.25}}'
+        )
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            gamma, _, _ = verified_gamma(root)
+            binance = verified_events(
+                root,
+                dataset_id="binance-fallback",
+                source="polymarket.rtds.binance",
+                stream="crypto-prices",
+                events=[
+                    raw_event(
+                        source="polymarket.rtds.binance",
+                        stream="crypto-prices",
+                        event_type="crypto_price",
+                        event_id="eth-off-topic",
+                        raw_payload=off_topic,
+                        receive_ms=300,
+                        connection_id="binance-connection",
+                        parser_status="quarantined",
+                    )
+                ],
+                subscription={
+                    "action": "subscribe",
+                    "subscriptions": [{"topic": "crypto_prices", "type": "update"}],
+                },
+                sanitized_config={
+                    "endpointClass": "public-read-only",
+                    "symbolFilter": "btcusdt",
+                    "transportScope": "all-symbols-quarantine",
+                },
+            )
+            with self.assertRaisesRegex(ManifestVerificationError, "explicit"):
+                NormalizedDatasetBuilder.normalize_verified(
+                    [gamma, binance], "fallback", "b" * 40, NormalizerConfig()
+                )
+            build = NormalizedDatasetBuilder.normalize_verified(
+                [gamma, binance],
+                "fallback",
+                "b" * 40,
+                NormalizerConfig(allow_binance_all_symbols_fallback=True),
+            )
+            self.assertTrue(build.manifest["config"]["allow_binance_all_symbols_fallback"])
+            binance_input = next(
+                item
+                for item in build.manifest["raw_inputs"]
+                if item["source"] == "polymarket.rtds.binance"
+            )
+            self.assertEqual(
+                binance_input["sanitized_config"]["transportScope"],
+                "all-symbols-quarantine",
+            )
+            self.assertIn("RAW_PARSER_REJECTED", build.manifest["quality_counts"])
+
     def test_verified_raw_normalizes_and_reloads_offline_as_of(self) -> None:
         with TemporaryDirectory() as raw_directory, TemporaryDirectory() as output_directory:
             verified, _, _ = verified_gamma(Path(raw_directory))

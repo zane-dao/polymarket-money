@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polymarket-money.local/contracts/normalized-dataset-manifest-v1.schema.json",
+  "title": "Immutable normalized dataset manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "normalized_schema_version",
+    "dataset_id",
+    "dataset_hash",
+    "continuity",
+    "normalizer_git_commit",
+    "config",
+    "raw_inputs",
+    "row_counts",
+    "quarantine_count",
+    "quality_counts",
+    "min_source_time",
+    "max_source_time",
+    "min_visible_at",
+    "max_visible_at",
+    "outputs"
+  ],
+  "properties": {
+    "schema_version": {"const": "normalized-dataset-manifest-v1"},
+    "normalized_schema_version": {"const": "normalized-record-v1"},
+    "dataset_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"},
+    "dataset_hash": {"$ref": "#/$defs/sha256"},
+    "continuity": {"const": "UNVERIFIED"},
+    "normalizer_git_commit": {
+      "type": "string",
+      "pattern": "^(UNCOMMITTED|[0-9a-f]{7,64})$"
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "book_stale_after_ms",
+        "binance_default_transport_scope",
+        "allow_binance_all_symbols_fallback",
+        "storage_coordination",
+        "supported_filesystem"
+      ],
+      "properties": {
+        "book_stale_after_ms": {"type": "integer", "minimum": 1},
+        "binance_default_transport_scope": {"const": "btc-only"},
+        "allow_binance_all_symbols_fallback": {"type": "boolean"},
+        "storage_coordination": {"const": "single-writer"},
+        "supported_filesystem": {"const": "linux-native"}
+      }
+    },
+    "raw_inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/rawInput"}
+    },
+    "row_counts": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "quarantine_count": {"type": "integer", "minimum": 0},
+    "quality_counts": {
+      "type": "object",
+      "additionalProperties": {"type": "integer", "minimum": 0}
+    },
+    "min_source_time": {"$ref": "#/$defs/nullableUtcTime"},
+    "max_source_time": {"$ref": "#/$defs/nullableUtcTime"},
+    "min_visible_at": {"$ref": "#/$defs/nullableUtcTime"},
+    "max_visible_at": {"$ref": "#/$defs/nullableUtcTime"},
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["records.jsonl", "quarantine.jsonl"],
+      "properties": {
+        "records.jsonl": {"$ref": "#/$defs/output"},
+        "quarantine.jsonl": {"$ref": "#/$defs/output"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "utcTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}Z$"
+    },
+    "nullableUtcTime": {
+      "oneOf": [{"$ref": "#/$defs/utcTime"}, {"type": "null"}]
+    },
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ordinal", "relative_path", "sha256"],
+      "properties": {
+        "ordinal": {"type": "integer", "minimum": 0},
+        "relative_path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "rawInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dataset_id",
+        "manifest_sha256",
+        "source",
+        "stream",
+        "collector_git_commit",
+        "continuity",
+        "subscription",
+        "sanitized_config",
+        "segments"
+      ],
+      "properties": {
+        "dataset_id": {"type": "string", "minLength": 1},
+        "manifest_sha256": {"$ref": "#/$defs/sha256"},
+        "source": {"type": "string", "minLength": 1},
+        "stream": {"type": "string", "minLength": 1},
+        "collector_git_commit": {"type": "string", "minLength": 7},
+        "continuity": {"const": "UNVERIFIED"},
+        "subscription": {"type": "object"},
+        "sanitized_config": {"type": "object"},
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/segment"}
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "byte_count", "row_count"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "byte_count": {"type": "integer", "minimum": 0},
+        "row_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

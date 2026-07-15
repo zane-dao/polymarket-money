@@ -130,6 +130,7 @@ def book(
     connection_id: str = "connection-a",
     bids: list[dict[str, str]] | None = None,
     asks: list[dict[str, str]] | None = None,
+    event_id: str | None = None,
 ) -> NormalizedRecord:
     token = asset_id or f"up-{market_id}"
     return fact(
@@ -145,6 +146,7 @@ def book(
         condition_id=condition_id,
         asset_id=token,
         connection_id=connection_id,
+        event_id=event_id,
     )
 
 

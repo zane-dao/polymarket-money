@@ -24,6 +24,17 @@ from .data_quality import (
     build_data_quality_report,
     build_verified_data_quality_report,
 )
+from .normalized import (
+    BookState,
+    DatasetPublicationError,
+    NormalizedDatasetBuilder,
+    NormalizedRecord,
+    NormalizerConfig,
+    PointInTimeDataset,
+    QuarantineRecord,
+    RawLineage,
+    RecordType,
+)
 
 __all__ = [
     "Decision",
@@ -49,4 +60,13 @@ __all__ = [
     "DataQualityReport",
     "build_data_quality_report",
     "build_verified_data_quality_report",
+    "BookState",
+    "DatasetPublicationError",
+    "NormalizedDatasetBuilder",
+    "NormalizedRecord",
+    "NormalizerConfig",
+    "PointInTimeDataset",
+    "QuarantineRecord",
+    "RawLineage",
+    "RecordType",
 ]

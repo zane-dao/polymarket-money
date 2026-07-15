@@ -1,0 +1,8 @@
+{
+  "segment_sha256": "87b343cd46ee7d281fc46b61c30cefb6bf03e3d9d534a39e18527878d458bdd6",
+  "byte_count": 775,
+  "event_count": 1,
+  "event_id": "evt-golden-001",
+  "decimal_lexeme": "0.123456789012345678",
+  "source_sequence": "9007199254740993"
+}

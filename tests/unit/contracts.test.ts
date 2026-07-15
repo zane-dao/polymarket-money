@@ -9,18 +9,20 @@ import { DEFAULT_RISK_CONFIG } from "../../execution/src/risk/index.js";
 import type { Strategy } from "../../execution/src/strategy/index.js";
 
 const timestamps: EventTimestamps = {
-  exchangeTimestamp: "2026-01-01T00:00:00.000Z",
-  receiveTimestamp: "2026-01-01T00:00:00.010Z",
-  processTimestamp: "2026-01-01T00:00:00.020Z",
-  persistTimestamp: "2026-01-01T00:00:00.030Z",
+  sourceTime: "2026-01-01T00:00:00.000Z",
+  serverTime: null,
+  receiveTime: "2026-01-01T00:00:00.010Z",
+  processTime: "2026-01-01T00:00:00.020Z",
+  persistTime: "2026-01-01T00:00:00.030Z",
 };
 
 const book: OrderBook = {
   marketId: "market-1",
   tokenId: "token-yes",
-  bids: [{ price: 0.49, size: 10 }],
-  asks: [{ price: 0.51, size: 10 }],
-  sequence: "1",
+  bids: [{ price: "0.49", size: "10" }],
+  asks: [{ price: "0.51", size: "10" }],
+  sourceSequence: null,
+  sourceHash: "fixture-hash",
   timestamps,
 };
 
@@ -30,9 +32,9 @@ const holdStrategy: Strategy = (input): SignalDecision => ({
   marketId: input.orderBook.marketId,
   tokenId: input.orderBook.tokenId,
   action: "hold",
-  confidence: 1,
+  confidence: "1",
   reasonCodes: ["SCAFFOLD_ONLY"],
-  timestamps: { ...timestamps, processTimestamp: input.processTimestamp },
+  timestamps: { ...timestamps, processTime: input.processTime },
 });
 
 const riskDecision: RiskDecision = {
@@ -49,4 +51,3 @@ void holdStrategy;
 void riskDecision;
 void engineContract;
 void DEFAULT_RISK_CONFIG;
-

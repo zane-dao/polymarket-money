@@ -10,7 +10,7 @@ import type {
 export interface StrategyInput {
   readonly strategyId: string;
   readonly decisionId: string;
-  readonly processTimestamp: Timestamp;
+  readonly processTime: Timestamp;
   readonly orderBook: OrderBook;
   readonly positions: readonly Position[];
   readonly balances: readonly Balance[];
@@ -24,4 +24,3 @@ export interface StrategyInput {
  * system time, random global state, or mutable global state.
  */
 export type Strategy = (input: Readonly<StrategyInput>) => Readonly<SignalDecision>;
-

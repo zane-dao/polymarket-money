@@ -5,13 +5,14 @@ import type {
   RiskDecision,
   SignalDecision,
   Timestamp,
+  DecimalString,
 } from "../domain/index.js";
 
 export interface RiskConfig {
-  readonly maxOrderAmount: number;
-  readonly maxPositionPerMarket: number;
-  readonly maxDailyLoss: number;
-  readonly maxSlippageBps: number;
+  readonly maxOrderAmountUsd: DecimalString;
+  readonly maxPositionPerMarketTokens: DecimalString;
+  readonly maxDailyLossUsd: DecimalString;
+  readonly maxSlippageBps: DecimalString;
   readonly maxOpenOrders: number;
   readonly maxDataAgeMs: number;
   readonly maxWebSocketDisconnectMs: number;
@@ -19,10 +20,10 @@ export interface RiskConfig {
 }
 
 export const DEFAULT_RISK_CONFIG: Readonly<RiskConfig> = Object.freeze({
-  maxOrderAmount: 100,
-  maxPositionPerMarket: 500,
-  maxDailyLoss: 100,
-  maxSlippageBps: 100,
+  maxOrderAmountUsd: "100",
+  maxPositionPerMarketTokens: "500",
+  maxDailyLossUsd: "100",
+  maxSlippageBps: "100",
   maxOpenOrders: 10,
   maxDataAgeMs: 5_000,
   maxWebSocketDisconnectMs: 10_000,
@@ -30,11 +31,11 @@ export const DEFAULT_RISK_CONFIG: Readonly<RiskConfig> = Object.freeze({
 });
 
 export interface RiskContext {
-  readonly processTimestamp: Timestamp;
-  readonly dataTimestamp: Timestamp;
+  readonly processTime: Timestamp;
+  readonly dataReceiveTime: Timestamp;
   readonly webSocketConnected: boolean;
-  readonly webSocketLastSeenTimestamp: Timestamp;
-  readonly dailyPnl: number;
+  readonly webSocketLastReceiveTime: Timestamp;
+  readonly dailyPnlUsd: DecimalString;
   readonly positions: readonly Position[];
   readonly balances: readonly Balance[];
   readonly openOrders: readonly Order[];
@@ -48,4 +49,3 @@ export interface RiskEngine {
     config: Readonly<RiskConfig>,
   ): Readonly<RiskDecision>;
 }
-

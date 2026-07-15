@@ -2,9 +2,10 @@
 
 `polymarket-money` is a clean-room workspace for research, deterministic strategy
 logic, risk controls, and execution abstractions for Polymarket-related systems.
-This repository contains contracts plus a clean-room, offline Python reference
-for domain rules, safety gates, and golden PnL accounting. It does not connect
-to an exchange and cannot place live orders.
+This repository contains contracts, a clean-room Python reference for domain
+rules and replay, and credential-free public market-data adapters. Network use
+is limited to an explicitly bounded read-only smoke capture; the project has no
+user channel, signing client, or order submission path.
 
 ## Safety defaults
 
@@ -21,21 +22,24 @@ to an exchange and cannot place live orders.
   and offline fill accounting.
 - `execution/src/domain/`: shared domain contracts.
 - `execution/src/adapters/`: external-system interfaces.
+- `contracts/`: language-neutral, versioned wire contracts.
 - `execution/src/strategy/`: pure strategy contracts.
 - `execution/src/risk/`: risk policy configuration and decisions.
 - `data/`: local data, deterministic fixtures, and golden outputs.
 - `tests/`: unit, integration, replay, golden, and shadow test suites.
-- `docs/`: architecture, migration policy, inventory, and known risks.
+- `docs/batches/`: batch-scoped design and result documents.
+- `reports/batches/`: test, environment, Git, and verification evidence.
 
 ## Development
 
-Requirements: Python 3.11+ and Node.js 20+.
+Requirements: Python 3.11+ and Node.js 24+.
 
 ```bash
-npm install
-npm run typecheck
+npm ci
+npm test
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-`npm test` currently performs the TypeScript contract test through compilation.
-No test or script enables live trading.
+`npm test` compiles TypeScript and runs Node runtime tests. The bounded public
+smoke command requires an absolute `POLY_DATA_ROOT` outside the repository; no
+test or script enables live trading.

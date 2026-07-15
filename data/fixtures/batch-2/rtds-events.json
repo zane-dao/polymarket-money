@@ -1,0 +1,5 @@
+{
+  "chainlink": "{\"topic\":\"crypto_prices_chainlink\",\"type\":\"update\",\"timestamp\":1753314088421,\"payload\":{\"symbol\":\"btc/usd\",\"timestamp\":1753314088395,\"value\":67234.50,\"future_field\":\"kept\"}}",
+  "binance": "{\"topic\":\"crypto_prices\",\"type\":\"update\",\"timestamp\":1753314088421,\"payload\":{\"symbol\":\"btcusdt\",\"timestamp\":1753314088395,\"value\":67234.50000001}}",
+  "wrong_chainlink_symbol": "{\"topic\":\"crypto_prices_chainlink\",\"type\":\"update\",\"timestamp\":1753314088421,\"payload\":{\"symbol\":\"eth/usd\",\"timestamp\":1753314088395,\"value\":3456.78}}"
+}

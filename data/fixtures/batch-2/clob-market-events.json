@@ -1,0 +1,89 @@
+{
+  "book_up": {
+    "event_type": "book",
+    "asset_id": "token-up",
+    "market": "condition-1",
+    "bids": [{"price": ".48", "size": "30"}, {"price": "0.49", "size": "20"}],
+    "asks": [{"price": "0.52", "size": "25"}, {"price": "0.53", "size": "60"}],
+    "timestamp": "1757908892000",
+    "hash": "book-up-hash"
+  },
+  "book_down": {
+    "event_type": "book",
+    "asset_id": "token-down",
+    "market": "condition-1",
+    "bids": [{"price": "0.47", "size": "25"}],
+    "asks": [{"price": "0.51", "size": "30"}],
+    "timestamp": "1757908892000",
+    "hash": "book-down-hash"
+  },
+  "price_change": {
+    "market": "condition-1",
+    "price_changes": [
+      {"asset_id": "token-up", "price": "0.52", "size": "0", "side": "SELL", "hash": "up-after-delete", "best_bid": "0.49", "best_ask": "0.53"},
+      {"asset_id": "token-down", "price": "0.50", "size": "200", "side": "BUY", "hash": "down-after-add", "best_bid": "0.50", "best_ask": "0.51"}
+    ],
+    "timestamp": "1757908892351",
+    "event_type": "price_change"
+  },
+  "tick_size_change": {
+    "event_type": "tick_size_change",
+    "asset_id": "token-up",
+    "market": "condition-1",
+    "old_tick_size": "0.01",
+    "new_tick_size": "0.001",
+    "timestamp": "1757908892400"
+  },
+  "last_trade_price": {
+    "asset_id": "token-up",
+    "event_type": "last_trade_price",
+    "fee_rate_bps": "0",
+    "market": "condition-1",
+    "price": "0.456",
+    "side": "BUY",
+    "size": "219.217767",
+    "timestamp": "1757908892500"
+  },
+  "best_bid_ask": {
+    "event_type": "best_bid_ask",
+    "market": "condition-1",
+    "asset_id": "token-up",
+    "best_bid": "0.49",
+    "best_ask": "0.53",
+    "spread": "0.04",
+    "timestamp": "1757908892600"
+  },
+  "new_market": {
+    "id": "market-2",
+    "question": "BTC Up or Down",
+    "market": "condition-2",
+    "slug": "btc-updown-5m-1775181300",
+    "description": "Chainlink BTC/USD fixture",
+    "assets_ids": ["new-up", "new-down"],
+    "outcomes": ["Up", "Down"],
+    "condition_id": "condition-2",
+    "clob_token_ids": ["new-up", "new-down"],
+    "active": true,
+    "timestamp": "1757908892700",
+    "event_type": "new_market",
+    "order_price_min_tick_size": "0.01",
+    "fees_enabled": true
+  },
+  "market_resolved": {
+    "id": "market-2",
+    "question": "BTC Up or Down",
+    "market": "condition-2",
+    "slug": "btc-updown-5m-1775181300",
+    "assets_ids": ["new-up", "new-down"],
+    "outcomes": ["Up", "Down"],
+    "winning_asset_id": "new-up",
+    "winning_outcome": "Up",
+    "timestamp": "1757908892800",
+    "event_type": "market_resolved"
+  },
+  "unknown": {
+    "event_type": "future_market_event",
+    "vendor_field": {"keep": "exactly"},
+    "timestamp": "1757908892900"
+  }
+}

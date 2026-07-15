@@ -4,8 +4,9 @@
 
 The system separates reproducible research, deterministic decisions, risk
 approval, and side-effecting execution. Batch 1 adds an offline Python reference
-for domain rules, fail-closed client creation, and fill-level golden accounting;
-the repository still has no exchange transport.
+for domain rules, fail-closed client creation, and fill-level golden accounting.
+Batch 2 adds only credential-free public data ingress, immutable raw storage,
+manifest verification, and offline replay; there is still no trading transport.
 
 ## Dependency direction
 
@@ -26,18 +27,17 @@ names: `source_time`, `server_time`, `receive_time`, `decision_time`,
 `order_send_time`, `fill_time`, and `settlement_time`. They contain no generic
 `timestamp` field. See `docs/domain-model.md` for the normative definitions.
 
-The earlier TypeScript scaffold uses UTC ISO 8601 strings and four ingest
-envelope fields inside `timestamps`:
+The versioned Batch 2 wire contract uses required snake-case lifecycle fields:
+`source_time`, `server_time`, `receive_time`, `process_time`, and `persist_time`.
+Source/server time are required-but-nullable and are never fabricated. The
+execution-domain scaffold has also been converged to source/server/receive/process/
+persist names; its external prices, sizes, and fees are decimal strings rather
+than unqualified IEEE-754 numbers.
 
-- `exchangeTimestamp`: time assigned by the exchange or source.
-- `receiveTimestamp`: time the local ingress boundary received the event.
-- `processTimestamp`: explicit time used by deterministic business logic.
-- `persistTimestamp`: optional time at which durable storage committed it.
-
-`exchangeTimestamp` maps to source time and `receiveTimestamp` maps to receive
-time. `processTimestamp` and `persistTimestamp` describe future real-time ingest
-and durability, not substitutes for decision/send/fill/settlement time. The
-TypeScript schema must be aligned before a real-time control plane is added.
+For RTDS, outer provider milliseconds map to `server_time` and payload
+milliseconds map to `source_time`. The CLOB public `timestamp` remains in the
+raw payload because current official documentation does not define equivalent
+source-clock semantics. See the Batch 2 data-contract document.
 
 ## Execution modes
 
@@ -48,8 +48,8 @@ and security review.
 
 ## Data flow
 
-1. An adapter normalizes source data into domain records.
-2. A pure strategy creates a `SignalDecision`.
-3. The risk engine evaluates limits, freshness, connectivity, and idempotency.
-4. An execution adapter accepts only a signal paired with its `RiskDecision`.
-5. Storage and monitoring record decisions and outcomes using canonical times.
+1. A public adapter captures raw bytes/text and `receive_time` before parsing.
+2. Immutable JSONL plus a verified manifest becomes the only replay input.
+3. Python validates, reports quality, and produces point-in-time inputs in later batches.
+4. A pure strategy creates a `SignalDecision` only after a separately approved batch.
+5. Risk and execution remain structurally disconnected from Batch 2 collectors.

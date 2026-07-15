@@ -1,15 +1,33 @@
 /** UTC timestamp serialized as an ISO 8601 string. */
 export type Timestamp = string;
+/** Canonical base-10 value. Never construct it through an IEEE-754 calculation. */
+export type DecimalString = string;
 export type MarketId = string;
 export type TokenId = string;
 export type OrderId = string;
 export type TradeId = string;
 
+export type {
+  CreateEnvelopeDraftInput,
+  ParserStatus,
+  RawEventEnvelopeDraftV1,
+  RawEventEnvelopeV1,
+} from "./raw-event.js";
+export {
+  RAW_EVENT_SCHEMA_VERSION,
+  createEnvelopeDraft,
+  parsePersistedEnvelope,
+  persistEnvelope,
+  rawSha256,
+  requireUtcIso,
+} from "./raw-event.js";
+
 export interface EventTimestamps {
-  readonly exchangeTimestamp: Timestamp;
-  readonly receiveTimestamp: Timestamp;
-  readonly processTimestamp: Timestamp;
-  readonly persistTimestamp?: Timestamp;
+  readonly sourceTime: Timestamp | null;
+  readonly serverTime: Timestamp | null;
+  readonly receiveTime: Timestamp;
+  readonly processTime: Timestamp;
+  readonly persistTime?: Timestamp;
 }
 
 export interface Market {
@@ -28,8 +46,8 @@ export interface OutcomeToken {
 }
 
 export interface PriceLevel {
-  readonly price: number;
-  readonly size: number;
+  readonly price: DecimalString;
+  readonly size: DecimalString;
 }
 
 export interface OrderBook {
@@ -37,7 +55,8 @@ export interface OrderBook {
   readonly tokenId: TokenId;
   readonly bids: readonly PriceLevel[];
   readonly asks: readonly PriceLevel[];
-  readonly sequence: string;
+  readonly sourceSequence: string | null;
+  readonly sourceHash: string | null;
   readonly timestamps: EventTimestamps;
 }
 
@@ -46,8 +65,8 @@ export interface Trade {
   readonly marketId: MarketId;
   readonly tokenId: TokenId;
   readonly side: "buy" | "sell";
-  readonly price: number;
-  readonly size: number;
+  readonly price: DecimalString;
+  readonly size: DecimalString;
   readonly timestamps: EventTimestamps;
 }
 
@@ -59,8 +78,8 @@ export interface Order {
   readonly tokenId: TokenId;
   readonly side: "buy" | "sell";
   readonly type: "limit" | "market";
-  readonly price?: number;
-  readonly size: number;
+  readonly price?: DecimalString;
+  readonly size: DecimalString;
   readonly status: "pending" | "open" | "partiallyFilled" | "filled" | "cancelled" | "rejected";
   readonly timestamps: EventTimestamps;
 }
@@ -69,27 +88,27 @@ export interface Fill {
   readonly fillId: string;
   readonly orderId: OrderId;
   readonly tradeId?: TradeId;
-  readonly price: number;
-  readonly size: number;
-  readonly fee: number;
+  readonly price: DecimalString;
+  readonly size: DecimalString;
+  readonly fee: DecimalString;
   readonly timestamps: EventTimestamps;
 }
 
 export interface Position {
   readonly marketId: MarketId;
   readonly tokenId: TokenId;
-  readonly size: number;
-  readonly averageEntryPrice: number;
-  readonly realizedPnl: number;
-  readonly unrealizedPnl: number;
+  readonly size: DecimalString;
+  readonly averageEntryPrice: DecimalString;
+  readonly realizedPnl: DecimalString;
+  readonly unrealizedPnl: DecimalString;
   readonly timestamps: EventTimestamps;
 }
 
 export interface Balance {
   readonly asset: string;
-  readonly available: number;
-  readonly reserved: number;
-  readonly total: number;
+  readonly available: DecimalString;
+  readonly reserved: DecimalString;
+  readonly total: DecimalString;
   readonly timestamps: EventTimestamps;
 }
 
@@ -99,9 +118,9 @@ export interface SignalDecision {
   readonly marketId: MarketId;
   readonly tokenId: TokenId;
   readonly action: "buy" | "sell" | "hold";
-  readonly confidence: number;
-  readonly targetPrice?: number;
-  readonly targetSize?: number;
+  readonly confidence: DecimalString;
+  readonly targetPrice?: DecimalString;
+  readonly targetSize?: DecimalString;
   readonly reasonCodes: readonly string[];
   readonly timestamps: EventTimestamps;
 }
@@ -110,7 +129,7 @@ export interface RiskDecision {
   readonly decisionId: string;
   readonly signalDecisionId: string;
   readonly approved: boolean;
-  readonly adjustedSize?: number;
+  readonly adjustedSize?: DecimalString;
   readonly reasonCodes: readonly string[];
   readonly timestamps: EventTimestamps;
 }
@@ -119,8 +138,7 @@ export interface Settlement {
   readonly settlementId: string;
   readonly marketId: MarketId;
   readonly winningTokenId: TokenId;
-  readonly payoutPerToken: number;
+  readonly payoutPerToken: DecimalString;
   readonly status: "pending" | "final" | "disputed";
   readonly timestamps: EventTimestamps;
 }
-

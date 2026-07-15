@@ -10,6 +10,19 @@ These rules apply to the entire repository.
 - Keep session transcripts and general project memory out of this code repository. This repository
   contains code, tests, and code-related engineering documentation only.
 
+## Instruction precedence and batch documentation
+
+- A newer explicit user instruction supersedes older repository guidance unless it conflicts with
+  a higher-level safety rule or verified fact. Update or clearly supersede stale documentation in
+  the same task so future sessions do not load two active rules.
+- From Batch 2 onward, design and result documents belong under
+  `docs/batches/batch-XX-topic/`; tests, environment, Git diff, and verification evidence belong
+  under `reports/batches/batch-XX/`.
+- The canonical per-batch handoff is `HANDOFF-BATCH-XX.md`. External review packs belong at
+  `~/review-packs/polymarket-money/batch-XX/`, outside this repository, and contain only the
+  handoff by default. Never copy source, raw data, credentials, databases, or large artifacts into
+  a review pack.
+
 ## Safety boundary
 
 - Keep `LIVE_TRADING_ENABLED=false` unless a future, explicit, reviewed task

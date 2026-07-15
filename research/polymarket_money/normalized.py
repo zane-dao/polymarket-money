@@ -58,6 +58,7 @@ _PERMANENT_QUARANTINE_REASONS = frozenset(
     }
 )
 _BUILD_PROOF = object()
+_LOAD_PROOF = object()
 _UNSET = object()
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _NORMALIZER_CONTRACT_PATHS = (
@@ -1015,9 +1016,45 @@ class BookView:
 
 
 @dataclass(frozen=True, slots=True)
+class DatasetVerificationReceipt:
+    """Immutable proof that a normalized dataset was loaded from a verified final version."""
+
+    dataset_id: str
+    dataset_hash: str
+    continuity: str
+    normalizer_git_commit: str
+    normalizer_code_sha256: str
+    normalizer_worktree_state: str
+    config_json: str
+    raw_inputs_json: str
+    outputs_json: str
+    _proof: object = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self._proof is not _LOAD_PROOF:
+            raise DatasetPublicationError(
+                "DatasetVerificationReceipt can only be created by the verified loader"
+            )
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "dataset_id": self.dataset_id,
+            "dataset_hash": self.dataset_hash,
+            "continuity": self.continuity,
+            "normalizer_git_commit": self.normalizer_git_commit,
+            "normalizer_code_sha256": self.normalizer_code_sha256,
+            "normalizer_worktree_state": self.normalizer_worktree_state,
+            "config": json.loads(self.config_json),
+            "raw_inputs": json.loads(self.raw_inputs_json),
+            "outputs": json.loads(self.outputs_json),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class PointInTimeView:
     decision_time: datetime
     market_id: str
+    condition_id: str | None
     metadata: dict[str, Any] | None
     token_by_outcome: dict[str, str]
     books: dict[str, BookView]
@@ -1025,6 +1062,7 @@ class PointInTimeView:
     binance_price: Decimal | None
     continuity: str
     quarantines: tuple[QuarantineRecord, ...]
+    active_quarantines: tuple[QuarantineRecord, ...] = ()
 
 
 class PointInTimeDataset:
@@ -1035,6 +1073,7 @@ class PointInTimeDataset:
         quarantines: Iterable[QuarantineRecord] = (),
         stale_after: timedelta = timedelta(seconds=1),
         dataset_hash: str | None = None,
+        verification_receipt: DatasetVerificationReceipt | None = None,
     ) -> None:
         if stale_after <= timedelta(0):
             raise ValueError("stale_after must be positive")
@@ -1044,6 +1083,121 @@ class PointInTimeDataset:
         )
         self._stale_after = stale_after
         self.dataset_hash = dataset_hash
+        if verification_receipt is not None and verification_receipt.dataset_hash != dataset_hash:
+            raise ValueError("verification receipt does not match dataset_hash")
+        if verification_receipt is not None and verification_receipt._proof is not _LOAD_PROOF:
+            raise DatasetPublicationError("dataset verification receipt is not loader-issued")
+        self.verification_receipt = verification_receipt
+
+    @property
+    def records(self) -> tuple[NormalizedRecord, ...]:
+        return self._records
+
+    @property
+    def quarantines(self) -> tuple[QuarantineRecord, ...]:
+        return self._quarantines
+
+    @property
+    def stale_after(self) -> timedelta:
+        return self._stale_after
+
+    @property
+    def market_ids(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    item.market_id
+                    for item in (*self._records, *self._quarantines)
+                    if item.market_id is not None
+                }
+            )
+        )
+
+    def next_book_time(
+        self,
+        *,
+        market_id: str,
+        asset_id: str,
+        not_before: datetime,
+        before: datetime,
+    ) -> datetime | None:
+        _require_text(market_id, "market_id")
+        _require_text(asset_id, "asset_id")
+        _require_utc(not_before, "not_before")
+        _require_utc(before, "before")
+        if before <= not_before:
+            return None
+        candidates = [
+            item.visible_at
+            for item in self._records
+            if item.record_type is RecordType.CLOB_BOOK_STATE
+            and item.market_id == market_id
+            and item.asset_id == asset_id
+            and not_before <= item.visible_at < before
+            and (item.source_time is None or item.source_time <= item.visible_at)
+        ]
+        return min(candidates, default=None)
+
+    def market_boundaries(self, market_id: str) -> tuple[datetime, ...]:
+        """Return deterministic state-change boundaries, including local stale deadlines."""
+
+        _require_text(market_id, "market_id")
+        boundaries = {
+            item.visible_at
+            for item in (*self._records, *self._quarantines)
+            if item.market_id == market_id
+        }
+        for item in self._records:
+            if item.market_id == market_id and item.record_type is RecordType.CLOB_BOOK_STATE:
+                boundaries.add(max(item.visible_at, item.receive_time + self._stale_after))
+            if item.market_id == market_id and item.record_type is RecordType.MARKET_METADATA:
+                payload = item.payload
+                for key in ("interval_start", "interval_end"):
+                    value = payload.get(key)
+                    try:
+                        boundaries.add(_parse_time(value, f"metadata.{key}"))
+                    except ValueError:
+                        continue
+        return tuple(sorted(boundaries))
+
+    def chainlink_boundary(
+        self,
+        *,
+        market_id: str,
+        source_time: datetime,
+        as_of: datetime,
+    ) -> NormalizedRecord:
+        """Return one causally visible, non-quarantined Chainlink boundary record."""
+
+        _require_text(market_id, "market_id")
+        _require_utc(source_time, "source_time")
+        _require_utc(as_of, "as_of")
+        if source_time > as_of:
+            raise DatasetPublicationError("future Chainlink boundary is not causally visible")
+        view = self.as_of(as_of, market_id)
+        if view.active_quarantines:
+            raise DatasetPublicationError(
+                "active normalized quarantine forbids settlement"
+            )
+        conflict_keys = {
+            item.business_key
+            for item in view.quarantines
+            if item.reason_code == "CONFLICTING_BUSINESS_KEY"
+        }
+        matches = [
+            item
+            for item in self._records
+            if item.market_id == market_id
+            and item.record_type is RecordType.CHAINLINK_BTC_USD
+            and item.source_time == source_time
+            and item.visible_at <= as_of
+            and item.business_key not in conflict_keys
+        ]
+        if len(matches) != 1:
+            raise DatasetPublicationError(
+                "Chainlink boundary is missing, ambiguous, or quarantined"
+            )
+        return matches[0]
 
     @staticmethod
     def _record_order(record: NormalizedRecord) -> tuple[Any, ...]:
@@ -1174,6 +1328,10 @@ class PointInTimeDataset:
                 or latest_connection is None
                 or not self._causally_not_before(latest_connection, item)
             )
+
+        active_quarantines = tuple(
+            item for item in visible_quarantine if quarantine_is_active(item)
+        )
 
         market_quarantine = any(
             item.market_id == market_id
@@ -1370,6 +1528,7 @@ class PointInTimeDataset:
         return PointInTimeView(
             decision_time=decision_time,
             market_id=market_id,
+            condition_id=metadata_record.condition_id if metadata_record is not None else None,
             metadata=metadata,
             token_by_outcome=token_by_outcome,
             books=books,
@@ -1377,6 +1536,7 @@ class PointInTimeDataset:
             binance_price=latest_price(RecordType.BINANCE_BTC_USDT),
             continuity=CONTINUITY,
             quarantines=visible_quarantine,
+            active_quarantines=active_quarantines,
         )
 
     @classmethod
@@ -2036,7 +2196,13 @@ class NormalizedDatasetBuilder:
                     for item in markets.values()
                     if item["market"].interval_start
                     <= parsed.source_time
-                    < item["market"].interval_end
+                    and (
+                        parsed.source_time < item["market"].interval_end
+                        or (
+                            expected == "chainlink"
+                            and parsed.source_time == item["market"].interval_end
+                        )
+                    )
                 ]
                 if not matches:
                     quarantines.append(_quarantine_from_event(observation, "NO_MATCHING_MARKET_WINDOW"))
@@ -2833,4 +2999,16 @@ class NormalizedDatasetBuilder:
             quarantines=quarantines,
             stale_after=timedelta(milliseconds=stale_ms),
             dataset_hash=dataset_hash,
+            verification_receipt=DatasetVerificationReceipt(
+                dataset_id=manifest["dataset_id"],
+                dataset_hash=dataset_hash,
+                continuity=manifest["continuity"],
+                normalizer_git_commit=normalizer_commit,
+                normalizer_code_sha256=normalizer_code_sha256,
+                normalizer_worktree_state=manifest["normalizer_worktree_state"],
+                config_json=_canonical_json(config),
+                raw_inputs_json=_canonical_json(raw_inputs),
+                outputs_json=_canonical_json(outputs),
+                _proof=_LOAD_PROOF,
+            ),
         )

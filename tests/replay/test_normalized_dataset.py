@@ -982,7 +982,7 @@ class NormalizedDatasetReplayTest(unittest.TestCase):
             self.assertEqual(view.books[up_token].state.value, "RESET_REQUIRED")
             self.assertFalse(view.books[up_token].execution_eligible)
 
-    def test_exact_window_boundary_price_belongs_only_to_next_market(self) -> None:
+    def test_chainlink_boundary_is_previous_close_and_next_open(self) -> None:
         first_payload = json.loads(GAMMA.read_text(encoding="utf-8"))
         second_payload = dict(first_payload)
         second_payload.update(
@@ -1089,7 +1089,7 @@ class NormalizedDatasetReplayTest(unittest.TestCase):
                 for item in build.records
                 if item.record_type.value == "chainlink_btc_usd"
             }
-            self.assertEqual(price_markets, {"next-market"})
+            self.assertEqual(price_markets, {"1822773", "next-market"})
 
     def test_all_symbols_binance_input_requires_explicit_manifested_opt_in(self) -> None:
         off_topic = (

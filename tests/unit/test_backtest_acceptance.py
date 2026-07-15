@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import timedelta
 import unittest
 
@@ -16,7 +15,10 @@ from tests.helpers.backtest_fixtures import (
     UP_TOKEN,
     dataset,
     lineage,
+    base_records,
+    record,
 )
+from research.polymarket_money.normalized import PointInTimeDataset, RecordType
 
 
 class DatasetAcceptancePolicyTest(unittest.TestCase):
@@ -35,6 +37,7 @@ class DatasetAcceptancePolicyTest(unittest.TestCase):
         forged = PointInTimeView(
             decision_time=original.decision_time,
             market_id=original.market_id,
+            condition_id=original.condition_id,
             metadata=original.metadata,
             token_by_outcome=original.token_by_outcome,
             books=original.books,
@@ -96,6 +99,71 @@ class DatasetAcceptancePolicyTest(unittest.TestCase):
         self.assertGreater(summary.eligible_time_coverage, 0)
         self.assertGreater(summary.stale_time_coverage, 0)
         self.assertIn("MISSING_MARKET_IDENTITY", summary.exclusion_reasons)
+
+    def test_transient_quarantine_is_not_reported_active_after_new_connection_baseline(self) -> None:
+        quarantine = QuarantineRecord.create(
+            reason_code="INVALID_BOOK_DELTA",
+            business_key="old-bad-book",
+            market_id=MARKET_ID,
+            asset_id=UP_TOKEN,
+            visible_at=START + timedelta(milliseconds=50),
+            affected_record_ids=(),
+            lineage=(lineage(30, START + timedelta(milliseconds=50)),),
+        )
+        records = base_records()
+        records.extend(
+            [
+                record(
+                    RecordType.CONNECTION_STATE,
+                    "new-connection",
+                    START + timedelta(milliseconds=60),
+                    {"state": "CONNECTED"},
+                    index=31,
+                    connection_id="connection-2",
+                ),
+                record(
+                    RecordType.CLOB_BOOK_STATE,
+                    "new-up-book",
+                    START + timedelta(milliseconds=70),
+                    {
+                        "bids": [{"price": "0.48", "size": "10"}],
+                        "asks": [{"price": "0.52", "size": "10"}],
+                        "snapshot_received": True,
+                        "provider_timestamp_raw": None,
+                    },
+                    index=32,
+                    asset_id=UP_TOKEN,
+                    connection_id="connection-2",
+                ),
+                record(
+                    RecordType.CLOB_BOOK_STATE,
+                    "new-down-book",
+                    START + timedelta(milliseconds=71),
+                    {
+                        "bids": [{"price": "0.47", "size": "10"}],
+                        "asks": [{"price": "0.53", "size": "10"}],
+                        "snapshot_received": True,
+                        "provider_timestamp_raw": None,
+                    },
+                    index=33,
+                    asset_id=DOWN_TOKEN,
+                    connection_id="connection-2",
+                ),
+            ]
+        )
+        candidate = PointInTimeDataset(
+            records,
+            quarantines=(quarantine,),
+            stale_after=timedelta(seconds=1),
+            dataset_hash="c" * 64,
+        )
+        view = candidate.as_of(self.decision_time, MARKET_ID)
+        self.assertTrue(view.quarantines)
+        self.assertFalse(view.active_quarantines)
+        self.assertEqual(
+            self.policy.evaluate(view).status,
+            AcceptanceStatus.EXECUTION_ELIGIBLE,
+        )
 
 
 if __name__ == "__main__":

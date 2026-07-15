@@ -22,7 +22,9 @@ dataset.as_of(decision_time, market_id)
 5. 不做 backward fill、双向插值、centered rolling 或基于最终结果的历史修正。
 6. Price 查询只选当前 market partition 中、在决策前可见且 `source_time` 最新的观察；晚到旧价
    不得覆盖已可见的新价。
-7. 五分钟窗口是半开区间 `[interval_start, interval_end)`；边界价格只进入下一 market。
+7. 交易/特征窗口是半开区间 `[interval_start, interval_end)`。Chainlink 边界观察是唯一例外：
+   它同时作为前一 market 的 closing 和下一 market 的 opening 保存；前一 market 在结束前仍因
+   `source_time`/`visible_at` 门禁不可见，因此不会污染历史决定。Binance 仍只进入半开窗口。
 8. 同一 manifest 内的同毫秒 raw 事件按 segment、line、outer-array message ordinal 保留真实
    append 顺序，不能按随机 event ID 重排；跨 manifest 的 exact tie 若内容矛盾则失败关闭。
 9. 本批没有特征、标签、收益、Fill、PnL 或回测逻辑。

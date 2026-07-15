@@ -51,6 +51,10 @@ RTDS 官方明确规定外层 `timestamp` 是消息发送毫秒，映射 `server
 | `error` | 保存 | 进入逻辑 quarantine，不进入有效流 |
 | `quarantined` | 保存 | 进入逻辑 quarantine，不进入有效流 |
 
+合法 JSON 但 topic/type/symbol 不属于请求目标时归为 `quarantined`；它不因缺少目标事件才
+要求的标量价格字段而被误记成语法错误。空帧、坏 JSON 或目标事件自身缺少必需字段才是
+`error`。这条分类由实际 RTDS 初始帧触发，并有 Python/TypeScript 对称负向测试。
+
 原始层不会按 raw hash 删除观察：相同 payload 可能是 provider 合法重复发送。writer retry
 若使用同一 `event_id` 且内容完全相同，返回首次 receipt 而不追加；同 ID 不同内容是完整性
 错误。manifest 验证会检查所有 parser status 的同 ID 冲突；Python effective replay 再按

@@ -43,3 +43,10 @@ python3 -m unittest discover -s tests -p 'test_*.py' -v
 `npm test` compiles TypeScript and runs Node runtime tests. The bounded public
 smoke command requires an absolute `POLY_DATA_ROOT` outside the repository; no
 test or script enables live trading.
+
+The default Binance transport is the exact public `btcusdt` filter. A bounded,
+explicit `--binance-transport all-symbols-quarantine` option exists only for
+protocol smoke validation when that provider-side filter is silent; non-BTC
+frames are retained as quarantine and can never enter the effective BTC stream.
+Batch evidence and the canonical handoff live under `docs/batches/` and
+`reports/batches/`; raw smoke data always remains outside Git.

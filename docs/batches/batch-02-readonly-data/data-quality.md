@@ -52,3 +52,7 @@ Python quality report覆盖：
 
 CLOB heartbeat 是每 10 秒发送纯文本 `PING`；RTDS 是每 5 秒。heartbeat 只证明连接有响应，
 不证明行情新鲜或连续。
+
+本批实际 smoke 的质量摘要和真实异常见
+`reports/batches/batch-02/SMOKE-CAPTURE-QUALITY.md`。报告中的 parse error、quarantine、
+单边空簿和 `UNVERIFIED` 均保留，不以删除异常改善指标。

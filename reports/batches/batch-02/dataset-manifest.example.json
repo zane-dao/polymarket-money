@@ -1,0 +1,50 @@
+{
+  "dataset_id": "example-binance-btc-public",
+  "schema_version": "dataset-manifest-v1",
+  "source": "polymarket.rtds.binance",
+  "stream": "crypto-prices",
+  "subscription": {
+    "action": "subscribe",
+    "subscriptions": [
+      {
+        "topic": "crypto_prices",
+        "type": "update",
+        "filters": "btcusdt"
+      }
+    ]
+  },
+  "collector_git_commit": "0000000000000000000000000000000000000000",
+  "collection_start": "2026-01-01T00:00:00.000Z",
+  "collection_end": "2026-01-01T00:00:01.000Z",
+  "segments": [
+    {
+      "ordinal": 0,
+      "relative_path": "polymarket.rtds.binance/2026-01-01/crypto-prices/example.jsonl",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "byte_count": 1234,
+      "event_count": 3,
+      "parse_error_count": 0,
+      "unknown_event_count": 0,
+      "first_receive_time": "2026-01-01T00:00:00.100Z",
+      "last_receive_time": "2026-01-01T00:00:00.900Z"
+    }
+  ],
+  "event_count": 3,
+  "parse_error_count": 0,
+  "unknown_event_count": 0,
+  "first_receive_time": "2026-01-01T00:00:00.100Z",
+  "last_receive_time": "2026-01-01T00:00:00.900Z",
+  "market_ids": [],
+  "asset_ids": [],
+  "continuity": "UNVERIFIED",
+  "sanitized_config": {
+    "endpointClass": "public-read-only",
+    "maxEvents": 100,
+    "timeoutSeconds": 30,
+    "maxFrameBytes": 1048576,
+    "maxTotalBytes": 8388608,
+    "maxResponseBytes": 1048576,
+    "symbolFilter": "btcusdt",
+    "transportScope": "btc-only"
+  }
+}

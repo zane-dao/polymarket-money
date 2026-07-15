@@ -62,6 +62,14 @@ test("RTDS rejects a non-BTC symbol into quarantine", async () => {
   const fixture = JSON.parse(await fixtureText("rtds-events.json")) as Record<string, string>;
   const parsed = parseRtdsPriceMessage(fixture.wrong_chainlink_symbol ?? "", "chainlink");
   assert.equal(parsed.parserStatus, "quarantined");
+
+  const binance = parseRtdsPriceMessage(
+    '{"topic":"crypto_prices","type":"update","timestamp":1753314088421,' +
+      '"payload":{"symbol":"solusdt","timestamp":1753314088395,"value":189.55}}',
+    "binance",
+  );
+  assert.equal(binance.parserStatus, "quarantined");
+  assert.match(binance.quarantineReason ?? "", /unexpected symbol solusdt/);
 });
 
 test("malformed source data becomes an error while retaining exact raw text", () => {
@@ -141,7 +149,10 @@ test("public subscriptions contain no auth, wallet, or user-channel fields", () 
     assert.doesNotMatch(payload, /auth|wallet|api.?key|secret|passphrase/i);
   }
   assert.match(chainlink, /btc\/usd/);
-  assert.match(binance, /btcusdt/);
+  assert.equal(
+    binance,
+    '{"action":"subscribe","subscriptions":[{"topic":"crypto_prices","type":"update","filters":"solusdt,btcusdt,ethusdt"}]}',
+  );
 });
 
 test("order book requires a new snapshot after disconnect", async () => {

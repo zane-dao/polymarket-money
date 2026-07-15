@@ -272,7 +272,7 @@ export function rtdsSubscription(source: "chainlink" | "binance"): Readonly<Reco
   const subscription =
     source === "chainlink"
       ? { topic: "crypto_prices_chainlink", type: "*", filters: '{"symbol":"btc/usd"}' }
-      : { topic: "crypto_prices", type: "update", filters: "btcusdt" };
+      : { topic: "crypto_prices", type: "update", filters: "solusdt,btcusdt,ethusdt" };
   return Object.freeze({ action: "subscribe", subscriptions: Object.freeze([Object.freeze(subscription)]) });
 }
 

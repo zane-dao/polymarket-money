@@ -627,7 +627,7 @@ function validatePublicSubscription(
     requireExactKeys(child, ["topic", "type", "filters"], "RTDS subscription item");
     const expected = source.endsWith("chainlink")
       ? { topic: "crypto_prices_chainlink", type: "*", filters: '{"symbol":"btc/usd"}' }
-      : { topic: "crypto_prices", type: "update", filters: "btcusdt" };
+      : { topic: "crypto_prices", type: "update", filters: "solusdt,btcusdt,ethusdt" };
     if (child.topic !== expected.topic || child.type !== expected.type || child.filters !== expected.filters) {
       throw new Error("RTDS subscription is not the allowlisted BTC public feed");
     }

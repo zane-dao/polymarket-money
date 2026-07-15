@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polymarket-money"
+version = "0.1.0"
+description = "Research and execution contracts for a safety-first trading system"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0,<9.0",
+  "ruff>=0.8,<1.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests", "execution/tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.setuptools]
+packages = ["research", "research.polymarket_money"]

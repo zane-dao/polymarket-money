@@ -1,0 +1,83 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node.js / TypeScript
+node_modules/
+dist/
+build/
+*.egg-info/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+logs/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS / WSL
+.DS_Store
+Thumbs.db
+Desktop.ini
+Zone.Identifier
+*:Zone.Identifier
+
+# Local and generated data
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+research/datasets/*
+!research/datasets/.gitkeep
+research/notebooks/.ipynb_checkpoints/
+research/reports/generated/
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.parquet
+*.arrow
+*.feather
+
+# Runtime capture/review output must stay outside the repository.
+runtime-data/
+smoke-data/
+review-packs/
+
+# Temporary files
+.cache/
+tmp/
+temp/
+*.tmp
+*.partial
+*.part
+*.pid
+*.sock

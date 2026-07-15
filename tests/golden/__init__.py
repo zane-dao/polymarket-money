@@ -1,0 +1,1 @@
+"""Golden business-rule tests."""

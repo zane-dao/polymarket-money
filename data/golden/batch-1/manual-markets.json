@@ -1,0 +1,69 @@
+[
+  {
+    "case_id": "up-win",
+    "market_id": "manual-market-1",
+    "winning_outcome": "up",
+    "winning_token_id": "up-token",
+    "fills": [
+      {
+        "fill_id": "m1-fill-1",
+        "token_id": "up-token",
+        "side": "buy",
+        "price": "0.55",
+        "quantity": "10",
+        "fee": "0.10"
+      }
+    ],
+    "expected_net_pnl": "4.40"
+  },
+  {
+    "case_id": "tie-is-up",
+    "market_id": "manual-market-2",
+    "winning_outcome": "up",
+    "winning_token_id": "up-token",
+    "fills": [
+      {
+        "fill_id": "m2-fill-1",
+        "token_id": "up-token",
+        "side": "buy",
+        "price": "0.48",
+        "quantity": "4",
+        "fee": "0.02"
+      },
+      {
+        "fill_id": "m2-fill-2",
+        "token_id": "up-token",
+        "side": "buy",
+        "price": "0.50",
+        "quantity": "6",
+        "fee": "0.03"
+      }
+    ],
+    "expected_net_pnl": "5.03"
+  },
+  {
+    "case_id": "down-win-after-partial-sell",
+    "market_id": "manual-market-3",
+    "winning_outcome": "down",
+    "winning_token_id": "down-token",
+    "fills": [
+      {
+        "fill_id": "m3-fill-1",
+        "token_id": "down-token",
+        "side": "buy",
+        "price": "0.60",
+        "quantity": "8",
+        "fee": "0.08"
+      },
+      {
+        "fill_id": "m3-fill-2",
+        "token_id": "down-token",
+        "side": "sell",
+        "price": "0.70",
+        "quantity": "3",
+        "fee": "0.03"
+      }
+    ],
+    "expected_net_pnl": "2.19"
+  }
+]

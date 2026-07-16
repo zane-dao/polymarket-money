@@ -34,6 +34,7 @@ const external = (
   receive_stamp: stamp(ns, ordinal),
   external_connection_id: externalConnectionId(connection),
   parent_input_reference: `raw-event-v2:${externalEventId}`,
+  input_hash: "a".repeat(64),
   quality: { stale: false, disconnected: false, quarantined: false },
 });
 
@@ -51,6 +52,7 @@ const book = (
   receive_stamp: stamp(ns, ordinal),
   polymarket_connection_id: polymarketConnectionId(connection),
   parent_input_reference: `raw-event-v2:poly-${ordinal}`,
+  input_hash: "b".repeat(64),
   quality: {
     snapshot: true,
     stale: false,
@@ -171,12 +173,52 @@ test("fixed horizon uses only point-in-time state; later update is a separate me
   assert.equal(result.censored, false);
   assert.equal(result.markout_mid_price, "0.51");
   assert.equal(result.state_age_ms, 10);
+  assert.equal(result.external_event_id, "event");
+  assert.equal(result.trigger_episode_id, engine.trigger(triggerId).trigger_episode_id);
+  assert.equal(result.source, "BINANCE_SPOT");
+  assert.equal(result.market_id, "market-1");
+  assert.equal(result.threshold, engine.trigger(triggerId).threshold);
+  assert.equal(result.window, 100);
+  assert.equal(result.clock_domain, domain);
+  assert.equal(result.external_connection_id, "external-1");
+  assert.equal(result.polymarket_connection_id, "poly-1");
+  assert.equal(result.external_parent_input_reference, "raw-event-v2:event");
+  assert.equal(result.external_input_hash, "a".repeat(64));
+  assert.equal(result.polymarket_parent_input_reference, "raw-event-v2:poly-3");
+  assert.equal(result.polymarket_input_hash, "b".repeat(64));
+  assert.equal(result.config_hash, DEFAULT_LEAD_LAG_CONFIG.config_hash);
   assert.deepEqual(result.next_update_after_horizon, {
     next_update_delay_ms: 1,
     update_direction: "UP",
     update_magnitude: "0.39",
     observation_time: stamp(651_000_000, 6),
   });
+});
+
+test("a later rejected Polymarket frame invalidates prior good state", () => {
+  const { engine, triggerId } = engineWithTrigger();
+  engine.notePolymarketQualityFailure({
+    market_id: "market-1",
+    receive_stamp: stamp(640_000_000, 5),
+  });
+  assert.equal(engine.evaluateHorizon({
+    triggerId,
+    horizonMs: 50,
+    targetWatermark: stamp(650_000_000, 5),
+  }).censor_reason, "HORIZON_QUALITY_REJECTED");
+
+  engine.ingestExternal(external("later-event", 700_000_000, 6, "102"));
+  const batch = engine.createTriggers({
+    externalEventId: "later-event",
+    marketId: "market-1",
+    baselineWatermarks: {
+      "100": stamp(600_000_000, 4),
+      "250": stamp(450_000_000, 1),
+      "500": stamp(200_000_000, 1),
+    },
+  });
+  assert.equal(batch.triggers.length, 0);
+  assert.ok(batch.rejections.some((item) => item.reason === "TRIGGER_SNAPSHOT_QUALITY_REJECTED"));
 });
 
 test("stale horizon and either connection reconnect censor instead of reusing state", () => {
@@ -302,4 +344,10 @@ test("episode v1 extends only within frozen gap and grouping dimensions", () => 
   resetTracker.assign({ ...identity, external_connection_id: externalConnectionId("external-2"), external_event_id: "g", receive_stamp: stamp(1_100_000_000, 7) });
   const afterReturning = resetTracker.assign({ ...identity, external_event_id: "h", receive_stamp: stamp(1_200_000_000, 8) });
   assert.notEqual(beforeReset, afterReturning);
+
+  const marketTracker = new EpisodeTracker();
+  const marketA = marketTracker.assign({ ...identity, external_event_id: "i", receive_stamp: stamp(2_000_000_000, 9) });
+  marketTracker.assign({ ...identity, market_id: "market-2", external_event_id: "j", receive_stamp: stamp(2_100_000_000, 10) });
+  const backToMarketA = marketTracker.assign({ ...identity, external_event_id: "k", receive_stamp: stamp(2_200_000_000, 11) });
+  assert.notEqual(marketA, backToMarketA, "A -> B -> A must not revive the old market-A episode");
 });

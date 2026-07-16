@@ -413,6 +413,17 @@ test("market identity exposes lifecycle and rejects non-decimal token IDs", asyn
   assert.throws(() => clobMarketSubscription(["123", "not-a-token"]), /decimal CLOB token ID/);
 });
 
+test("Gamma fee rate accepts only canonical decimal strings", async () => {
+  const raw = JSON.parse(await readFile(new URL("data/fixtures/batch-2/gamma-btc-5m.json", root), "utf8")) as Record<string, unknown>;
+  raw.feesEnabled = true;
+  raw.feeSchedule = { rate: "0.07" };
+  assert.equal(validatePublicBtcFiveMinuteMarket(JSON.stringify(raw)).takerFeeRate, "0.07");
+  raw.feeSchedule = { rate: 0.07 };
+  assert.throws(() => validatePublicBtcFiveMinuteMarket(JSON.stringify(raw)), /canonical decimal string/i);
+  raw.feeSchedule = { rate: "7e-2" };
+  assert.throws(() => validatePublicBtcFiveMinuteMarket(JSON.stringify(raw)), /canonical decimal string/i);
+});
+
 test("book waits for every expected asset, binds condition, uses per-asset clocks, and expires locally", () => {
   const book = new PublicOrderBook({
     expectedConditionId: "condition-1",

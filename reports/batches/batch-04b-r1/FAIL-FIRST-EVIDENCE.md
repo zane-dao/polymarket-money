@@ -135,3 +135,22 @@ returned `RESEARCH_CANDIDATE` from one quote. Although the R1 live runtime no lo
 module, an exported single-record route conclusion violates the frozen contract. The strengthened
 legacy test requires `OBSERVED_NOT_EXECUTABLE`; it fails against the prior implementation until the
 route-level label is removed.
+
+## Second Sol Critical follow-up A — causal runtime evidence
+
+The read-only re-review found that the first implementation did not yet make the horizon record a
+self-contained causal artifact, did not invalidate a previous good Polymarket state after a later
+rejected frame, could revive an A episode after an A -> B -> A market transition, and did not bind
+opportunity output to a versioned runtime configuration. The strengthened tests also require causal
+input-lineage watermarks, canonical-string-only Gamma fee rates, explicit gross edge, real
+lead-lag observations, and trigger output.
+
+Observed fail-first TypeScript errors include:
+
+```text
+tests/unit/lead-lag-r1.test.ts: 'input_hash' does not exist in type 'ExternalPriceState'
+tests/unit/lead-lag-r1.test.ts: Property 'external_event_id' does not exist on type 'HorizonObservation'
+tests/unit/lead-lag-r1.test.ts: Property 'notePolymarketQualityFailure' does not exist on type 'LeadLagEngine'
+tests/unit/opportunity-config-r1.test.ts: Cannot find module '../../execution/src/runtime/opportunity-config.js'
+tests/unit/runtime-paper.test.ts: Property 'grossEdge' does not exist on type 'PaperAudit'
+```

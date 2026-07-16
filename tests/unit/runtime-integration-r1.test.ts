@@ -15,6 +15,9 @@ test("live runtime is wired to the frozen R1 contracts", async () => {
     "createRouteEvaluationV1",
     "FailClosedRuntime",
     "createRuntimeIncident",
+    "createOpportunityRuntimeConfig",
+    "leadLagObservations",
+    "leadLagTriggers",
   ]) {
     assert.match(runtime, new RegExp(`\\b${required}\\b`, "u"), required);
   }
@@ -29,6 +32,7 @@ test("live runtime is wired to the frozen R1 contracts", async () => {
     "BINANCE_PERPETUAL",
   ]) assert.match(runtime, new RegExp(sourceName, "u"));
   assert.match(runtime, /leadLagGrid/u);
+  assert.match(runtime, /leadLagEvidence\s*=\s*state\.leadLagObservations/u);
 });
 
 test("legacy observers delegate exact money and fee calculations", async () => {

@@ -104,6 +104,48 @@ test("missing provenance, invalid quality, and route conclusions on one observat
   );
 });
 
+test("input lineage must be causal and inside the observation clock domain", () => {
+  const parent = draft.inputLineage[0]!;
+  assert.throws(
+    () => createOpportunityObservationV1({
+      ...draft,
+      inputLineage: [{
+        ...parent,
+        receive_stamp: { ...parent.receive_stamp, clock_domain: "process-2" },
+      }],
+    }),
+    /clock.domain/i,
+  );
+  assert.throws(
+    () => createOpportunityObservationV1({
+      ...draft,
+      inputLineage: [{
+        ...parent,
+        receive_stamp: {
+          ...parent.receive_stamp,
+          local_monotonic_receive_ns: "1001",
+          local_receive_ordinal: "8",
+        },
+      }],
+    }),
+    /future|watermark|causal/i,
+  );
+  assert.throws(
+    () => createOpportunityObservationV1({
+      ...draft,
+      inputLineage: [{
+        ...parent,
+        receive_stamp: {
+          ...parent.receive_stamp,
+          local_monotonic_receive_ns: "1000",
+          local_receive_ordinal: "8",
+        },
+      }],
+    }),
+    /future|watermark|causal/i,
+  );
+});
+
 test("RouteEvaluationV1 is a separate aggregate and remains DATA_INSUFFICIENT", () => {
   const observation = createOpportunityObservationV1(draft);
   const evaluation = createRouteEvaluationV1({

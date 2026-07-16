@@ -163,7 +163,7 @@ class BacktestCoreGoldenTest(unittest.TestCase):
                     ),
                 ),
                 "fees": fee_schedule(
-                    "manual-market-1", ((0, 300_000, "0.01818181818181818181818181818"),)
+                    "manual-market-1", ((0, 300_000, "0.04"),)
                 ),
                 "expected": "4.40",
                 "gross": "4.50",
@@ -200,8 +200,8 @@ class BacktestCoreGoldenTest(unittest.TestCase):
                 "fees": fee_schedule(
                     "manual-market-2",
                     (
-                        (0, 150, "0.01041666666666666666666666667"),
-                        (150, 300_000, "0.01"),
+                        (0, 150, "0.02"),
+                        (150, 300_000, "0.02"),
                     ),
                 ),
                 "expected": "5.03",
@@ -239,8 +239,8 @@ class BacktestCoreGoldenTest(unittest.TestCase):
                 "fees": fee_schedule(
                     "manual-market-3",
                     (
-                        (0, 150, "0.01666666666666666666666666667"),
-                        (150, 300_000, "0.01428571428571428571428571429"),
+                        (0, 150, "0.04"),
+                        (150, 300_000, "0.05"),
                     ),
                 ),
                 "expected": "2.19",

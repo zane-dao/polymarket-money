@@ -129,6 +129,11 @@ test("paper engine freezes intents, reserves cash, fills once, and deduplicates 
   assert.ok(fills.every((fill) =>
     Number(fill.details.quantity) <= Number(fill.details.intendedQuantity)));
   assert.ok(fills.every((fill) => fill.details.partial === true));
+  const snapshot = engine.snapshot();
+  assert.equal(snapshot.schemaVersion, "kj-paper-engine-snapshot-v1");
+  assert.equal(snapshot.markets[0]?.state, "RUNNING");
+  assert.ok(Number(snapshot.wallets.J_FEE_AWARE.positions["111"]) > 0);
+  assert.equal(snapshot.pendingIntents.length, 0);
 });
 
 test("slippage no-fill and market transition release every paper reservation", () => {
@@ -228,8 +233,15 @@ test("paper engine rejects unofficial settlement and conflicting dedup identitie
   signalEngine.ingest(context(0, "100", 1));
   assert.throws(
     () => signalEngine.ingest(context(5, "101", 1)),
-    /signal input hash has conflicting content/u,
+    /signal identity has conflicting content/u,
   );
+
+  const nextSignal = context(5, "101", 2);
+  const repeatedRawHash = {
+    ...nextSignal,
+    signal: { ...nextSignal.signal, inputHash: original.signal.inputHash },
+  };
+  assert.equal(signalEngine.ingest(repeatedRawHash), true);
 });
 
 test("paper engine validates configuration before accepting contexts", () => {

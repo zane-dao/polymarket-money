@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { Money, minimumMoney } from "../domain/money.js";
 import type { KJStrategyContextV1 } from "../strategy/kj-context.js";
 
-export const KJ_PAPER_ENGINE_VERSION = "kj-paper-engine-v1" as const;
+export const KJ_PAPER_ENGINE_VERSION = "kj-paper-engine-v2" as const;
 
 export type KJPaperStrategy = "J_FEE_AWARE" | "K_DUAL_VOL";
 export type KJMarketLifecycleState = "INIT" | "RUNNING" | "STOPPING" | "DONE";
@@ -67,6 +67,48 @@ export interface KJPaperEvent {
   readonly marketId: string;
   readonly eventTime: string;
   readonly details: Readonly<Record<string, string | boolean | null>>;
+}
+
+export interface KJPaperEngineSnapshot {
+  readonly schemaVersion: "kj-paper-engine-snapshot-v1";
+  readonly engineVersion: typeof KJ_PAPER_ENGINE_VERSION;
+  readonly wallets: Readonly<Record<KJPaperStrategy, Readonly<{
+    cash: string;
+    available: string;
+    reserved: string;
+    positions: Readonly<Record<string, string>>;
+  }>>>;
+  readonly markets: readonly Readonly<{
+    marketId: string;
+    conditionId: string;
+    slug: string;
+    intervalStart: string;
+    intervalEnd: string;
+    upTokenId: string;
+    downTokenId: string;
+    anchorPrice: string;
+    state: KJMarketLifecycleState;
+    ledgers: Readonly<Record<KJPaperStrategy, Readonly<{
+      spent: string;
+      fees: string;
+      tradeCount: string;
+    }>>>;
+  }>[];
+  readonly pendingIntents: readonly Readonly<{
+    intentId: string;
+    strategy: KJPaperStrategy;
+    marketId: string;
+    tokenId: string;
+    outcome: "UP" | "DOWN";
+    decisionTime: string;
+    executableAfter: string;
+    probability: string;
+    decisionAsk: string;
+    maximumFillPrice: string;
+    intendedQuantity: string;
+    reservedAmount: string;
+  }>[];
+  readonly eventCount: string;
 }
 
 interface PaperIntent {
@@ -224,6 +266,25 @@ class PaperWallet {
     this.#cash = this.#cash.plus(payout);
     return payout;
   }
+
+  snapshot(): Readonly<{
+    cash: string;
+    available: string;
+    reserved: string;
+    positions: Readonly<Record<string, string>>;
+  }> {
+    let reserved = Money.from("0");
+    for (const amount of this.#reservations.values()) reserved = reserved.plus(amount);
+    const positions = Object.fromEntries([...this.#positions.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([tokenId, quantity]) => [tokenId, quantity.toCanonical()]));
+    return Object.freeze({
+      cash: this.#cash.toCanonical(),
+      available: this.available().toCanonical(),
+      reserved: reserved.toCanonical(),
+      positions: Object.freeze(positions),
+    });
+  }
 }
 
 function positiveMoney(value: string, field: string): Money {
@@ -284,6 +345,53 @@ function hash(...parts: readonly string[]): string {
     digest.update("\0");
   }
   return digest.digest("hex");
+}
+
+function stableJson(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("K/J canonical JSON cannot contain non-finite numbers");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) =>
+      `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+  }
+  throw new Error("K/J canonical JSON accepts only JSON values");
+}
+
+export function kjPaperContextIdentity(context: KJStrategyContextV1): string {
+  return hash(
+    context.market.marketId,
+    context.decisionTime,
+    context.inputWatermark.clockDomain,
+    context.inputWatermark.localMonotonicReceiveNs,
+    context.inputWatermark.localReceiveOrdinal,
+    context.signal.inputHash,
+  );
+}
+
+export function kjPaperContextFingerprint(context: KJStrategyContextV1): string {
+  return hash(stableJson(context));
+}
+
+export function kjPaperSignalIdentity(context: KJStrategyContextV1): string {
+  return hash(
+    context.signal.provider,
+    context.signal.connectionId,
+    context.signal.receiveStamp.clockDomain,
+    context.signal.receiveStamp.localMonotonicReceiveNs,
+    context.signal.receiveStamp.localReceiveOrdinal,
+    context.signal.inputHash,
+  );
+}
+
+export function kjPaperSignalFingerprint(context: KJStrategyContextV1): string {
+  return hash(stableJson(context.signal));
 }
 
 function sameSettlement(left: KJOfficialSettlement, right: KJOfficialSettlement): boolean {
@@ -364,15 +472,8 @@ export class KJPaperEngine {
     if (context.mode !== "PAPER_ONLY" || context.safety.orderSubmissionAvailable) {
       throw new Error("K/J paper engine accepts only paper-only contexts");
     }
-    const contextKey = hash(
-      context.market.marketId,
-      context.decisionTime,
-      context.inputWatermark.clockDomain,
-      context.inputWatermark.localMonotonicReceiveNs,
-      context.inputWatermark.localReceiveOrdinal,
-      context.signal.inputHash,
-    );
-    const contextFingerprint = hash(JSON.stringify(context));
+    const contextKey = kjPaperContextIdentity(context);
+    const contextFingerprint = kjPaperContextFingerprint(context);
     const priorContext = this.#processedContexts.get(contextKey);
     if (priorContext !== undefined) {
       if (priorContext !== contextFingerprint) throw new Error("context identity has conflicting content");
@@ -381,14 +482,15 @@ export class KJPaperEngine {
     this.#processedContexts.set(contextKey, contextFingerprint);
     const now = milliseconds(context.decisionTime, "decisionTime");
     this.#stopExpired(now, context.decisionTime);
-    const signalFingerprint = hash(JSON.stringify(context.signal));
-    const priorSignal = this.#processedSignalInputs.get(context.signal.inputHash);
+    const signalIdentity = kjPaperSignalIdentity(context);
+    const signalFingerprint = kjPaperSignalFingerprint(context);
+    const priorSignal = this.#processedSignalInputs.get(signalIdentity);
     if (priorSignal !== undefined && priorSignal !== signalFingerprint) {
-      throw new Error("signal input hash has conflicting content");
+      throw new Error("signal identity has conflicting content");
     }
     if (priorSignal === undefined) {
       this.#volatility.update(context.signal.price, context.signal.receiveTime);
-      this.#processedSignalInputs.set(context.signal.inputHash, signalFingerprint);
+      this.#processedSignalInputs.set(signalIdentity, signalFingerprint);
     }
     const session = this.#session(context);
     if (session.state !== "RUNNING") return true;
@@ -476,6 +578,63 @@ export class KJPaperEngine {
 
   position(strategy: KJPaperStrategy, tokenId: string): string {
     return this.#wallet(strategy).position(tokenId).toCanonical();
+  }
+
+  snapshot(): KJPaperEngineSnapshot {
+    const walletSnapshot = (strategy: KJPaperStrategy) => this.#wallet(strategy).snapshot();
+    const ledgerSnapshot = (session: MarketSession, strategy: KJPaperStrategy) => {
+      const ledger = session.ledgers.get(strategy)!;
+      return Object.freeze({
+        spent: ledger.spent.toCanonical(),
+        fees: ledger.fees.toCanonical(),
+        tradeCount: String(ledger.tradeCount),
+      });
+    };
+    const markets = [...this.#sessions.values()]
+      .sort((left, right) => left.intervalStart.localeCompare(right.intervalStart)
+        || left.marketId.localeCompare(right.marketId))
+      .map((session) => Object.freeze({
+        marketId: session.marketId,
+        conditionId: session.conditionId,
+        slug: session.slug,
+        intervalStart: session.intervalStart,
+        intervalEnd: session.intervalEnd,
+        upTokenId: session.upTokenId,
+        downTokenId: session.downTokenId,
+        anchorPrice: session.anchorPrice.toCanonical(),
+        state: session.state,
+        ledgers: Object.freeze({
+          J_FEE_AWARE: ledgerSnapshot(session, "J_FEE_AWARE"),
+          K_DUAL_VOL: ledgerSnapshot(session, "K_DUAL_VOL"),
+        }),
+      }));
+    const pendingIntents = [...this.#pending.values()]
+      .sort((left, right) => left.intentId.localeCompare(right.intentId))
+      .map((intent) => Object.freeze({
+        intentId: intent.intentId,
+        strategy: intent.strategy,
+        marketId: intent.marketId,
+        tokenId: intent.tokenId,
+        outcome: intent.outcome,
+        decisionTime: intent.decisionTime,
+        executableAfter: new Date(intent.executableAfter).toISOString(),
+        probability: intent.probability.toCanonical(),
+        decisionAsk: intent.decisionAsk.toCanonical(),
+        maximumFillPrice: intent.maximumFillPrice.toCanonical(),
+        intendedQuantity: intent.intendedQuantity.toCanonical(),
+        reservedAmount: intent.reservedAmount.toCanonical(),
+      }));
+    return Object.freeze({
+      schemaVersion: "kj-paper-engine-snapshot-v1",
+      engineVersion: KJ_PAPER_ENGINE_VERSION,
+      wallets: Object.freeze({
+        J_FEE_AWARE: walletSnapshot("J_FEE_AWARE"),
+        K_DUAL_VOL: walletSnapshot("K_DUAL_VOL"),
+      }),
+      markets: Object.freeze(markets),
+      pendingIntents: Object.freeze(pendingIntents),
+      eventCount: String(this.#events.length),
+    });
   }
 
   #wallet(strategy: KJPaperStrategy): PaperWallet {
@@ -613,7 +772,7 @@ export class KJPaperEngine {
         fee: fee.toCanonical(),
         cashAfter: wallet.cash.toCanonical(),
         positionAfter: wallet.position(intent.tokenId).toCanonical(),
-        executionContextHash: hash(JSON.stringify(context)),
+        executionContextHash: kjPaperContextFingerprint(context),
         executionBookReceiveOrdinal: context.book.receiveStamp.localReceiveOrdinal,
       }));
     }
@@ -723,7 +882,7 @@ export class KJPaperEngine {
       tokenId,
     );
     wallet.reserve(intentId, reserved);
-    const contextHash = hash(JSON.stringify(context));
+    const contextHash = kjPaperContextFingerprint(context);
     this.#events.push(event("DECISION", strategy, session.marketId, context.decisionTime, {
       action: "INTENT",
       reason: "EDGE_ACCEPTED",

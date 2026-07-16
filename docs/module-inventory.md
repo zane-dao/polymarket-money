@@ -102,7 +102,7 @@
 | 特征/概率策略契约 | signal/metrics | late-entry indicators | BTC 5m 业务特征和概率校准经验 | RSI/ATR/RTV 场景 | 需样本外验证，engine strategy 有 I/O；旧 prob_model 路由并不总生效 | 新主项目纯函数策略；旧模型保留基线 | 重构后迁移 | P1 | determinism、walk-forward、Brier、参数冻结、无前视 | 已盘点 |
 | 策略 | decide/variant_signal | strategy callback API | BTC-5m 业务规则丰富 | 执行回调样例 | 两边策略边界都不纯 | 新主项目纯函数策略 | 重构后迁移 | P1 | determinism、golden decisions、shadow diff | 已盘点 |
 | 回放/回测 | replay/sweep | fixture runner/sim tests | 真实录制与逐字段对账 | 执行生命周期 fixtures | 旧回放 tick/source-time 偏差；engine sim 过简 | 旧回放资产 + engine fixtures | 重构后迁移 | P1 | causality audit、延迟注入、walk-forward | 已盘点 |
-| 状态持久化/恢复 | SQLite/anchors | state/recovery | 业务状态原子事务 | pending snapshot 与恢复流程 | engine crash gap/orphan；旧无实盘恢复 | 新 event journal + exchange reconcile | 重构后迁移 | P0 | 每个 crash point、损坏快照、孤儿单/仓位 | 缺失 |
+| 状态持久化/恢复 | SQLite/anchors | state/recovery | 业务状态原子事务 | pending snapshot 与恢复流程 | engine crash gap/orphan；旧无实盘恢复 | 新 event journal + exchange reconcile | 重构后迁移 | P0 | 每个 crash point、损坏快照、孤儿单/仓位 | K/J paper 输入 journal/replay 已完成；真实 exchange reconcile 仍缺失 |
 | 配置与 live gate | config/watchdog/API | Env/index CLI | typed groups、参数快照 | 简单 env | 两边实盘门禁都不足；engine 有明确绕过 bug | 新主项目自维护 | 重构后迁移 | P0 | 默认关闭、负向矩阵、双人/TTL arming、不可热改 | 第一批结构性关闭完成；未来 arming 未设计 |
 | 监控与审计 | quality/health/watchdog | logger/log | 数据与进程健康丰富 | slot 级结构日志 | 无统一 decision/order correlation | 新主项目自维护，迁移旧规则 | 重构后迁移 | P1 | 告警注入、审计链完整性、监控故障 | 已盘点 |
 | 测试与样本 | `tests/`、knowledge | `test/`、fixtures | 研究、解析、存储覆盖广 | execution lifecycle 覆盖广 | 生产执行与恢复缺测 | 双方测试资产 | 仅迁移测试和脱敏样本 | P0 | provenance 清单、逐个移植、golden 固化 | 已盘点 |
@@ -137,9 +137,13 @@
 - `execution/src/strategy/kj-context.ts` 已把 TypeScript 公共 runtime 输出收敛为统一的
   paper-only StrategyContext，绑定真实 outcome token、fee、盘口/信号时间与 ReceiveStamp；
   stale、crossed、未来时间、混合时钟域和缺 fee 均失败关闭。
-- `execution/src/runtime/kj-paper-engine.ts` 已在 runtime 的 `paper` 模式消费 ready context，
+- `execution/src/runtime/kj-paper-engine.ts` 只在 runtime `paper` 模式且显式提供 journal 时消费 ready context，
   实现独立 J/K 内存钱包、最坏成交额预留、冻结 intent、1 秒延迟、滑点/no-fill/partial fill、
   仓位和 `INIT -> RUNNING -> STOPPING -> DONE`。`monitor` 不改钱包，只有显式
   `OFFICIAL_RESOLUTION` 才能结算；官方 resolution adapter 与持久化恢复仍缺失，不能称为
   无人值守实时闭环。共享 probability golden 已把 TypeScript 近似与 Python `erf` 的代表点
   绝对误差限制为 `0.0000002`，完整 EWMA-to-intent 对拍仍未完成。
+- `execution/src/storage/kj-paper-journal.ts` 对每个输入 fsync，使用连续序号、SHA-256 链和
+  独立 checkpoint 锚定尾部；严格 replay 可恢复钱包、仓位、预留、pending intent 和事件。
+  修改记录、半行、整行尾截断、symlink/DrvFS/Git 内路径、身份冲突与时钟倒退均失败关闭；
+  journal 领先 checkpoint 的单一崩溃窗口可自愈。`paper:inspect` 可离线导出恢复后全状态。

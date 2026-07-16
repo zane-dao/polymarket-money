@@ -84,14 +84,28 @@ from being silently overwritten.
 The TypeScript public runtime also emits a paper-only
 `kjStrategyContextReady/reason/context` envelope.  It binds verified Up/Down
 token IDs, fee evidence, book and signal receive stamps, freshness, and source
-identity.  In `paper` mode, `kj-paper-engine-v1` consumes only ready contexts
+identity.  In `paper` mode, `kj-paper-engine-v2` consumes only ready contexts
 and emits versioned decision, intent, delayed fill/no-fill, wallet, position,
-market-state, and explicit official-settlement events.  `monitor` mode never
-mutates the K/J wallets, and neither mode has an order-submission path.
+market-state, and explicit official-settlement events only when an explicit
+durable journal is supplied.  Without `--kj-paper-journal`, the runtime still
+emits StrategyContext evidence but K/J wallet mutation is disabled.
 
-The real-time engine is intentionally not an unattended closed loop yet:
-`scripts/live-runtime.ts` does not currently supply official resolution events,
-and engine state is memory-only.  An ended market therefore remains
-`STOPPING` until a separately verified `OFFICIAL_RESOLUTION` is supplied; a
-restart does not recover prior paper positions.  See
+```bash
+npm run runtime:live -- paper \
+  --duration-seconds 300 --record metrics \
+  --git-commit "$(git rev-parse HEAD)" \
+  --kj-paper-journal /root/polymarket-money-data/paper-runtime/kj-inputs.ndjson
+```
+
+The journal must be absolute, Linux-native, non-symlinked, and outside Git.  It
+fsyncs every accepted input, chains record hashes, maintains an independent
+tail checkpoint, and strictly replays contexts, fills, reservations, wallets,
+positions, and settlements after restart.  Inspect it offline with
+`npm run paper:inspect -- /absolute/path/to/kj-inputs.ndjson`.
+
+The real-time engine is still intentionally not an unattended closed loop:
+`scripts/live-runtime.ts` does not currently supply official resolution events.
+An ended market therefore remains `STOPPING` until separately verified
+`OFFICIAL_RESOLUTION` evidence is supplied.  `monitor` mode never mutates K/J
+wallets, and neither mode has an order-submission path.  See
 `docs/batches/batch-06-kj-paper/live-context.md` for the exact boundary.

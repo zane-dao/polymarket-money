@@ -133,8 +133,9 @@ crossed, missing-fee, mixed-clock, future-time, and non-running market inputs.
 See `live-context.md`.  This does not yet execute the Python strategy or mutate
 a real-money portfolio.
 
-In `paper` mode, the TypeScript runtime now passes only ready contexts to
-`kj-paper-engine-v1`.  The engine owns independent J/K in-memory wallets,
+With an explicit `--kj-paper-journal`, the TypeScript runtime passes only ready
+contexts to `kj-paper-engine-v2`.  Without that option it emits context evidence
+but disables K/J wallet mutation.  The engine owns independent J/K wallets,
 five-second EWMA state, frozen intents, worst-case cash reservations, one-second
 fill latency, maximum-slippage/no-visible-size rejection, partial fills,
 positions, and `INIT -> RUNNING -> STOPPING -> DONE` market state.  Context,
@@ -142,13 +143,23 @@ signal-input, intent, and settlement identities are idempotent and conflicting
 reuse fails closed.  A later context can reduce a frozen quantity but cannot
 recompute it from a future price.
 
+Every applied context or official settlement is first fsynced to a strict
+append-only NDJSON input journal.  Records carry contiguous sequence numbers and
+a SHA-256 chain; a separately atomically published checkpoint anchors the tail.
+Recovery validates exact fields, context reconstruction, engine version/config,
+market/signal/context identity, per-clock watermarks, the hash chain, and the
+checkpoint before deterministic replay.  A durable journal record ahead of its
+checkpoint is healed; an incomplete line, modified record, missing checkpoint,
+or tail truncation fails closed.  Journals are Linux-native, non-symlinked, and
+outside Git.  `paper:inspect` replays one journal and exports the full wallet,
+position, market-ledger, pending-intent, and event-count snapshot.
+
 This real-time path is not claimed byte-equivalent to the Python historical
 runner: TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
 approximation, while Python uses its platform `erf`.  More importantly, the
-runtime does not yet obtain an official resolution or persist/recover engine
-state.  It therefore stops risk at interval end and waits for an explicit
-`OFFICIAL_RESOLUTION`; it cannot yet run unattended across restarts or settle a
-continuous sequence of markets.  A shared probability golden now bounds the
+runtime does not yet obtain an official resolution.  It therefore stops risk at
+interval end and waits for an explicit `OFFICIAL_RESOLUTION`; it cannot yet
+settle a continuous sequence of markets unattended.  A shared probability golden now bounds the
 TypeScript approximation to `0.0000002` absolute error against Python `erf` at
 representative and clamped-tail z-scores; full EWMA-to-intent cross-language
 decision parity remains unproven.

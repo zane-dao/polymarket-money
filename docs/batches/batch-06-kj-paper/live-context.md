@@ -22,9 +22,10 @@ missing or invalid evidence yields a reason and no context.
 
 ## Real-time paper consumer
 
-Only runtime `paper` mode passes ready contexts to
-`execution/src/runtime/kj-paper-engine.ts`.  Runtime `monitor` mode emits the
-context but never mutates K/J wallets.  The versioned engine currently models:
+Only runtime `paper` mode with an explicit `--kj-paper-journal` passes ready
+contexts to `execution/src/runtime/kj-paper-engine.ts`.  Runtime `monitor` mode,
+and paper mode without the journal option, emit the context but never mutate K/J
+wallets.  The versioned engine currently models:
 
 - global J single-EWMA and K fast/slow-EWMA signal state;
 - independent 10,000-unit J/K in-memory wallets and market ledgers;
@@ -39,8 +40,18 @@ context but never mutates K/J wallets.  The versioned engine currently models:
 - deduplication with rejection of conflicting context, signal input,
   settlement ID, and second settlement-per-market content.
 
-Snapshots expose `kjPaperEngineVersion`, incremental `kjPaperEvents`, J/K cash
-and available cash, and the current market state.  Events bind deterministic
+Before engine mutation, accepted contexts are fsynced to
+`kj-paper-input-journal-v1`.  The journal validates exact reconstructed context,
+engine version/config, identity conflicts and per-clock order; each record is
+SHA-256 chained.  An atomic side checkpoint detects valid-line tail truncation
+while allowing a crash after journal fsync but before checkpoint publication to
+self-heal.  Restart strictly replays the journal into the same engine state.
+Symlink paths, Git-local storage, DrvFS, modified records, incomplete lines,
+missing anchors, reversed watermarks and conflicting identities fail closed.
+
+Snapshots expose `kjPaperEngineVersion`, incremental `kjPaperEvents`, a full
+`kjPaperState` (wallets, reservations, positions, market ledgers and pending
+intents), journal count/hash, and the current market state.  Events bind deterministic
 IDs to decision or execution context hashes, receive ordinals, intent data,
 fees, position-after-fill, and official settlement evidence.
 
@@ -52,8 +63,9 @@ This is not yet an unattended continuous paper service:
    official resolution.  At interval end the engine cancels pending risk and
    remains `STOPPING`; only an explicit `OFFICIAL_RESOLUTION` can settle wallets
    and enter `DONE`.
-2. State and the audit event list are in memory.  Restart recovery and durable
-   reconciliation are not implemented.
+2. Journal replay restores accepted inputs and deterministic paper state, but it
+   is not an exchange reconciliation mechanism and has no private account or
+   order evidence by design.
 3. TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
    approximation.  `data/golden/batch-06/kj-probability-v1.json` bounds it to
    `0.0000002` absolute error against Python `erf` for representative and

@@ -1,7 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { appendFile, mkdir, statfs, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
@@ -82,6 +82,7 @@ import {
   RawSegmentWriter,
   type ClosedSegment,
 } from "../execution/src/storage/raw-segment.js";
+import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
 
 type Mode = "monitor" | "paper";
 type StreamName = "clob" | "chainlink" | "polymarket_binance" | "binance_spot" | "binance_perpetual" | "gamma";
@@ -92,6 +93,7 @@ interface RuntimeOptions {
   readonly record: RecordingOptions;
   readonly outputPath: string | null;
   readonly summaryPath: string | null;
+  readonly kjPaperJournalPath: string | null;
   readonly json: boolean;
   readonly collectorGitCommit: string;
   readonly preregistration: R2Preregistration | null;
@@ -272,12 +274,26 @@ async function options(): Promise<RuntimeOptions> {
     const expectedOutput = resolve(dataRoot, "experiments", preregistration.experiment_id);
     if (outputPath !== expectedOutput) throw new Error("R2 output differs from the frozen output_path");
   }
+  const configuredKJJournal = argument("--kj-paper-journal");
+  if (configuredKJJournal !== undefined && !isAbsolute(configuredKJJournal)) {
+    throw new Error("--kj-paper-journal must be an absolute path");
+  }
+  const kjPaperJournalPath = configuredKJJournal === undefined
+    ? null
+    : resolve(configuredKJJournal);
+  if (kjPaperJournalPath !== null && mode !== "paper") {
+    throw new Error("--kj-paper-journal is available only in paper mode");
+  }
+  if (kjPaperJournalPath !== null && preregistration !== null) {
+    throw new Error("frozen R2 sessions cannot enable the K/J paper journal");
+  }
   return {
     mode,
     durationMilliseconds: durationSeconds * 1_000,
     record,
     outputPath,
     summaryPath: argument("--summary") === undefined ? null : resolve(argument("--summary")!),
+    kjPaperJournalPath,
     json: process.argv.includes("--json"),
     collectorGitCommit: commit,
     preregistration,
@@ -538,15 +554,24 @@ class RuntimeState {
   readonly opportunities = new Map<ObserverName, number>();
   readonly opportunityDurations: number[] = [];
   readonly paperAudits: PaperAudit[] = [];
-  readonly kjPaperEngine = new KJPaperEngine();
-  kjPaperEventCursor = 0;
+  readonly kjPaperJournal: KJPaperJournal | null;
+  readonly kjPaperEngine: KJPaperEngine | null;
+  kjPaperEventCursor: number;
   readonly opportunityConfig: OpportunityRuntimeConfig;
   completeSetCandidateSince: number | null = null;
 
-  constructor(sessionId: string, gitCommit: string, opportunityConfig: OpportunityRuntimeConfig) {
+  constructor(
+    sessionId: string,
+    gitCommit: string,
+    opportunityConfig: OpportunityRuntimeConfig,
+    kjPaperJournal: KJPaperJournal | null,
+  ) {
     this.sessionId = sessionId;
     this.gitCommit = gitCommit;
     this.opportunityConfig = opportunityConfig;
+    this.kjPaperJournal = kjPaperJournal;
+    this.kjPaperEngine = kjPaperJournal?.engine ?? null;
+    this.kjPaperEventCursor = this.kjPaperEngine?.events().length ?? 0;
   }
 }
 
@@ -1330,10 +1355,10 @@ async function dashboardLoop(
     previousBookState = bookState;
     const paperSnapshot = snapshot(state);
     const kjContext = kjStrategyContext(state, paperSnapshot);
-    if (config.mode === "paper" && kjContext.ready) {
-      state.kjPaperEngine.ingest(kjContext.context);
+    if (config.mode === "paper" && kjContext.ready && state.kjPaperJournal !== null) {
+      await state.kjPaperJournal.appendContext(kjContext.context);
     }
-    const kjAllEvents = state.kjPaperEngine.events();
+    const kjAllEvents = state.kjPaperEngine?.events() ?? [];
     const kjPaperEvents = kjAllEvents.slice(state.kjPaperEventCursor);
     state.kjPaperEventCursor = kjAllEvents.length;
     const audits = paperSnapshot === null ? [] : opportunityAudits(paperSnapshot, state, Date.now());
@@ -1368,12 +1393,16 @@ async function dashboardLoop(
       kjStrategyContextReason: kjContext.ready ? null : kjContext.reason,
       kjStrategyContext: kjContext.ready ? kjContext.context : null,
       kjPaperEngineVersion: KJ_PAPER_ENGINE_VERSION,
+      kjPaperEnabled: state.kjPaperJournal !== null,
+      kjPaperJournalRecordCount: state.kjPaperJournal?.recordCount ?? null,
+      kjPaperJournalLastRecordHash: state.kjPaperJournal?.lastRecordHash ?? null,
       kjPaperEvents,
-      kjPaperWallets: config.mode === "paper" ? {
+      kjPaperState: state.kjPaperEngine?.snapshot() ?? null,
+      kjPaperWallets: state.kjPaperEngine === null ? null : {
         J_FEE_AWARE: state.kjPaperEngine.wallet("J_FEE_AWARE"),
         K_DUAL_VOL: state.kjPaperEngine.wallet("K_DUAL_VOL"),
-      } : null,
-      kjPaperCurrentMarketState: config.mode === "paper" && state.currentMarket !== null
+      },
+      kjPaperCurrentMarketState: state.kjPaperEngine !== null && state.currentMarket !== null
         ? state.kjPaperEngine.state(state.currentMarket.marketId)
         : null,
       continuity: "UNVERIFIED",
@@ -1422,19 +1451,32 @@ async function main(): Promise<void> {
     emergencySink: new EmergencyReceiptFileSink(incidentDirectory, runId),
   });
   const recorder = new RuntimeRecorder(config, runId);
+  let kjPaperJournal: KJPaperJournal | null = null;
   try {
+    if (config.kjPaperJournalPath !== null) {
+      kjPaperJournal = await KJPaperJournal.open(config.kjPaperJournalPath);
+    }
     await recorder.open();
   } catch (openError) {
+    let cleanupError: unknown = null;
+    try {
+      await kjPaperJournal?.close();
+    } catch (journalCleanupError) {
+      cleanupError = journalCleanupError;
+    }
+    const reportedOpenError = cleanupError === null
+      ? openError
+      : new AggregateError([openError, cleanupError], "runtime storage open and cleanup both failed");
     await failureRuntime.terminate(createRuntimeIncident({
-      errorClass: openError instanceof Error ? openError.name : "UnknownError",
-      message: openError instanceof Error ? openError.message : String(openError),
-      stream: "runtime-recorder",
+      errorClass: reportedOpenError instanceof Error ? reportedOpenError.name : "UnknownError",
+      message: reportedOpenError instanceof Error ? reportedOpenError.message : String(reportedOpenError),
+      stream: "runtime-storage",
       connectionRole: "storage",
       connectionId: runId,
       receiveStamp: publicReceiveClock().capture(),
       rawReference: null,
       actionTaken: "TERMINATE_SESSION",
-      stopReason: "RAW_WRITER_OPEN_FAILED",
+      stopReason: "RUNTIME_STORAGE_OPEN_FAILED",
     }));
     return;
   }
@@ -1447,7 +1489,12 @@ async function main(): Promise<void> {
     leadLagConfigHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
     preregistrationConfigHash: config.preregistration?.config_sha256 ?? null,
   });
-  const state = new RuntimeState(runId, config.collectorGitCommit, opportunityConfig);
+  const state = new RuntimeState(
+    runId,
+    config.collectorGitCommit,
+    opportunityConfig,
+    kjPaperJournal,
+  );
   const stats = newStats();
   const started = Date.now();
   const end = started + config.durationMilliseconds;
@@ -1529,6 +1576,27 @@ async function main(): Promise<void> {
       process.stderr.write(`runtime recorder close failed after terminal transition: ${String(closeError)}\n`);
     }
   }
+  try {
+    await kjPaperJournal?.close();
+  } catch (journalCloseError) {
+    if (!failureRuntime.terminated) {
+      await failureRuntime.terminate(createRuntimeIncident({
+        errorClass: journalCloseError instanceof Error ? journalCloseError.name : "UnknownError",
+        message: journalCloseError instanceof Error
+          ? journalCloseError.message
+          : String(journalCloseError),
+        stream: "kj-paper-journal",
+        connectionRole: "storage",
+        connectionId: runId,
+        receiveStamp: publicReceiveClock().capture(),
+        rawReference: null,
+        actionTaken: "TERMINATE_SESSION",
+        stopReason: "KJ_PAPER_JOURNAL_CLOSE_FAILED",
+      }));
+    } else {
+      process.stderr.write(`K/J paper journal close failed after terminal transition: ${String(journalCloseError)}\n`);
+    }
+  }
   if (state.rawTriggerCount > 0 && state.leadLagObservations.length > 0) {
     const leadLagEvidence = state.leadLagObservations;
     if (leadLagEvidence.length > 0) {
@@ -1572,11 +1640,17 @@ async function main(): Promise<void> {
     opportunityDurationMilliseconds: state.opportunityDurations,
     paperAuditCount: state.paperAudits.length,
     kjPaperEngineVersion: KJ_PAPER_ENGINE_VERSION,
-    kjPaperEventCount: state.kjPaperEngine.events().length,
-    kjPaperWallets: config.mode === "paper" ? {
+    kjPaperEnabled: state.kjPaperJournal !== null,
+    kjPaperJournalPath: state.kjPaperJournal?.path ?? null,
+    kjPaperJournalRecordCount: state.kjPaperJournal?.recordCount ?? null,
+    kjPaperJournalRecoveredInputCount: state.kjPaperJournal?.recoveredInputCount ?? null,
+    kjPaperJournalLastRecordHash: state.kjPaperJournal?.lastRecordHash ?? null,
+    kjPaperEventCount: state.kjPaperEngine?.events().length ?? 0,
+    kjPaperState: state.kjPaperEngine?.snapshot() ?? null,
+    kjPaperWallets: state.kjPaperEngine === null ? null : {
       J_FEE_AWARE: state.kjPaperEngine.wallet("J_FEE_AWARE"),
       K_DUAL_VOL: state.kjPaperEngine.wallet("K_DUAL_VOL"),
-    } : null,
+    },
     opportunityObservationCount: state.observations.length,
     leadLagOpportunityObservationCount: state.leadLagObservations.length,
     opportunityConfig: state.opportunityConfig,

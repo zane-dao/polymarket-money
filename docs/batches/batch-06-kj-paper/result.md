@@ -48,7 +48,7 @@ gross-minus-fee identity, and zero position after settlement.
 
 ```text
 Python: 199 passed
-Node/TypeScript: 106 passed
+Node/TypeScript: 110 passed
 Ruff: All checks passed
 git diff --check: passed
 ```
@@ -69,12 +69,15 @@ cancellation, shadow, or live action occurred.
 4. Historical settlement uses official final outcome evidence, not point-in-time
    Chainlink open/close observations.  It is valid for outcome PnL but not an
    oracle-latency study.
-5. Public runtime `paper` mode now consumes the immutable K/J StrategyContext
-   through `kj-paper-engine-v1`, with independent wallets, reservations,
+5. Public runtime `paper` mode can consume the immutable K/J StrategyContext
+   through `kj-paper-engine-v2`, with independent wallets, reservations,
    delayed/partial/no-fill handling, positions, and explicit official-only
-   settlement state.  The runtime still has no trusted official-resolution
-   adapter and no persisted recovery, so ended markets remain `STOPPING` and
-   this is not yet an unattended continuous paper service.
+   settlement state.  Mutation requires an explicit durable hash-chain journal;
+   strict replay restores wallet/position/pending state, and checkpoint tests
+   cover crash-ahead healing, record modification, incomplete tail and valid-line
+   truncation.  The runtime still has no trusted official-resolution adapter, so
+   ended markets remain `STOPPING` and this is not yet an unattended continuous
+   paper service.
 6. The TypeScript real-time probability uses a documented deterministic
    normal-CDF approximation.  A shared golden bounds probability error against
    Python `erf` to `0.0000002` on representative/clamped-tail z-scores, but full

@@ -18,7 +18,7 @@ class ConfigurationTest(unittest.TestCase):
         self.assertIn("LIVE_TRADING_ENABLED=false", env_example)
         self.assertIn("DRY_RUN=true", env_example)
         self.assertIn("CREDENTIAL_MODE=none", env_example)
-        self.assertIn("POLY_DATA_ROOT=/tmp/polymarket-money-data", env_example)
+        self.assertIn("POLY_DATA_ROOT=/root/polymarket-money-data", env_example)
         self.assertNotIn("FORCE_PROD", env_example)
         self.assertNotIn("\nPROD=", env_example)
 

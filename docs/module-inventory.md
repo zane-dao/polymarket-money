@@ -139,12 +139,15 @@
   stale、crossed、未来时间、混合时钟域和缺 fee 均失败关闭。
 - `execution/src/runtime/kj-paper-engine.ts` 只在 runtime `paper` 模式且显式提供 journal 时消费 ready context，
   实现独立 J/K 内存钱包、最坏成交额预留、冻结 intent、1 秒延迟、滑点/no-fill/partial fill、
-  仓位和 `INIT -> RUNNING -> STOPPING -> DONE`。`monitor` 不改钱包，只有显式
-  `OFFICIAL_RESOLUTION` 才能结算；官方 resolution adapter 仍缺失，不能称为
-  无人值守实时闭环。共享 probability golden 已把 TypeScript 近似与 Python `erf` 的代表点
+  仓位和 `INIT -> RUNNING -> STOPPING -> DONE`。`monitor` 不改钱包；Gamma 原始响应只有在
+  market/token/time、closed/status 和唯一 1/0 winner 全部验证后才形成
+  `OFFICIAL_RESOLUTION`。共享 probability golden 已把 TypeScript 近似与 Python `erf` 的代表点
   绝对误差限制为 `0.0000002`；第二份共享 golden 已对拍 J 拒单与 K 从 EWMA、intent、fill
   到官方结算/PnL 的代表路径，但不冒充所有分支穷举等价。
 - `execution/src/storage/kj-paper-journal.ts` 对每个输入 fsync，使用连续序号、SHA-256 链和
   独立 checkpoint 锚定尾部；严格 replay 可恢复钱包、仓位、预留、pending intent 和事件。
   修改记录、半行、整行尾截断、symlink/DrvFS/Git 内路径、身份冲突与时钟倒退均失败关闭；
   journal 领先 checkpoint 的单一崩溃窗口可自愈。`paper:inspect` 可离线导出恢复后全状态。
+- `paper:mvp` 在 context 前 hash-bind 运行计划；`paper:settle`、`paper:finalize` 与
+  `paper:report` 已形成延迟结算、统一验收和逐市场导出的恢复闭环。当前仍缺新 HEAD 的
+  计划绑定多市场公开运行证据，不能用旧单场报告证明稳定性。

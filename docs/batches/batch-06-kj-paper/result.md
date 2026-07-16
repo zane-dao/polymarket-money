@@ -48,13 +48,31 @@ gross-minus-fee identity, and zero position after settlement.
 
 ```text
 Python: 200 passed
-Node/TypeScript: 111 passed
+Node/TypeScript: 120 passed
 Ruff: All checks passed
 git diff --check: passed
 ```
 
-No network, credentials, private user channel, signing, order submission,
-cancellation, shadow, or live action occurred.
+Approved bounded public network access was later used for official protocol
+verification and paper-only runtime acceptance.  No credentials, private user
+channel, signing, order submission, cancellation, shadow, or live action
+occurred.
+
+## Public real-time MVP evidence
+
+The public runtime now has an exact Gamma resolution adapter, durable raw
+settlement evidence, target-window cutoff, bounded settlement recovery, shared
+initial/recovery acceptance, and replay-verified reports.  One complete public
+market run at collector commit `476f21f` returned `accepted=true`, with no
+pending risk or private/live activity.  That run predates hash-chained
+`RUN_PLAN`, so its report is correctly labeled
+`DESCRIPTIVE_PAPER_ONLY_LEGACY_UNBOUND_PLAN` rather than being promoted to a
+precommitted multi-market study.
+
+Current HEAD `ce1d819` adds `paper:mvp`, `paper:settle`, `paper:finalize`, and
+`paper:report`.  Future runs bind run ID, target count/window, and collector
+commit before the first context.  The exact current completion boundary is in
+`completion-audit.md`.
 
 ## Remaining gaps
 
@@ -69,15 +87,15 @@ cancellation, shadow, or live action occurred.
 4. Historical settlement uses official final outcome evidence, not point-in-time
    Chainlink open/close observations.  It is valid for outcome PnL but not an
    oracle-latency study.
-5. Public runtime `paper` mode can consume the immutable K/J StrategyContext
+5. Public runtime `paper` mode consumes the immutable K/J StrategyContext
    through `kj-paper-engine-v2`, with independent wallets, reservations,
    delayed/partial/no-fill handling, positions, and explicit official-only
    settlement state.  Mutation requires an explicit durable hash-chain journal;
    strict replay restores wallet/position/pending state, and checkpoint tests
    cover crash-ahead healing, record modification, incomplete tail and valid-line
-   truncation.  The runtime still has no trusted official-resolution adapter, so
-   ended markets remain `STOPPING` and this is not yet an unattended continuous
-   paper service.
+   truncation.  Exact Gamma responses are now revalidated into official
+   settlement; delayed results can be settled and finalized without opening a
+   new market.  Current plan-bound multi-market public evidence is still pending.
 6. The TypeScript real-time probability uses a documented deterministic
    normal-CDF approximation.  A shared golden bounds probability error against
    Python `erf` to `0.0000002` on representative/clamped-tail z-scores.  A second

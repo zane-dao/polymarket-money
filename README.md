@@ -179,4 +179,6 @@ identity, `umaResolutionStatus=resolved`, and a unique exact 1/0 outcome can
 create `OFFICIAL_RESOLUTION`; unresolved, ambiguous, premature, or conflicting
 evidence fails closed.  `monitor` mode never mutates K/J wallets, and neither
 mode has an order-submission path.  See
-`docs/batches/batch-06-kj-paper/live-context.md` for the exact boundary.
+`docs/batches/batch-06-kj-paper/live-context.md` for the exact boundary and
+`docs/batches/batch-06-kj-paper/completion-audit.md` for the requirement-by-
+requirement completion status and next evidence gate.

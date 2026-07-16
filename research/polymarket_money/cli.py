@@ -24,6 +24,14 @@ from .backtest import (
     ReplayEngine,
 )
 from .normalized import NormalizedDatasetBuilder
+from .historical_adapter import ExternalHistoricalDatasetAdapter
+from .kj_paper import (
+    KJStrategy,
+    PaperScenario,
+    export_kj_paper,
+    run_kj_paper,
+)
+from .kj_ewma import build_kj_ewma_artifact, load_kj_ewma_artifact
 from .runtime import (
     GIB,
     MIN_FREE_BYTES,
@@ -97,6 +105,84 @@ def _run_replay(args: argparse.Namespace) -> int:
     )
     result = engine.run(strategy, settlement_times=_settlement_times(dataset))
     _write_json(result.to_mapping(), Path(args.output) if args.output else None)
+    return 0
+
+
+def _run_paper_kj(args: argparse.Namespace) -> int:
+    dataset_path = Path(args.dataset).resolve(strict=True)
+    receipt, rows = ExternalHistoricalDatasetAdapter.load(dataset_path)
+    if receipt.dataset_hash != args.dataset_hash:
+        raise SystemExit("historical dataset hash does not match --dataset-hash")
+    strategies = (
+        tuple(KJStrategy)
+        if args.strategy == "both"
+        else (KJStrategy(args.strategy),)
+    )
+    result = run_kj_paper(
+        receipt,
+        rows,
+        strategies=strategies,
+        split=args.split,
+        horizon_seconds=args.horizon,
+        scenario=PaperScenario(args.scenario),
+        initial_cash=Decimal(args.initial_cash),
+        ewma_artifact=(
+            None
+            if args.ewma_artifact is None
+            else load_kj_ewma_artifact(Path(args.ewma_artifact).resolve(strict=True))
+        ),
+    )
+    output = Path(args.output).resolve()
+    export_kj_paper(result, output)
+    _write_json(
+        {
+            "output": str(output),
+            "result_hash": result["result_hash"],
+            "signal_fidelity": result["signal_fidelity"],
+            "runs": {
+                name: {
+                    key: run[key]
+                    for key in (
+                        "decision_count",
+                        "filled_count",
+                        "final_cash",
+                        "net_pnl",
+                        "max_drawdown",
+                        "brier_score",
+                        "log_loss",
+                        "net_without_best_3_days",
+                    )
+                }
+                for name, run in result["runs"].items()
+            },
+        },
+        None,
+    )
+    return 0
+
+
+def _run_build_kj_ewma(args: argparse.Namespace) -> int:
+    dataset_path = Path(args.dataset).resolve(strict=True)
+    receipt, rows = ExternalHistoricalDatasetAdapter.load(dataset_path)
+    if receipt.dataset_hash != args.dataset_hash:
+        raise SystemExit("historical dataset hash does not match --dataset-hash")
+    destination = build_kj_ewma_artifact(
+        receipt,
+        rows,
+        archive_directory=Path(args.binance_archives).resolve(strict=True),
+        output_root=Path(args.output_root).resolve(),
+    )
+    artifact = load_kj_ewma_artifact(destination)
+    _write_json(
+        {
+            "artifact": str(destination),
+            "artifact_hash": artifact.artifact_hash,
+            "dataset_hash": artifact.dataset_hash,
+            "sample_count": len(artifact.samples),
+            "signal_fidelity": artifact.manifest["signal_fidelity"],
+        },
+        None,
+    )
     return 0
 
 
@@ -298,6 +384,33 @@ def parser() -> argparse.ArgumentParser:
     replay.add_argument("--output")
     replay.add_argument("--allow-dirty-fixture", action="store_true", help=argparse.SUPPRESS)
     replay.set_defaults(handler=_run_replay)
+
+    paper_kj = commands.add_parser("paper-kj")
+    paper_kj.add_argument("--dataset", required=True)
+    paper_kj.add_argument("--dataset-hash", required=True)
+    paper_kj.add_argument(
+        "--strategy",
+        choices=("both", *(item.value for item in KJStrategy)),
+        default="both",
+    )
+    paper_kj.add_argument("--split", choices=("TRAIN", "VALIDATION", "FINAL_TEST"), default="FINAL_TEST")
+    paper_kj.add_argument("--horizon", type=int, choices=(15, 30, 60), default=30)
+    paper_kj.add_argument(
+        "--scenario",
+        choices=tuple(item.value for item in PaperScenario),
+        default=PaperScenario.BASE_1S.value,
+    )
+    paper_kj.add_argument("--initial-cash", default="10000")
+    paper_kj.add_argument("--ewma-artifact")
+    paper_kj.add_argument("--output", required=True)
+    paper_kj.set_defaults(handler=_run_paper_kj)
+
+    build_ewma = commands.add_parser("build-kj-ewma")
+    build_ewma.add_argument("--dataset", required=True)
+    build_ewma.add_argument("--dataset-hash", required=True)
+    build_ewma.add_argument("--binance-archives", required=True)
+    build_ewma.add_argument("--output-root", required=True)
+    build_ewma.set_defaults(handler=_run_build_kj_ewma)
 
     for name in ("monitor", "paper"):
         live = commands.add_parser(name)

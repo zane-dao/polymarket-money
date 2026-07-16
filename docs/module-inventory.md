@@ -121,3 +121,16 @@
 - research 的 notebooks/datasets/features/backtest/reports：仍等待只读数据契约和数据集
   provenance，不含策略或回测迁移。
 - `scripts`：当前保持空，避免误引入会联网或链上执行的旧脚本。
+
+## 2026-07-17 K/J 收敛更新
+
+- `research/polymarket_money/kj_paper.py` 已把旧 J/K 的公开、可验证业务规则重写为新仓纯
+  函数：正态概率、fee-aware edge、临界带、Kelly、现金/深度、延迟成交、独立资金池、
+  仓位、官方标签结算和 PnL。
+- 入口为 `poly-lab paper-kj`，只接受 hash 验证通过的 Batch 3B 历史 receipt，并导出
+  summary JSON、NDJSON 事件和 CSV；没有导入旧 runtime，也没有使用开源引擎实现。
+- 当前已从 `APPROXIMATE_VOLATILITY_PROXY` 提升到
+  `CANONICAL_5S_EWMA_OFFICIAL_BINANCE_1S_CLOSE`：官方 1 秒归档产生完整 point-in-time
+  单速/fast/slow EWMA，但仍不是旧逐笔流、K 的 USD 换算和旧 `vol_epoch`，因而不能称为
+  Strict legacy-equivalent K/J。权威设计与结果见
+  `docs/batches/batch-06-kj-paper/`。

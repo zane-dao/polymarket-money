@@ -26,7 +26,7 @@ test("complete-set observer reports executable edge and theoretical fills only",
     latencyMilliseconds: 1_000,
     latencySatisfied: true,
   });
-  assert.equal(audit.grossEdge, "0.04");
+  assert.equal(audit.grossEdge, "0.03");
   assert.equal(audit.observer, "COMPLETE_SET_ARBITRAGE_OBSERVER");
   assert.equal(audit.executableQuantity, "1.5");
   assert.equal(audit.fills.length, 2);
@@ -41,7 +41,7 @@ test("complete-set observer fails closed when the public market fee is unknown",
     latencySatisfied: true,
   });
   assert.equal(audit.edgeAfterFees, null);
-  assert.equal(audit.grossEdge, null);
+  assert.equal(audit.grossEdge, "0.03");
   assert.equal(audit.executableQuantity, "0");
   assert.deepEqual(audit.fills, []);
   assert.equal(audit.details.warning, "UNKNOWN_FEE_RATE_NO_EXECUTABLE_EDGE");

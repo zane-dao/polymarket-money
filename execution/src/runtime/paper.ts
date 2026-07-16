@@ -129,7 +129,11 @@ export function noTradeObserver(snapshot: PaperSnapshot): PaperAudit {
 
 export function completeSetArbitrageObserver(
   snapshot: PaperSnapshot,
-  options: { readonly feeRate: string | null; readonly latencyMilliseconds: number },
+  options: {
+    readonly feeRate: string | null;
+    readonly latencyMilliseconds: number;
+    readonly latencySatisfied: boolean;
+  },
 ): PaperAudit {
   if (!Number.isSafeInteger(options.latencyMilliseconds) || options.latencyMilliseconds < 0) {
     throw new Error("latencyMilliseconds must be a non-negative safe integer");
@@ -148,6 +152,7 @@ export function completeSetArbitrageObserver(
       details: {
         feeRate: null,
         configuredLatencyMilliseconds: String(options.latencyMilliseconds),
+        latencySatisfied: options.latencySatisfied,
         warning: "UNKNOWN_FEE_RATE_NO_EXECUTABLE_EDGE",
       },
     };
@@ -157,7 +162,7 @@ export function completeSetArbitrageObserver(
   const downFee = multiply(multiply(feeRate, downAsk), subtract(ONE, downAsk));
   const edge = subtract(ONE, add(add(upAsk, downAsk), add(upFee, downFee)));
   const quantity = minimum(decimal(snapshot.up.askSize), decimal(snapshot.down.askSize));
-  const executable = edge.coefficient > 0n && quantity.coefficient > 0n;
+  const executable = edge.coefficient > 0n && quantity.coefficient > 0n && options.latencySatisfied;
   return {
     ...base(snapshot, "COMPLETE_SET_ARBITRAGE_OBSERVER"),
     fills: executable
@@ -174,7 +179,10 @@ export function completeSetArbitrageObserver(
     details: {
       feeRate: options.feeRate,
       configuredLatencyMilliseconds: String(options.latencyMilliseconds),
-      warning: "THEORETICAL_TWO_LEG_EXECUTION_NOT_ATOMIC",
+      latencySatisfied: options.latencySatisfied,
+      warning: options.latencySatisfied
+        ? "THEORETICAL_TWO_LEG_EXECUTION_NOT_ATOMIC"
+        : "WAITING_FOR_ACTUAL_POST_LATENCY_QUOTE",
     },
   };
 }

@@ -21,7 +21,11 @@ const snapshot: PaperSnapshot = Object.freeze({
 });
 
 test("complete-set observer reports executable edge and theoretical fills only", () => {
-  const audit = completeSetArbitrageObserver(snapshot, { feeRate: "0", latencyMilliseconds: 1_000 });
+  const audit = completeSetArbitrageObserver(snapshot, {
+    feeRate: "0",
+    latencyMilliseconds: 1_000,
+    latencySatisfied: true,
+  });
   assert.equal(audit.observer, "COMPLETE_SET_ARBITRAGE_OBSERVER");
   assert.equal(audit.executableQuantity, "1.5");
   assert.equal(audit.fills.length, 2);
@@ -30,11 +34,26 @@ test("complete-set observer reports executable edge and theoretical fills only",
 });
 
 test("complete-set observer fails closed when the public market fee is unknown", () => {
-  const audit = completeSetArbitrageObserver(snapshot, { feeRate: null, latencyMilliseconds: 1_000 });
+  const audit = completeSetArbitrageObserver(snapshot, {
+    feeRate: null,
+    latencyMilliseconds: 1_000,
+    latencySatisfied: true,
+  });
   assert.equal(audit.edgeAfterFees, null);
   assert.equal(audit.executableQuantity, "0");
   assert.deepEqual(audit.fills, []);
   assert.equal(audit.details.warning, "UNKNOWN_FEE_RATE_NO_EXECUTABLE_EDGE");
+});
+
+test("taker observer cannot create a theoretical fill before observed latency elapses", () => {
+  const audit = completeSetArbitrageObserver(snapshot, {
+    feeRate: "0",
+    latencyMilliseconds: 1_000,
+    latencySatisfied: false,
+  });
+  assert.deepEqual(audit.fills, []);
+  assert.equal(audit.executableQuantity, "0");
+  assert.equal(audit.details.warning, "WAITING_FOR_ACTUAL_POST_LATENCY_QUOTE");
 });
 
 test("maker observer never fabricates a fill or queue position", () => {

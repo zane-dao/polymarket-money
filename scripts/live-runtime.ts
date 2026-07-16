@@ -407,6 +407,7 @@ class RuntimeState {
   readonly opportunities = new Map<ObserverName, number>();
   readonly opportunityDurations: number[] = [];
   readonly paperAudits: PaperAudit[] = [];
+  completeSetCandidateSince: number | null = null;
 }
 
 function newStats(): Record<StreamName, StreamStats> {
@@ -686,11 +687,24 @@ function snapshot(state: RuntimeState): PaperSnapshot | null {
   };
 }
 
-function opportunityAudits(value: PaperSnapshot, state: RuntimeState): readonly PaperAudit[] {
-  const complete = completeSetArbitrageObserver(value, {
+function opportunityAudits(value: PaperSnapshot, state: RuntimeState, now: number): readonly PaperAudit[] {
+  const candidate = completeSetArbitrageObserver(value, {
     feeRate: state.currentMarket?.takerFeeRate ?? null,
     latencyMilliseconds: 1_000,
+    latencySatisfied: false,
   });
+  const candidateDetected = candidate.edgeAfterFees !== null && Number(candidate.edgeAfterFees) > 0;
+  if (!candidateDetected) state.completeSetCandidateSince = null;
+  else state.completeSetCandidateSince ??= now;
+  const latencySatisfied = state.completeSetCandidateSince !== null
+    && now - state.completeSetCandidateSince >= 1_000;
+  const complete = latencySatisfied
+    ? completeSetArbitrageObserver(value, {
+        feeRate: state.currentMarket?.takerFeeRate ?? null,
+        latencyMilliseconds: 1_000,
+        latencySatisfied: true,
+      })
+    : candidate;
   let change = "0";
   if (state.spot !== null && state.previousSpot !== null) {
     change = String(((Number(state.spot.value) / Number(state.previousSpot.value)) - 1) * 10_000);
@@ -724,7 +738,7 @@ async function dashboardLoop(config: RuntimeOptions, end: number, started: numbe
     if (bookState === BookState.STALE && previousBookState !== BookState.STALE) state.staleCount += 1;
     previousBookState = bookState;
     const paperSnapshot = snapshot(state);
-    const audits = paperSnapshot === null ? [] : opportunityAudits(paperSnapshot, state);
+    const audits = paperSnapshot === null ? [] : opportunityAudits(paperSnapshot, state, Date.now());
     trackOpportunities(audits, state, Date.now());
     if (config.mode === "paper") state.paperAudits.push(...audits);
     const storage = config.outputPath === null ? null : await statfs(config.outputPath);

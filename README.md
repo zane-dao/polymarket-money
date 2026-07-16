@@ -117,7 +117,8 @@ refuses dirty tracked runtime code, never overwrites a run, and marks the run
 accepted only after every target market is settled with no pending intents,
 terminal failure, credential access, live client, user channel, or real order.
 The default settlement grace is ten minutes and the target interval cutoff
-prevents the next market from leaking into the run.
+prevents the next market from leaking into the run.  The process exits early
+when capture has ended and every registered market has official settlement.
 
 If an official result arrives after the finite run or the process was
 interrupted, resume only the frozen target window without collecting another

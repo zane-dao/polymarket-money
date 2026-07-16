@@ -66,7 +66,8 @@ fees, position-after-fill, and official settlement evidence.
 waits for the next complete interval, records a committed code ID, runs both
 wallets, enforces a half-open target interval cutoff, includes a finite
 ten-minute default resolution grace period, and emits `result.json` only after
-replay-based inspection.  It accepts at most 12 markets per run.
+replay-based inspection.  It exits the grace window early once capture is over
+and every registered market is settled.  It accepts at most 12 markets per run.
 
 1. Journal replay restores accepted inputs and deterministic paper state, but it
    is not an exchange reconciliation mechanism and has no private account or

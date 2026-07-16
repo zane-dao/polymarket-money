@@ -1220,6 +1220,7 @@ async function marketLoop(
 }
 
 async function settlementLoop(
+  captureEnd: number,
   deadline: number,
   state: RuntimeState,
   recorder: RuntimeRecorder,
@@ -1299,6 +1300,7 @@ async function settlementLoop(
       state.kjSettlementCandidates.delete(market.marketId);
       state.kjSettledMarketCount += 1;
     }
+    if (Date.now() >= captureEnd && state.kjSettlementCandidates.size === 0) break;
     if (Date.now() < deadline) {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000));
     }
@@ -1671,6 +1673,7 @@ async function main(): Promise<void> {
       ),
       dashboardLoop(config, end, started, state, recorder, stats, failureRuntime, sessionAbort.signal),
       settlementLoop(
+        end,
         end + config.kjSettlementGraceMilliseconds,
         state,
         recorder,

@@ -66,6 +66,7 @@ test("live runtime wires K/J mutation only behind explicit durable paper journal
   assert.match(runtime, /kjPaperEngineVersion:\s*KJ_PAPER_ENGINE_VERSION/u);
   assert.match(runtime, /kjPaperJournalLastRecordHash/u);
   assert.match(runtime, /settlementLoop\(/u);
+  assert.match(runtime, /Date\.now\(\)\s*>=\s*captureEnd\s*&&\s*state\.kjSettlementCandidates\.size\s*===\s*0/u);
   assert.match(runtime, /state\.kjPaperJournal\.appendGammaResolution/u);
   assert.match(runtime, /GammaResolutionPending/u);
   assert.match(runtime, /kjSettlementGraceMilliseconds/u);

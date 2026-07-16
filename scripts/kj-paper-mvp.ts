@@ -64,8 +64,15 @@ async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, comm
   const journal = await KJPaperJournal.open(plan.journalPath);
   try {
     const state = journal.engine.snapshot();
-    const completedMarkets = state.markets.filter((market) => market.state === "DONE").length;
-    const unsettledMarkets = journal.unsettledMarkets().map((market) => market.marketId);
+    const targetMarkets = state.markets.filter((market) => (
+      Date.parse(market.intervalStart) >= Date.parse(plan.firstFullMarketStart)
+      && Date.parse(market.intervalStart) < Date.parse(plan.captureEnd)
+    ));
+    const targetMarketIds = new Set(targetMarkets.map((market) => market.marketId));
+    const completedMarkets = targetMarkets.filter((market) => market.state === "DONE").length;
+    const unsettledMarkets = journal.unsettledMarkets()
+      .filter((market) => targetMarketIds.has(market.marketId))
+      .map((market) => market.marketId);
     const safety = object(summary.safety);
     const checks = Object.freeze({
       childExitedCleanly: exitCode === 0,
@@ -75,9 +82,10 @@ async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, comm
         && safety.liveClientConstructed === false
         && safety.userChannelConnected === false
         && safety.credentialsRead === false,
-      targetMarketsSettled: completedMarkets >= plan.targetMarketCount
-        && summary.kjSettledMarketCount === completedMarkets,
-      noPendingMarkets: unsettledMarkets.length === 0 && state.pendingIntents.length === 0,
+      targetMarketsObserved: targetMarkets.length === plan.targetMarketCount,
+      targetMarketsSettled: completedMarkets === plan.targetMarketCount,
+      noPendingMarkets: unsettledMarkets.length === 0
+        && state.pendingIntents.every((intent) => !targetMarketIds.has(intent.marketId)),
       durableInputsPresent: journal.recordCount > 1 && journal.lastRecordHash !== null,
     });
     const accepted = Object.values(checks).every(Boolean);
@@ -91,6 +99,8 @@ async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, comm
       collectorGitCommit: commit,
       targetMarketCount: plan.targetMarketCount,
       completedMarketCount: completedMarkets,
+      observedTargetMarketCount: targetMarkets.length,
+      totalEngineMarketCount: state.markets.length,
       journalRecordCount: journal.recordCount,
       journalLastRecordHash: journal.lastRecordHash,
       unsettledMarketIds: unsettledMarkets,
@@ -123,7 +133,7 @@ async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, comm
 async function main(): Promise<void> {
   if (process.argv.includes("--help")) {
     process.stdout.write([
-      "Usage: npm run paper:mvp -- [--markets 1] [--settlement-grace-seconds 90]",
+      "Usage: npm run paper:mvp -- [--markets 1] [--settlement-grace-seconds 600]",
       "       [--output-root /root/polymarket-money-data/paper-mvp]",
       "",
       "Runs 1-12 complete BTC five-minute markets with public data and paper-only K/J wallets.",
@@ -145,7 +155,7 @@ async function main(): Promise<void> {
     nowMilliseconds: now.getTime(),
     marketCount: positiveInteger(argument("--markets") ?? "1", "markets"),
     settlementGraceSeconds: positiveInteger(
-      argument("--settlement-grace-seconds") ?? "90",
+      argument("--settlement-grace-seconds") ?? "600",
       "settlement-grace-seconds",
     ),
     outputRoot: resolve(argument("--output-root") ?? "/root/polymarket-money-data/paper-mvp"),
@@ -177,6 +187,7 @@ async function main(): Promise<void> {
     "--summary", plan.summaryPath,
     "--kj-paper-journal", plan.journalPath,
     "--settlement-grace-seconds", String(plan.settlementGraceSeconds),
+    "--kj-market-start-before", plan.captureEnd,
     "--git-commit", commit,
     "--json",
   ], { cwd: actualRepository, stdio: ["ignore", "pipe", "pipe"] });

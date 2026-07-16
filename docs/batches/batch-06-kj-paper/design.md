@@ -162,8 +162,10 @@ runner: TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
 approximation, while Python uses its platform `erf`.  The runtime polls the
 public Gamma market endpoint after interval end and keeps the exact response as
 replayable settlement evidence.  The bounded `paper:mvp` wrapper aligns capture
-to the next complete interval, adds a finite settlement grace window, and emits
-a machine-readable acceptance result.  A shared probability
+to the next complete interval, prevents the following market from entering the
+run, adds a finite settlement grace window, and emits a machine-readable
+acceptance result.  `paper:settle` can resume a frozen half-open target window
+when official resolution is delayed beyond that bound.  A shared probability
 golden bounds the TypeScript approximation to `0.0000002` absolute error against
 Python `erf` at representative and clamped-tail z-scores.  A second shared
 golden feeds both languages the same five-second price path, final book, fee,

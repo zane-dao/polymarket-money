@@ -17,13 +17,13 @@ test("MVP plans the next complete market and keeps every artifact outside Git", 
     runId: "kj-paper-20260717120312-12345678",
   });
   assert.equal(plan.firstFullMarketStart, "2026-07-17T12:05:00.000Z");
-  assert.equal(plan.captureEnd, "2026-07-17T12:15:02.000Z");
-  assert.equal(plan.expectedFinishBy, "2026-07-17T12:16:32.000Z");
+  assert.equal(plan.captureEnd, "2026-07-17T12:15:00.000Z");
+  assert.equal(plan.expectedFinishBy, "2026-07-17T12:16:30.000Z");
   assert.equal(plan.durationSeconds, Math.ceil((
     Date.parse(plan.captureEnd) - now
   ) / 1_000));
   assert.equal(Date.parse(plan.captureEnd) - Date.parse(plan.firstFullMarketStart),
-    2 * KJ_MARKET_INTERVAL_MILLISECONDS + 2_000);
+    2 * KJ_MARKET_INTERVAL_MILLISECONDS);
   assert.match(plan.journalPath, /^\/root\/polymarket-money-data\/paper-mvp\//u);
 });
 
@@ -41,6 +41,6 @@ test("MVP rejects unsafe roots and unbounded sessions", () => {
   assert.throws(() => planKJPaperMvp({
     ...base,
     outputRoot: "/tmp/mvp",
-    settlementGraceSeconds: 301,
-  }), /1 through 300/u);
+    settlementGraceSeconds: 1_801,
+  }), /1 through 1800/u);
 });

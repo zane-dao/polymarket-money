@@ -64,14 +64,17 @@ fees, position-after-fill, and official settlement evidence.
 
 `npm run paper:mvp -- --markets 1` is the bounded unattended product entry.  It
 waits for the next complete interval, records a committed code ID, runs both
-wallets, includes a finite resolution grace period, and emits `result.json`
-only after replay-based inspection.  It accepts at most 12 markets per run.
+wallets, enforces a half-open target interval cutoff, includes a finite
+ten-minute default resolution grace period, and emits `result.json` only after
+replay-based inspection.  It accepts at most 12 markets per run.
 
 1. Journal replay restores accepted inputs and deterministic paper state, but it
    is not an exchange reconciliation mechanism and has no private account or
    order evidence by design.
 2. A delayed, ambiguous, 50/50, identity-conflicting, or otherwise unsupported
    Gamma result is not guessed; the run remains unaccepted or terminates safely.
+   `paper:settle` can later resume only the frozen target window against the
+   same durable journal, without opening a new paper market.
 3. TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
    approximation.  `data/golden/batch-06/kj-probability-v1.json` bounds it to
    `0.0000002` absolute error against Python `erf` for representative and

@@ -52,7 +52,7 @@ export function planKJPaperMvp(input: KJPaperMvpPlanInput): KJPaperMvpPlan {
     throw new Error("nowMilliseconds must be a non-negative safe integer");
   }
   safeInteger(input.marketCount, "marketCount", 12);
-  safeInteger(input.settlementGraceSeconds, "settlementGraceSeconds", 300);
+  safeInteger(input.settlementGraceSeconds, "settlementGraceSeconds", 1_800);
   if (!isAbsolute(input.outputRoot)) throw new Error("MVP output root must be absolute");
   if (!isAbsolute(input.repositoryRoot)) throw new Error("repository root must be absolute");
   if (!/^[a-z0-9][a-z0-9-]{7,79}$/u.test(input.runId)) {
@@ -71,8 +71,7 @@ export function planKJPaperMvp(input: KJPaperMvpPlanInput): KJPaperMvpPlan {
     Math.floor(input.nowMilliseconds / KJ_MARKET_INTERVAL_MILLISECONDS) + 1
   ) * KJ_MARKET_INTERVAL_MILLISECONDS;
   const captureEnd = firstFullMarketStart
-    + input.marketCount * KJ_MARKET_INTERVAL_MILLISECONDS
-    + 2_000;
+    + input.marketCount * KJ_MARKET_INTERVAL_MILLISECONDS;
   const durationSeconds = Math.ceil((captureEnd - input.nowMilliseconds) / 1_000);
   const runDirectory = join(outputRoot, input.runId);
 

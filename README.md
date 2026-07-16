@@ -116,6 +116,23 @@ below `/root/polymarket-money-data/paper-mvp`.  It accepts 1 through 12 markets,
 refuses dirty tracked runtime code, never overwrites a run, and marks the run
 accepted only after every target market is settled with no pending intents,
 terminal failure, credential access, live client, user channel, or real order.
+The default settlement grace is ten minutes and the target interval cutoff
+prevents the next market from leaking into the run.
+
+If an official result arrives after the finite run or the process was
+interrupted, resume only the frozen target window without collecting another
+market:
+
+```bash
+npm run paper:settle -- /absolute/path/to/kj-inputs.ndjson \
+  --start-at 2026-07-17T12:00:00.000Z \
+  --start-before 2026-07-17T12:05:00.000Z \
+  --wait-seconds 600 --output /absolute/path/to/recovery-result.json
+```
+
+Recovery reopens and validates the hash-chained journal, polls only ended
+markets in that half-open interval, and appends the exact official response.  A
+still-open result remains pending rather than being inferred from price.
 
 `data/golden/batch-06/kj-ewma-intent-parity-v1.json` feeds the same five-second
 price path, book, fee, delayed fill, and official settlement to Python and

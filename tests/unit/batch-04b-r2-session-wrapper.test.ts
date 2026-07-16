@@ -12,6 +12,7 @@ test("R2 wrapper is a thin single-session metrics-only launcher", async () => {
   assert.match(source, /setsid nohup/u);
   assert.match(source, /systemd_has_required_network_environment/u);
   assert.match(source, /manager_environment/u);
+  assert.match(source, /kill -TERM -- "-\$\(<"\$PID_FILE"\)"/u);
   assert.match(source, /refusing a second session/u);
   assert.doesNotMatch(source, /--record raw/u);
   assert.doesNotMatch(source, /User Channel|private key|seed phrase|OrderIntent|sendOrder|createOrder/u);

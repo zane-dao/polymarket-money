@@ -22,3 +22,25 @@ The failed attempt is retained outside Git under the experiment data root. Befor
 launcher is changed to choose the documented `nohup + setsid + PID file` fallback whenever systemd
 lacks a proxy variable that is present in the launching shell. The frozen experiment YAML and its
 SHA-256 are unchanged.
+
+## Attempt 2 — stopped on current Gamma schema mismatch
+
+- Session: `r2-20260716T122151Z`
+- Git commit: `14237cf69c9937f2cb5a4bd51e3045db4c3d74a8`
+- Runner: `nohup-setsid`
+- PID: `152887`
+- Start: `2026-07-16T12:21:51Z`
+- Stop heartbeat: `2026-07-16T12:23:34Z`
+- Exit: `143`, stop reason `MANUAL_GRACEFUL_STOP`
+
+The fallback inherited the network environment: Gamma, both RTDS streams and both direct Binance
+streams received data without reconnects. The health gate still stopped the run because every
+Gamma market was quarantined with `feeSchedule.rate must be a canonical decimal string`, leaving
+the current market unbound. A bounded current-response check proved that Gamma now emits
+`feeSchedule.rate` as the JSON numeric token `0.07`.
+
+The compatibility fix preserves the exact raw numeric token through the JSON boundary and passes
+the resulting canonical string to the existing Money/FeeEdgeCalculator. It continues to reject
+programmatic JavaScript numbers, exponent tokens and non-canonical numeric lexemes. Node 93/93 and
+TypeScript passed, and three consecutive current markets then validated as collectible with fee
+rate `0.07`. Attempt 2 is retained outside Git; no observation evidence from it is accepted.

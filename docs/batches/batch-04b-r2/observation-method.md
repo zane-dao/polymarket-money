@@ -18,3 +18,7 @@ stderr、exit status、stop reason、metrics 与报告路径。包装器提供 `
 
 每个有效统计点必须通过 snapshot、双边、非 crossed、非 stale、非 disconnect、非 reset、
 非 quarantine 门。公共 CLOB 无 gap-free cursor，因此 continuity 始终保持 `UNVERIFIED`。
+
+启动健康门确认当前 Gamma 将 `feeSchedule.rate` 返回为 JSON number。兼容层只从原始响应中
+保留其精确数值词法（例如 `0.07`），再交给 R1 Money/FeeEdgeCalculator；不把 JavaScript
+number 传入金额合同。指数或非 canonical 数值词法继续失败关闭。

@@ -238,8 +238,53 @@ function requireEpochSecond(value: unknown, field: string): number {
   return milliseconds / 1_000;
 }
 
+const EXACT_JSON_NUMBER = Symbol("exact-json-number");
+
+interface ExactJsonNumber {
+  readonly [EXACT_JSON_NUMBER]: true;
+  readonly source: string;
+  readonly value: number;
+}
+
+function isExactJsonNumber(value: unknown): value is ExactJsonNumber {
+  return value !== null
+    && typeof value === "object"
+    && (value as Partial<ExactJsonNumber>)[EXACT_JSON_NUMBER] === true;
+}
+
+/**
+ * Gamma currently emits feeSchedule.rate as a JSON number. Preserve its exact
+ * source token before JSON.parse can turn it into a binary floating-point
+ * value; every unrelated numeric `rate` remains a number.
+ */
+function parseGammaMarketJson(rawPayload: string): unknown {
+  type ReviverContext = Readonly<{ source?: string }>;
+  type ParseWithContext = (
+    text: string,
+    reviver: (this: unknown, key: string, value: unknown, context: ReviverContext) => unknown,
+  ) => unknown;
+  return (JSON.parse as unknown as ParseWithContext)(rawPayload, function exactFeeRate(
+    key,
+    value,
+    context,
+  ): unknown {
+    if (key === "rate" && typeof value === "number" && typeof context.source === "string") {
+      return Object.freeze({ [EXACT_JSON_NUMBER]: true, source: context.source, value });
+    }
+    if (value !== null && typeof value === "object") {
+      for (const [childKey, childValue] of Object.entries(value)) {
+        if (!isExactJsonNumber(childValue)) continue;
+        (value as Record<string, unknown>)[childKey] = key === "feeSchedule" && childKey === "rate"
+          ? childValue.source
+          : childValue.value;
+      }
+    }
+    return value;
+  });
+}
+
 export function validatePublicBtcFiveMinuteMarket(rawPayload: string): PublicBtcFiveMinuteMarket {
-  const market = object(JSON.parse(rawPayload), "Gamma market");
+  const market = object(parseGammaMarketJson(rawPayload), "Gamma market");
   const slug = text(market.slug, "slug");
   const match = SLUG.exec(slug);
   if (match?.[1] === undefined) throw new Error("slug is not an exact BTC five-minute slug");

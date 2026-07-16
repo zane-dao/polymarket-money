@@ -34,3 +34,10 @@ market、condition、liquidity role、effective interval、rate、reference 和 
 缺证据、price 上界和 complete-set 双腿。测试还会修改全局 Decimal 配置，结果必须保持不变。
 Gamma fee rate 入口只接受 canonical decimal string，并经同一 Money wrapper 验证；number 或
 指数形式失败关闭。Paper audit 显式保存 gross edge，runtime 不再硬编码为 null。
+
+> Batch 4B-R2 compatibility note (2026-07-16): the current public Gamma response was verified to
+> emit `feeSchedule.rate` as the JSON numeric token `0.07`. R2 therefore preserves the exact raw
+> JSON number lexeme before `JSON.parse` binary-float conversion and passes that string through the
+> same Money/FeeEdgeCalculator contract. Programmatic JavaScript numbers, exponent tokens and
+> non-canonical numeric lexemes remain rejected. This supersedes only the Gamma boundary statement
+> above; it does not add a second fee calculation path.

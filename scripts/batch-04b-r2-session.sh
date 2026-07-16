@@ -202,7 +202,11 @@ stop() {
   if systemctl --user is-active --quiet "$UNIT" 2>/dev/null; then
     systemctl --user kill --signal=SIGTERM "$UNIT"
   elif [[ -f "$PID_FILE" ]] && kill -0 "$(<"$PID_FILE")" 2>/dev/null; then
-    kill -TERM "$(<"$PID_FILE")"
+    if [[ -f "$RUNNER_FILE" ]] && [[ "$(<"$RUNNER_FILE")" == "nohup-setsid" ]]; then
+      kill -TERM -- "-$(<"$PID_FILE")"
+    else
+      kill -TERM "$(<"$PID_FILE")"
+    fi
   else
     printf 'No active R2 session.\n'
   fi

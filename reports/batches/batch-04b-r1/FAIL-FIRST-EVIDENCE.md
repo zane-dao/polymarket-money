@@ -22,3 +22,21 @@ tests/unit/receive-time-r1.test.ts(13,3): error TS2305: Module '"../../execution
 
 This proves the reviewed baseline had no comparable ReceiveStamp contract, no active raw-event-v2
 constructor, and no guard preventing v1 records from entering subsecond work.
+
+## Group 2 — RuntimeIncident and terminal fallback
+
+Fail-first input: `tests/unit/runtime-incidents-r1.test.ts`。The test requires a structured incident
+contract, a fail-closed runtime controller, and a one-shot emergency receipt path. These symbols do
+not exist on the reviewed baseline; `npm test` must fail at TypeScript compilation before the
+implementation commit.
+
+Observed failure:
+
+```text
+tests/unit/runtime-incidents-r1.test.ts(10,8): error TS2307: Cannot find module '../../execution/src/runtime/incidents.js' or its corresponding type declarations.
+tests/unit/runtime-incidents-r1.test.ts(43,36): error TS7006: Parameter 'receipt' implicitly has an 'any' type.
+tests/unit/runtime-incidents-r1.test.ts(44,19): error TS7006: Parameter 'line' implicitly has an 'any' type.
+tests/unit/runtime-incidents-r1.test.ts(45,19): error TS7006: Parameter 'code' implicitly has an 'any' type.
+tests/unit/runtime-incidents-r1.test.ts(65,19): error TS7006: Parameter 'line' implicitly has an 'any' type.
+tests/unit/runtime-incidents-r1.test.ts(66,19): error TS7006: Parameter 'code' implicitly has an 'any' type.
+```

@@ -34,6 +34,19 @@ from .historical import (
 )
 
 
+HF_DATASET_BASE_URL = (
+    "https://huggingface.co/datasets/kachoio/"
+    "polymarket-5-minute-crypto-up-down-markets/resolve"
+)
+
+
+def pinned_hugging_face_url(revision: str, filename: str) -> str:
+    """Return an immutable source-file URL, not a mutable dataset landing page."""
+    if filename not in {"btc_markets.parquet", "btc_ticks.parquet"}:
+        raise ValueError("only pre-registered BTC source files are allowed")
+    return f"{HF_DATASET_BASE_URL}/{revision}/{filename}"
+
+
 UTC = timezone.utc
 _LOAD_PROOF = object()
 HORIZONS = (60, 30, 15)
@@ -512,8 +525,20 @@ class ExternalHistoricalDatasetAdapter:
             "build_commit": build_commit,
             "source_contract": self.source.to_mapping(),
             "source_files": {
-                "markets": {"url": "https://huggingface.co/datasets/kachoio/polymarket-5-minute-crypto-up-down-markets", "bytes": markets_path.stat().st_size, "sha256": self.source.markets_sha256},
-                "ticks": {"url": "https://huggingface.co/datasets/kachoio/polymarket-5-minute-crypto-up-down-markets", "bytes": ticks_path.stat().st_size, "sha256": self.source.ticks_sha256},
+                "markets": {
+                    "url": pinned_hugging_face_url(
+                        self.source.revision, "btc_markets.parquet"
+                    ),
+                    "bytes": markets_path.stat().st_size,
+                    "sha256": self.source.markets_sha256,
+                },
+                "ticks": {
+                    "url": pinned_hugging_face_url(
+                        self.source.revision, "btc_ticks.parquet"
+                    ),
+                    "bytes": ticks_path.stat().st_size,
+                    "sha256": self.source.ticks_sha256,
+                },
             },
             "official_gamma_responses": gamma_inventory,
             "binance_official_archives": binance.checksum_files,

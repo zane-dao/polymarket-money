@@ -17,12 +17,26 @@ from research.polymarket_money.historical import (
     classify_split,
     evaluate_data_gate,
 )
+from research.polymarket_money.historical_adapter import pinned_hugging_face_url
 
 
 UTC = timezone.utc
 
 
 class HistoricalContractsTest(unittest.TestCase):
+    def test_hugging_face_source_url_is_file_and_revision_pinned(self) -> None:
+        revision = "a" * 40
+        self.assertEqual(
+            pinned_hugging_face_url(revision, "btc_markets.parquet"),
+            (
+                "https://huggingface.co/datasets/kachoio/"
+                "polymarket-5-minute-crypto-up-down-markets/resolve/"
+                f"{revision}/btc_markets.parquet"
+            ),
+        )
+        with self.assertRaises(ValueError):
+            pinned_hugging_face_url(revision, "eth_ticks.parquet")
+
     def test_external_source_contract_cannot_upgrade_third_party_evidence(self) -> None:
         contract = HistoricalSourceContract.required(
             revision="a" * 40,

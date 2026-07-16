@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+
+import { ReceiveClock, type ReceiveStamp } from "../../domain/receive-time.js";
+
 export const PUBLIC_ENDPOINTS = Object.freeze({
   gammaMarketBySlug: "https://gamma-api.polymarket.com/markets/slug/",
   clobBook: "https://clob.polymarket.com/book",
@@ -27,12 +31,14 @@ export interface PublicHttpResponse {
   readonly rawPayload: string;
   readonly byteLength: number;
   readonly receiveTime: string;
+  readonly receiveStamp: ReceiveStamp;
   readonly status: number;
 }
 
 export interface CapturedFrame {
   readonly rawPayload: string;
   readonly receiveTime: string;
+  readonly receiveStamp: ReceiveStamp;
 }
 
 export interface PublicSocketAuditEvent {
@@ -46,6 +52,7 @@ export interface PublicSocketAuditEvent {
     | "heartbeat_ping"
     | "heartbeat_pong";
   readonly receiveTime: string;
+  readonly receiveStamp: ReceiveStamp;
   readonly details: Readonly<Record<string, string | number | boolean>>;
 }
 
@@ -85,6 +92,7 @@ export interface PublicSocketCapturePlan {
 export interface PublicSocketRuntime {
   readonly createWebSocket: (url: string) => WebSocket;
   readonly now: () => string;
+  readonly receiveClock?: ReceiveClock;
 }
 
 export interface PublicHttpRequestOptions {
@@ -95,6 +103,7 @@ export interface PublicHttpRequestOptions {
 export interface PublicHttpRuntime {
   readonly fetch: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
   readonly now: () => string;
+  readonly receiveClock?: ReceiveClock;
 }
 
 const SLUG = /^btc-updown-5m-([0-9]+)$/;
@@ -119,14 +128,34 @@ const FORBIDDEN_CREDENTIAL_KEYS = new Set([
   "wallet",
 ]);
 
+const PUBLIC_RECEIVE_CLOCK = new ReceiveClock({
+  clockDomain: `public-runtime-${process.pid}-${randomUUID()}`,
+});
+const INJECTED_RUNTIME_CLOCKS = new WeakMap<object, ReceiveClock>();
+
+function receiveClock(runtime: PublicSocketRuntime | PublicHttpRuntime): ReceiveClock {
+  if (runtime.receiveClock !== undefined) return runtime.receiveClock;
+  let clock = INJECTED_RUNTIME_CLOCKS.get(runtime);
+  if (clock === undefined) {
+    clock = new ReceiveClock({
+      clockDomain: `injected-public-runtime-${randomUUID()}`,
+      wallNow: runtime.now,
+    });
+    INJECTED_RUNTIME_CLOCKS.set(runtime, clock);
+  }
+  return clock;
+}
+
 const DEFAULT_SOCKET_RUNTIME: PublicSocketRuntime = Object.freeze({
   createWebSocket: (url: string) => new WebSocket(url),
   now: () => new Date().toISOString(),
+  receiveClock: PUBLIC_RECEIVE_CLOCK,
 });
 
 const DEFAULT_HTTP_RUNTIME: PublicHttpRuntime = Object.freeze({
   fetch: (input: string | URL | Request, init?: RequestInit) => fetch(input, init),
   now: () => new Date().toISOString(),
+  receiveClock: PUBLIC_RECEIVE_CLOCK,
 });
 
 export function assertCredentialFreePublicPayload(value: unknown): void {
@@ -433,9 +462,10 @@ export async function fetchPublicMarketBySlug(
     redirect: "error",
     signal: AbortSignal.timeout(timeoutMilliseconds),
   });
-  const receiveTime = runtime.now();
+  const receiveStamp = receiveClock(runtime).capture();
+  const receiveTime = receiveStamp.localWallReceiveTime;
   const bounded = await boundedResponseText(response, maxResponseBytes);
-  return Object.freeze({ ...bounded, receiveTime, status: response.status });
+  return Object.freeze({ ...bounded, receiveTime, receiveStamp, status: response.status });
 }
 
 export async function fetchPublicOrderBook(
@@ -454,9 +484,10 @@ export async function fetchPublicOrderBook(
     redirect: "error",
     signal: AbortSignal.timeout(timeoutMilliseconds),
   });
-  const receiveTime = runtime.now();
+  const receiveStamp = receiveClock(runtime).capture();
+  const receiveTime = receiveStamp.localWallReceiveTime;
   const bounded = await boundedResponseText(response, maxResponseBytes);
-  return Object.freeze({ ...bounded, receiveTime, status: response.status });
+  return Object.freeze({ ...bounded, receiveTime, receiveStamp, status: response.status });
 }
 
 function frameByteLength(value: unknown): number {
@@ -515,11 +546,15 @@ export function capturePublicSocket(
       void (async () => {
         let terminalError = error;
         try {
-          await options.audit?.({
-            eventType: auditType,
-            receiveTime: runtime.now(),
-            details: { frameCount, successful: error === undefined, totalReceivedBytes },
-          });
+          if (options.audit !== undefined) {
+            const receiveStamp = receiveClock(runtime).capture();
+            await options.audit({
+              eventType: auditType,
+              receiveTime: receiveStamp.localWallReceiveTime,
+              receiveStamp,
+              details: { frameCount, successful: error === undefined, totalReceivedBytes },
+            });
+          }
         } catch (auditError) {
           terminalError =
             terminalError === undefined
@@ -550,48 +585,49 @@ export function capturePublicSocket(
     );
     socket.addEventListener("open", () => {
       if (finished) return;
-      let openedAt: string;
-      let subscribedAt: string;
+      let openedAt: ReceiveStamp | null;
+      let subscribedAt: ReceiveStamp | null;
       try {
-        openedAt = runtime.now();
+        openedAt = options.audit === undefined ? null : receiveClock(runtime).capture();
         if (plan.subscription !== null) socket.send(JSON.stringify(plan.subscription));
-        subscribedAt = runtime.now();
+        subscribedAt = options.audit === undefined || plan.subscription === null
+          ? null
+          : receiveClock(runtime).capture();
       } catch (error) {
         finish(error, "connection_error");
         return;
       }
       chain = chain
-        .then(() =>
-          options.audit?.({
+        .then(() => openedAt === null ? undefined : options.audit?.({
             eventType: "connection_open",
-            receiveTime: openedAt,
+            receiveTime: openedAt.localWallReceiveTime,
+            receiveStamp: openedAt,
             details: { endpoint: plan.url, source: plan.source },
-          }),
-        )
-        .then(() => plan.subscription === null ? undefined : options.audit?.({
+          }))
+        .then(() => subscribedAt === null ? undefined : options.audit?.({
           eventType: "subscription_sent",
-          receiveTime: subscribedAt,
+          receiveTime: subscribedAt.localWallReceiveTime,
+          receiveStamp: subscribedAt,
           details: { public: true, source: plan.source },
         }));
       void chain.catch(finish);
       if (plan.heartbeatMilliseconds !== null) {
         heartbeat = setInterval(() => {
           if (!finished && socket.readyState === 1) {
-            let sentAt: string;
+            let sentAt: ReceiveStamp | null;
             try {
-              sentAt = runtime.now();
+              sentAt = options.audit === undefined ? null : receiveClock(runtime).capture();
               socket.send("PING");
             } catch (error) {
               finish(error, "connection_error");
               return;
             }
-            chain = chain.then(() =>
-              options.audit?.({
+            chain = chain.then(() => sentAt === null ? undefined : options.audit?.({
                 eventType: "heartbeat_ping",
-                receiveTime: sentAt,
+                receiveTime: sentAt.localWallReceiveTime,
+                receiveStamp: sentAt,
                 details: { source: plan.source },
-              }),
-            );
+              }));
             void chain.catch(finish);
           }
         }, plan.heartbeatMilliseconds);
@@ -599,10 +635,12 @@ export function capturePublicSocket(
     });
     socket.addEventListener("message", (event) => {
       if (finished) return;
+      let receiveStamp: ReceiveStamp;
       let receiveTime: string;
       let byteLength: number;
       try {
-        receiveTime = runtime.now();
+        receiveStamp = receiveClock(runtime).capture();
+        receiveTime = receiveStamp.localWallReceiveTime;
         byteLength = frameByteLength(event.data);
       } catch (error) {
         finish(error);
@@ -642,11 +680,12 @@ export function capturePublicSocket(
             await options.audit?.({
               eventType: "heartbeat_pong",
               receiveTime,
+              receiveStamp,
               details: { source: plan.source },
             });
             return;
           }
-          const accepted = await options.accept(Object.freeze({ rawPayload, receiveTime }));
+          const accepted = await options.accept(Object.freeze({ rawPayload, receiveTime, receiveStamp }));
           if (accepted) finish();
           else if (frameOrdinal === options.maxFrames) {
             finish(new Error(`public socket reached maxFrames=${options.maxFrames} without target event`));

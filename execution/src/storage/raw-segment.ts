@@ -16,10 +16,12 @@ import { fileURLToPath } from "node:url";
 
 import {
   parsePersistedEnvelope,
-  persistEnvelope,
+  parsePersistedEnvelopeV2,
+  persistEnvelopeV2,
+  RAW_EVENT_SCHEMA_VERSION_V2,
   requireUtcIso,
-  type RawEventEnvelopeDraftV1,
-  type RawEventEnvelopeV1,
+  type AnyRawEventEnvelope,
+  type RawEventEnvelopeDraftV2,
 } from "../domain/raw-event.js";
 
 export interface AppendReceipt {
@@ -199,20 +201,23 @@ function digest(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function validateDraft(draft: RawEventEnvelopeDraftV1): RawEventEnvelopeDraftV1 {
+function validateDraft(draft: RawEventEnvelopeDraftV2): RawEventEnvelopeDraftV2 {
   if (draft === null || typeof draft !== "object" || Array.isArray(draft)) {
     throw new Error("RawEventEnvelope draft must be an object");
   }
   if (Object.prototype.hasOwnProperty.call(draft, "persist_time")) {
     throw new Error("persist_time is writer-owned and forbidden on a draft");
   }
+  if (draft.schema_version !== RAW_EVENT_SCHEMA_VERSION_V2) {
+    throw new Error("active RawSegmentWriter accepts only raw-event-v2 drafts");
+  }
   const provisional = JSON.stringify({ ...draft, persist_time: draft.process_time });
-  const validated = parsePersistedEnvelope(provisional);
+  const validated = parsePersistedEnvelopeV2(provisional);
   const { persist_time: _persistTime, ...canonicalDraft } = validated;
   return Object.freeze(canonicalDraft);
 }
 
-function draftFingerprint(draft: RawEventEnvelopeDraftV1): string {
+function draftFingerprint(draft: RawEventEnvelopeDraftV2): string {
   return digest(Buffer.from(JSON.stringify(draft), "utf8"));
 }
 
@@ -258,11 +263,19 @@ async function inspectClosedSegmentFile(
   if (lines.length === 0 || lines.some((line) => line === "" || line.endsWith("\r"))) {
     throw new Error("segment contains an empty, CRLF, or torn line");
   }
-  const envelopes: RawEventEnvelopeV1[] = lines.map((line) => parsePersistedEnvelope(line));
+  const envelopes: AnyRawEventEnvelope[] = lines.map((line) => {
+    const decoded = JSON.parse(line) as { readonly schema_version?: unknown };
+    return decoded.schema_version === "raw-event-v2"
+      ? parsePersistedEnvelopeV2(line)
+      : parsePersistedEnvelope(line);
+  });
   if (envelopes.some((event) => event.source !== source || event.stream !== stream)) {
     throw new Error("segment envelope source/stream mismatch");
   }
-  if (envelopes.some((event) => event.receive_time.slice(0, 10) !== locator.partitionDate)) {
+  const wallReceiveTime = (event: AnyRawEventEnvelope): string => event.schema_version === "raw-event-v2"
+    ? event.local_wall_receive_time
+    : event.receive_time;
+  if (envelopes.some((event) => wallReceiveTime(event).slice(0, 10) !== locator.partitionDate)) {
     throw new Error("segment envelope receive_time does not match partition date");
   }
   const eventIds = new Set<string>();
@@ -270,7 +283,7 @@ async function inspectClosedSegmentFile(
     if (eventIds.has(event.event_id)) throw new Error("segment contains a duplicate event_id");
     eventIds.add(event.event_id);
   }
-  const receiveTimes = envelopes.map((event) => event.receive_time).sort();
+  const receiveTimes = envelopes.map(wallReceiveTime).sort();
   const marketIds = [...new Set(envelopes.flatMap((event) => event.market_id === null ? [] : [event.market_id]))].sort();
   const assetIds = [...new Set(envelopes.flatMap((event) => event.asset_id === null ? [] : [event.asset_id]))].sort();
   return Object.freeze({
@@ -338,6 +351,9 @@ export class RawSegmentWriter {
   #unknownEventCount = 0;
   #firstReceiveTime: string | null = null;
   #lastReceiveTime: string | null = null;
+  #clockDomain: string | null = null;
+  #lastMonotonicReceiveNs: bigint | null = null;
+  #lastReceiveOrdinal: bigint | null = null;
   #closed: ClosedSegment | null = null;
   #operationTail: Promise<void> = Promise.resolve();
 
@@ -397,19 +413,19 @@ export class RawSegmentWriter {
     return result;
   }
 
-  append(draft: RawEventEnvelopeDraftV1): Promise<AppendReceipt> {
+  append(draft: RawEventEnvelopeDraftV2): Promise<AppendReceipt> {
     return this.#serialize(() => this.#append(draft));
   }
 
-  async #append(draft: RawEventEnvelopeDraftV1): Promise<AppendReceipt> {
+  async #append(draft: RawEventEnvelopeDraftV2): Promise<AppendReceipt> {
     if (this.#state !== "OPEN") throw new Error(`cannot append while writer is ${this.#state}`);
     try {
       const canonicalDraft = validateDraft(draft);
       if (canonicalDraft.source !== this.#source || canonicalDraft.stream !== this.#stream) {
         throw new Error("segment source and stream are immutable");
       }
-      if (canonicalDraft.receive_time.slice(0, 10) !== this.#partitionDate) {
-        throw new Error("segment partition must be derived from receive_time UTC date");
+      if (canonicalDraft.local_wall_receive_time.slice(0, 10) !== this.#partitionDate) {
+        throw new Error("segment partition must be derived from local_wall_receive_time UTC date");
       }
       const fingerprint = draftFingerprint(canonicalDraft);
       const previous = this.#seen.get(canonicalDraft.event_id);
@@ -419,11 +435,22 @@ export class RawSegmentWriter {
         }
         return previous.receipt;
       }
+      const monotonicNs = BigInt(canonicalDraft.local_monotonic_receive_ns);
+      const receiveOrdinal = BigInt(canonicalDraft.local_receive_ordinal);
+      if (this.#clockDomain !== null && canonicalDraft.clock_domain !== this.#clockDomain) {
+        throw new Error("one raw segment cannot mix clock domains");
+      }
+      if (this.#lastMonotonicReceiveNs !== null && this.#lastReceiveOrdinal !== null) {
+        if (monotonicNs < this.#lastMonotonicReceiveNs
+          || (monotonicNs === this.#lastMonotonicReceiveNs && receiveOrdinal <= this.#lastReceiveOrdinal)) {
+          throw new Error("raw-event-v2 ReceiveStamp must be unique and strictly increasing");
+        }
+      }
       // persist_time is the logical durability-commit timestamp. It is writer
       // owned and acknowledged only after the following fsync succeeds.
-      const persisted = persistEnvelope(canonicalDraft, this.#clock());
+      const persisted = persistEnvelopeV2(canonicalDraft, this.#clock());
       const serialized = JSON.stringify(persisted);
-      const envelope = parsePersistedEnvelope(serialized);
+      const envelope = parsePersistedEnvelopeV2(serialized);
       const line = `${serialized}\n`;
       const lineBytes = Buffer.byteLength(line, "utf8");
       if (this.#reserveBytes !== undefined && !this.#reserveBytes(lineBytes)) {
@@ -431,6 +458,9 @@ export class RawSegmentWriter {
       }
       await this.#handle.writeFile(line, { encoding: "utf8" });
       await this.#handle.sync();
+      this.#clockDomain = canonicalDraft.clock_domain;
+      this.#lastMonotonicReceiveNs = monotonicNs;
+      this.#lastReceiveOrdinal = receiveOrdinal;
       const receipt: AppendReceipt = Object.freeze({
         eventId: envelope.event_id,
         segmentId: this.#segmentId,
@@ -444,12 +474,12 @@ export class RawSegmentWriter {
       if (envelope.market_id !== null) this.#marketIds.add(envelope.market_id);
       if (envelope.asset_id !== null) this.#assetIds.add(envelope.asset_id);
       this.#firstReceiveTime =
-        this.#firstReceiveTime === null || envelope.receive_time < this.#firstReceiveTime
-          ? envelope.receive_time
+        this.#firstReceiveTime === null || envelope.local_wall_receive_time < this.#firstReceiveTime
+          ? envelope.local_wall_receive_time
           : this.#firstReceiveTime;
       this.#lastReceiveTime =
-        this.#lastReceiveTime === null || envelope.receive_time > this.#lastReceiveTime
-          ? envelope.receive_time
+        this.#lastReceiveTime === null || envelope.local_wall_receive_time > this.#lastReceiveTime
+          ? envelope.local_wall_receive_time
           : this.#lastReceiveTime;
       this.#seen.set(envelope.event_id, { fingerprint, receipt });
       return receipt;
@@ -481,7 +511,7 @@ export class RawSegmentWriter {
       if (lines.length !== this.#eventCount || lines.some((line) => line === "")) {
         throw new Error("segment line count changed before close");
       }
-      for (const line of lines) parsePersistedEnvelope(line);
+      for (const line of lines) parsePersistedEnvelopeV2(line);
       await publishNoReplace(this.#partialPath, this.#finalPath);
       const proposed: ClosedSegment = Object.freeze({
         segmentId: this.#segmentId,

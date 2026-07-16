@@ -5,8 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
-  createEnvelopeDraft,
-  type RawEventEnvelopeDraftV1,
+  createEnvelopeDraftV2,
+  type RawEventEnvelopeDraftV2,
 } from "../../execution/src/domain/raw-event.js";
 import {
   DatasetManifestWriter,
@@ -18,20 +18,28 @@ const DATE = "2026-07-15";
 const RECEIVE = `${DATE}T00:00:00.100Z`;
 const PROCESS = `${DATE}T00:00:00.200Z`;
 const PERSIST = `${DATE}T00:00:00.300Z`;
+let receiveOrdinal = 0;
 
 function draft(
   eventId: string,
   source = "fixture.hardening",
   stream = "events",
-): RawEventEnvelopeDraftV1 {
-  return createEnvelopeDraft({
+): RawEventEnvelopeDraftV2 {
+  receiveOrdinal += 1;
+  return createEnvelopeDraftV2({
     eventId,
     source,
     stream,
     eventType: "fixture_event",
-    connectionId: "connection-1",
+    transportConnectionId: "connection-1",
     subscriptionId: "subscription-1",
-    receiveTime: RECEIVE,
+    receiveStamp: {
+      schemaVersion: "receive-stamp-v1",
+      clockDomain: "raw-storage-hardening",
+      localWallReceiveTime: RECEIVE,
+      localMonotonicReceiveNs: String(receiveOrdinal * 1_000),
+      localReceiveOrdinal: String(receiveOrdinal),
+    },
     processTime: PROCESS,
     rawPayload: JSON.stringify({ event_id: eventId, value: "0.123456789012345678" }),
     parserStatus: "parsed",
@@ -113,7 +121,7 @@ test("writer rejects an invalid draft before returning a durable receipt", async
     const invalid = {
       ...draft("event-invalid"),
       raw_sha256: "0".repeat(64),
-    } as RawEventEnvelopeDraftV1;
+    } as RawEventEnvelopeDraftV2;
     await assert.rejects(writer.append(invalid), /raw_sha256/i);
     await writer.leaveIncomplete();
   } finally {

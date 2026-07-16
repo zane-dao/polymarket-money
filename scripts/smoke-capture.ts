@@ -19,7 +19,7 @@ import {
   parseRtdsPriceMessage,
 } from "../execution/src/adapters/market-data/parsers.js";
 import { PublicOrderBook } from "../execution/src/adapters/market-data/book-state.js";
-import { createEnvelopeDraft, type ParserStatus } from "../execution/src/domain/raw-event.js";
+import { createEnvelopeDraftV2, type ParserStatus } from "../execution/src/domain/raw-event.js";
 import {
   DatasetManifestWriter,
   RawSegmentWriter,
@@ -61,16 +61,16 @@ async function appendAuditEvent(
     details: event.details,
   });
   await writer.append(
-    createEnvelopeDraft({
+    createEnvelopeDraftV2({
       eventId: randomUUID(),
       source: context.source,
       stream: context.stream,
       eventType: event.eventType,
-      connectionId: context.connectionId,
+      transportConnectionId: context.connectionId,
       subscriptionId: context.subscriptionId,
       marketId: context.marketId ?? null,
       conditionId: context.conditionId ?? null,
-      receiveTime: event.receiveTime,
+      receiveStamp: event.receiveStamp,
       processTime: new Date().toISOString(),
       rawPayload,
       parserStatus: "parsed",
@@ -225,16 +225,16 @@ async function discoverMarket(
     }
     const processTime = new Date().toISOString();
     await writer.append(
-      createEnvelopeDraft({
+      createEnvelopeDraftV2({
         eventId: randomUUID(),
         source,
         stream,
         eventType,
-        connectionId: `${runId}-gamma-http`,
+        transportConnectionId: `${runId}-gamma-http`,
         subscriptionId: slug,
         marketId: candidate?.marketId ?? null,
         conditionId: candidate?.conditionId ?? null,
-        receiveTime: response.receiveTime,
+        receiveStamp: response.receiveStamp,
         processTime,
         rawPayload: response.rawPayload,
         parserStatus,
@@ -342,17 +342,17 @@ async function captureClob(
       const onlyMessage = parsedFrame.messages.length === 1 ? parsedFrame.messages[0] : undefined;
       const processTime = new Date().toISOString();
       await writer.append(
-        createEnvelopeDraft({
+        createEnvelopeDraftV2({
           eventId: randomUUID(),
           source,
           stream,
           eventType: onlyMessage?.eventType ?? (parsedFrame.shape === "error" ? "parse_error" : "clob_batch_unverified"),
-          connectionId,
+          transportConnectionId: connectionId,
           subscriptionId,
           marketId: market.marketId,
           conditionId: onlyMessage?.conditionId ?? market.conditionId,
           assetId: onlyMessage?.assetId ?? null,
-          receiveTime: frame.receiveTime,
+          receiveStamp: frame.receiveStamp,
           processTime,
           sourceHash: onlyMessage?.sourceHash ?? null,
           rawPayload: frame.rawPayload,
@@ -414,16 +414,16 @@ async function captureRtds(
       const parsed = parseRtdsPriceMessage(frame.rawPayload, expectedSource);
       const processTime = new Date().toISOString();
       await writer.append(
-        createEnvelopeDraft({
+        createEnvelopeDraftV2({
           eventId: randomUUID(),
           source,
           stream,
           eventType: parsed.eventType,
-          connectionId,
+          transportConnectionId: connectionId,
           subscriptionId,
-          sourceTime: parsed.sourceTime,
-          serverTime: parsed.serverTime,
-          receiveTime: frame.receiveTime,
+          providerSourceTime: parsed.sourceTime,
+          providerServerTime: parsed.serverTime,
+          receiveStamp: frame.receiveStamp,
           processTime,
           rawPayload: frame.rawPayload,
           parserStatus: parsed.parserStatus,

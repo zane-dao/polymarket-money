@@ -7,7 +7,9 @@ import test from "node:test";
 
 import {
   createEnvelopeDraft,
+  createEnvelopeDraftV2,
   parsePersistedEnvelope,
+  parsePersistedEnvelopeV2,
   rawSha256,
 } from "../../execution/src/domain/raw-event.js";
 import {
@@ -210,14 +212,20 @@ test("raw writer is durable, idempotent per event ID, and never overwrites a seg
   const dataRoot = await mkdtemp(join(tmpdir(), "poly-raw-writer-"));
   try {
     const rawPayload = "{\"event_type\":\"future_event\",\"value\":\"1.00\"}";
-    const draft = createEnvelopeDraft({
+    const draft = createEnvelopeDraftV2({
       eventId: "evt-1",
       source: "fixture.source",
       stream: "fixture-stream",
       eventType: "future_event",
-      connectionId: "connection-1",
+      transportConnectionId: "connection-1",
       subscriptionId: "subscription-1",
-      receiveTime: "2026-07-15T00:00:00.100Z",
+      receiveStamp: {
+        schemaVersion: "receive-stamp-v1",
+        clockDomain: "raw-data-writer",
+        localWallReceiveTime: "2026-07-15T00:00:00.100Z",
+        localMonotonicReceiveNs: "1000",
+        localReceiveOrdinal: "1",
+      },
       processTime: "2026-07-15T00:00:00.200Z",
       rawPayload,
       parserStatus: "unparsed",
@@ -288,9 +296,15 @@ test("raw writer preserves repeated payload observations with distinct event IDs
       source: "fixture.source",
       stream: "fixture-stream",
       eventType: "price_update",
-      connectionId: "connection-1",
+      transportConnectionId: "connection-1",
       subscriptionId: "subscription-1",
-      receiveTime: "2026-07-15T00:00:00.100Z",
+      receiveStamp: {
+        schemaVersion: "receive-stamp-v1" as const,
+        clockDomain: "raw-data-duplicates",
+        localWallReceiveTime: "2026-07-15T00:00:00.100Z",
+        localMonotonicReceiveNs: "1000",
+        localReceiveOrdinal: "1",
+      },
       processTime: "2026-07-15T00:00:00.200Z",
       rawPayload: "{\"value\":\"1.2300\"}",
       parserStatus: "parsed" as const,
@@ -303,13 +317,17 @@ test("raw writer preserves repeated payload observations with distinct event IDs
       partitionDate: "2026-07-15",
       clock: () => "2026-07-15T00:00:00.300Z",
     });
-    await writer.append(createEnvelopeDraft({ ...common, eventId: "evt-a" }));
-    await writer.append(createEnvelopeDraft({ ...common, eventId: "evt-b" }));
+    await writer.append(createEnvelopeDraftV2({ ...common, eventId: "evt-a" }));
+    await writer.append(createEnvelopeDraftV2({
+      ...common,
+      eventId: "evt-b",
+      receiveStamp: { ...common.receiveStamp, localReceiveOrdinal: "2" },
+    }));
     const closed = await writer.close();
     assert.equal(closed.eventCount, 2);
     const lines = (await readFile(join(dataRoot, closed.relativePath), "utf8")).trimEnd().split("\n");
     assert.equal(lines.length, 2);
-    assert.equal(parsePersistedEnvelope(lines[0] ?? "").raw_sha256, parsePersistedEnvelope(lines[1] ?? "").raw_sha256);
+    assert.equal(parsePersistedEnvelopeV2(lines[0] ?? "").raw_sha256, parsePersistedEnvelopeV2(lines[1] ?? "").raw_sha256);
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }

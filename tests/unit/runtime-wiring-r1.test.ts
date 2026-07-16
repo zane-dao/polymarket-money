@@ -44,7 +44,7 @@ test("HTTP and WebSocket capture stamp the shared ReceiveClock at the network bo
     now: () => "2026-07-16T00:00:00.000Z",
     receiveClock: clock,
   };
-  let captured: CapturedFrame | null = null;
+  const captured: CapturedFrame[] = [];
   const capture = capturePublicSocket({
     source: "binance-spot-book",
     timeoutMilliseconds: 1000,
@@ -52,15 +52,15 @@ test("HTTP and WebSocket capture stamp the shared ReceiveClock at the network bo
     maxFrameBytes: 100,
     maxTotalBytes: 100,
     accept: (frame) => {
-      captured = frame;
+      captured.push(frame);
       return Promise.resolve(true);
     },
   }, socketRuntime);
   socket.emit("open");
   socket.emit("message", { data: "{}" });
   await capture;
-  assert.equal(captured?.receiveStamp.clockDomain, "runtime-process-1");
-  assert.equal(captured?.receiveStamp.localReceiveOrdinal, "1");
+  assert.equal(captured[0]?.receiveStamp.clockDomain, "runtime-process-1");
+  assert.equal(captured[0]?.receiveStamp.localReceiveOrdinal, "1");
 
   const httpRuntime: PublicHttpRuntime = {
     fetch: () => Promise.resolve(new Response("{}", { status: 200 })),
@@ -127,7 +127,7 @@ test("active RawSegmentWriter accepts only raw-event-v2 while v1 stays readable 
       processTime: "2026-07-16T00:00:00.001Z",
       rawPayload: "{}",
       parserStatus: "parsed",
-    })), /raw-event-v2|schema/i);
+    }) as never), /raw-event-v2|schema/i);
     await v1Writer.leaveIncomplete();
   } finally {
     await rm(root, { recursive: true, force: true });

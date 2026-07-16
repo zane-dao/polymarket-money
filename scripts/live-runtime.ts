@@ -20,7 +20,8 @@ import {
   type PublicBtcFiveMinuteMarket,
   type PublicSocketRequest,
 } from "../execution/src/adapters/market-data/public-sources.js";
-import { createEnvelopeDraft, type ParserStatus } from "../execution/src/domain/raw-event.js";
+import { createEnvelopeDraftV2, type ParserStatus } from "../execution/src/domain/raw-event.js";
+import type { ReceiveStamp } from "../execution/src/domain/receive-time.js";
 import {
   completeSetArbitrageObserver,
   leadLagObserver,
@@ -246,7 +247,7 @@ class RuntimeRecorder {
     input: {
       readonly eventType: string;
       readonly rawPayload: string;
-      readonly receiveTime: string;
+      readonly receiveStamp: ReceiveStamp;
       readonly sourceTime?: string | null;
       readonly serverTime?: string | null;
       readonly sourceSequence?: string | null;
@@ -274,26 +275,26 @@ class RuntimeRecorder {
         segmentId: `${this.#runId}-gamma-${input.marketSlug}`,
         source: "polymarket.gamma",
         stream: "market-discovery",
-        partitionDate: input.receiveTime.slice(0, 10),
+        partitionDate: input.receiveStamp.localWallReceiveTime.slice(0, 10),
         reserveBytes: this.#budget!.reserve,
       }));
     }
     const writer = this.#writers.get(key);
     if (writer === undefined) throw new Error(`raw writer missing for ${stream}`);
     try {
-      await writer.append(createEnvelopeDraft({
+      await writer.append(createEnvelopeDraftV2({
         eventId: randomUUID(),
         source: stream === "gamma" ? "polymarket.gamma" : stream === "clob" ? "polymarket.clob.market" : stream === "chainlink" ? "polymarket.rtds.chainlink" : stream === "polymarket_binance" ? "polymarket.rtds.binance" : stream === "binance_spot" ? "binance.spot" : "binance.perpetual",
         stream: stream === "gamma" ? "market-discovery" : stream === "clob" ? "market-channel" : stream.includes("binance_") && !stream.startsWith("polymarket") ? "book-ticker" : "crypto-prices",
         eventType: input.eventType,
-        connectionId: input.connectionId,
+        transportConnectionId: input.connectionId,
         subscriptionId: `${this.#runId}-${stream}-public-only`,
         marketId: input.market?.marketId ?? null,
         conditionId: input.market?.conditionId ?? null,
         assetId: input.assetId ?? null,
-        sourceTime: input.sourceTime ?? null,
-        serverTime: input.serverTime ?? null,
-        receiveTime: input.receiveTime,
+        providerSourceTime: input.sourceTime ?? null,
+        providerServerTime: input.serverTime ?? null,
+        receiveStamp: input.receiveStamp,
         processTime: new Date().toISOString(),
         sourceSequence: input.sourceSequence ?? null,
         rawPayload: input.rawPayload,
@@ -460,7 +461,7 @@ async function discover(epoch: number, recorder: RuntimeRecorder, stats: StreamS
   await recorder.raw("gamma", {
     eventType: market === null ? "market_unavailable" : "market_metadata",
     rawPayload: response.rawPayload,
-    receiveTime: response.receiveTime,
+    receiveStamp: response.receiveStamp,
     market,
     marketSlug: slug,
     parserStatus: status,
@@ -475,7 +476,7 @@ interface RuntimeCapturePlan {
   readonly request: PublicSocketRequest;
   readonly beforeAttempt?: (connectionId: string) => void;
   readonly afterAttempt?: () => void;
-  readonly handle: (raw: string, receiveTime: string, connectionId: string) => Promise<void>;
+  readonly handle: (raw: string, receiveStamp: ReceiveStamp, connectionId: string) => Promise<void>;
 }
 
 async function captureUntil(
@@ -499,7 +500,7 @@ async function captureUntil(
         maxFrameBytes: 16 * 1024 * 1024,
         maxTotalBytes: 2 * 1024 * 1024 * 1024,
         accept: async (frame) => {
-          await plan.handle(frame.rawPayload, frame.receiveTime, connectionId);
+          await plan.handle(frame.rawPayload, frame.receiveStamp, connectionId);
           return recorder.stoppedByLimit || Date.now() >= end;
         },
       });
@@ -533,7 +534,8 @@ function directTicker(raw: string, receiveTime: string): BookTickerState {
 }
 
 function clobHandler(state: RuntimeState, recorder: RuntimeRecorder, stats: StreamStats, market: PublicBtcFiveMinuteMarket) {
-  return async (raw: string, receiveTime: string, connectionId: string): Promise<void> => {
+  return async (raw: string, receiveStamp: ReceiveStamp, connectionId: string): Promise<void> => {
+    const receiveTime = receiveStamp.localWallReceiveTime;
     observe(stats, raw, receiveTime, null);
     const parsed = parseClobMarketFrame(raw);
     let status: ParserStatus = parsed.shape === "error" ? "error" : "parsed";
@@ -558,7 +560,7 @@ function clobHandler(state: RuntimeState, recorder: RuntimeRecorder, stats: Stre
     await recorder.raw("clob", {
       eventType: parsed.messages[0]?.eventType ?? "clob_batch_unverified",
       rawPayload: raw,
-      receiveTime,
+      receiveStamp,
       market,
       assetId: parsed.messages[0]?.assetId ?? null,
       parserStatus: status,
@@ -570,7 +572,8 @@ function clobHandler(state: RuntimeState, recorder: RuntimeRecorder, stats: Stre
 
 function rtdsHandler(source: "chainlink" | "binance", state: RuntimeState, recorder: RuntimeRecorder, stats: StreamStats) {
   const stream: StreamName = source === "chainlink" ? "chainlink" : "polymarket_binance";
-  return async (raw: string, receiveTime: string, connectionId: string): Promise<void> => {
+  return async (raw: string, receiveStamp: ReceiveStamp, connectionId: string): Promise<void> => {
+    const receiveTime = receiveStamp.localWallReceiveTime;
     const parsed = parseRtdsPriceMessage(raw, source);
     observe(stats, raw, receiveTime, parsed.serverTime ?? parsed.sourceTime);
     if (parsed.parserStatus === "parsed" && parsed.valueDecimal !== null) {
@@ -583,7 +586,7 @@ function rtdsHandler(source: "chainlink" | "binance", state: RuntimeState, recor
     await recorder.raw(stream, {
       eventType: parsed.eventType,
       rawPayload: raw,
-      receiveTime,
+      receiveStamp,
       sourceTime: parsed.sourceTime,
       serverTime: parsed.serverTime,
       parserStatus: parsed.parserStatus,
@@ -594,7 +597,8 @@ function rtdsHandler(source: "chainlink" | "binance", state: RuntimeState, recor
 }
 
 function directHandler(stream: "binance_spot" | "binance_perpetual", state: RuntimeState, recorder: RuntimeRecorder, stats: StreamStats) {
-  return async (raw: string, receiveTime: string, connectionId: string): Promise<void> => {
+  return async (raw: string, receiveStamp: ReceiveStamp, connectionId: string): Promise<void> => {
+    const receiveTime = receiveStamp.localWallReceiveTime;
     try {
       const ticker = directTicker(raw, receiveTime);
       observe(stats, raw, receiveTime, ticker.serverTime ?? ticker.sourceTime);
@@ -605,7 +609,7 @@ function directHandler(stream: "binance_spot" | "binance_perpetual", state: Runt
       await recorder.raw(stream, {
         eventType: "book_ticker",
         rawPayload: raw,
-        receiveTime,
+        receiveStamp,
         sourceTime: ticker.sourceTime,
         serverTime: ticker.serverTime,
         sourceSequence: (JSON.parse(raw) as Record<string, unknown>).u?.toString() ?? null,
@@ -617,7 +621,7 @@ function directHandler(stream: "binance_spot" | "binance_perpetual", state: Runt
       await recorder.raw(stream, {
         eventType: "book_ticker_parse_error",
         rawPayload: raw,
-        receiveTime,
+        receiveStamp,
         parserStatus: "error",
         parserError: reason instanceof Error ? reason.message : String(reason),
         connectionId,

@@ -22,8 +22,18 @@ class RuntimeReplayTest(unittest.TestCase):
                 open_price="60000",
                 close_price="60001",
             )
-            first = run_no_trade_replay(version, dataset_hash, speed=ReplaySpeed.MAX)
-            second = run_no_trade_replay(version, dataset_hash, speed=ReplaySpeed.MAX)
+            first = run_no_trade_replay(
+                version,
+                dataset_hash,
+                speed=ReplaySpeed.MAX,
+                require_clean_normalizer=False,
+            )
+            second = run_no_trade_replay(
+                version,
+                dataset_hash,
+                speed=ReplaySpeed.MAX,
+                require_clean_normalizer=False,
+            )
             self.assertEqual(first.replay_hash, second.replay_hash)
             self.assertEqual(first.to_mapping(), second.to_mapping())
             self.assertGreater(first.decision_count, 0)

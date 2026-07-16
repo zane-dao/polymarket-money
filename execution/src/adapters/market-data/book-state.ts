@@ -232,6 +232,18 @@ export class PublicOrderBook {
     return this.#extreme(assetId, "ask");
   }
 
+  bestBidSize(assetId: string): string | null {
+    const book = this.#books.get(assetId);
+    const price = book === undefined ? null : extreme(book.bids.keys(), "bid");
+    return price === null || book === undefined ? null : (book.bids.get(price) ?? null);
+  }
+
+  bestAskSize(assetId: string): string | null {
+    const book = this.#books.get(assetId);
+    const price = book === undefined ? null : extreme(book.asks.keys(), "ask");
+    return price === null || book === undefined ? null : (book.asks.get(price) ?? null);
+  }
+
   #requireConnection(connectionId: string): void {
     if (this.#connectionId === null || connectionId !== this.#connectionId) {
       this.#failReset("event belongs to a stale or unknown connection");

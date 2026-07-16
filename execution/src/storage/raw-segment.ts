@@ -55,6 +55,14 @@ export interface OpenRawSegmentInput {
   readonly stream: string;
   readonly partitionDate: string;
   readonly clock?: () => string;
+  readonly reserveBytes?: (byteCount: number) => boolean;
+}
+
+export class RawByteLimitReached extends Error {
+  constructor() {
+    super("raw capture max-bytes limit reached");
+    this.name = "RawByteLimitReached";
+  }
 }
 
 type WriterState = "OPEN" | "FAILED" | "CLOSED";
@@ -319,6 +327,7 @@ export class RawSegmentWriter {
   readonly #partialPath: string;
   readonly #finalPath: string;
   readonly #clock: () => string;
+  readonly #reserveBytes: ((byteCount: number) => boolean) | undefined;
   readonly #handle: FileHandle;
   readonly #seen = new Map<string, { fingerprint: string; receipt: AppendReceipt }>();
   readonly #marketIds = new Set<string>();
@@ -333,7 +342,7 @@ export class RawSegmentWriter {
   #operationTail: Promise<void> = Promise.resolve();
 
   private constructor(
-    input: Required<Omit<OpenRawSegmentInput, "clock">> & { readonly clock: () => string },
+    input: Omit<OpenRawSegmentInput, "clock"> & { readonly clock: () => string },
     handle: FileHandle,
     partialPath: string,
     finalPath: string,
@@ -344,6 +353,7 @@ export class RawSegmentWriter {
     this.#stream = input.stream;
     this.#partitionDate = input.partitionDate;
     this.#clock = input.clock;
+    this.#reserveBytes = input.reserveBytes;
     this.#handle = handle;
     this.#partialPath = partialPath;
     this.#finalPath = finalPath;
@@ -373,6 +383,7 @@ export class RawSegmentWriter {
         segmentId,
         partitionDate: input.partitionDate,
         clock: input.clock ?? (() => new Date().toISOString()),
+        ...(input.reserveBytes === undefined ? {} : { reserveBytes: input.reserveBytes }),
       },
       handle,
       partialPath,
@@ -414,6 +425,10 @@ export class RawSegmentWriter {
       const serialized = JSON.stringify(persisted);
       const envelope = parsePersistedEnvelope(serialized);
       const line = `${serialized}\n`;
+      const lineBytes = Buffer.byteLength(line, "utf8");
+      if (this.#reserveBytes !== undefined && !this.#reserveBytes(lineBytes)) {
+        throw new RawByteLimitReached();
+      }
       await this.#handle.writeFile(line, { encoding: "utf8" });
       await this.#handle.sync();
       const receipt: AppendReceipt = Object.freeze({
@@ -439,6 +454,7 @@ export class RawSegmentWriter {
       this.#seen.set(envelope.event_id, { fingerprint, receipt });
       return receipt;
     } catch (error) {
+      if (error instanceof RawByteLimitReached) throw error;
       this.#state = "FAILED";
       throw error;
     }

@@ -354,3 +354,42 @@ test("manifest accepts only allowlisted public RTDS transports with an effective
     await rm(dataRoot, { recursive: true, force: true });
   }
 });
+
+test("manifest accepts direct Binance public bookTicker without trading fields", async () => {
+  const dataRoot = await mkdtemp(join(tmpdir(), "poly-manifest-direct-binance-"));
+  try {
+    const source = "binance.spot";
+    const stream = "book-ticker";
+    const writer = await openWriter(dataRoot, "segment-direct-binance", source, stream);
+    await writer.append(draft("event-direct-binance", source, stream));
+    const closed = await writer.close();
+    const manifest = await new DatasetManifestWriter(dataRoot).publish({
+      datasetId: "dataset-direct-binance",
+      source,
+      stream,
+      subscription: { endpoint: "market-data-only", stream: "bookTicker", symbol: "btcusdt" },
+      collectorGitCommit: "abcdef0",
+      collectionStart: `${DATE}T00:00:00.000Z`,
+      collectionEnd: `${DATE}T00:00:01.000Z`,
+      segments: [closed],
+      sanitizedConfig: { endpointClass: "public-read-only", symbolFilter: "btcusdt" },
+    });
+    assert.equal(manifest.source, source);
+    await assert.rejects(
+      new DatasetManifestWriter(dataRoot).publish({
+        datasetId: "dataset-direct-binance-invalid",
+        source,
+        stream,
+        subscription: { endpoint: "trading", stream: "bookTicker", symbol: "btcusdt" },
+        collectorGitCommit: "abcdef0",
+        collectionStart: `${DATE}T00:00:00.000Z`,
+        collectionEnd: `${DATE}T00:00:01.000Z`,
+        segments: [closed],
+        sanitizedConfig: { endpointClass: "public-read-only", symbolFilter: "btcusdt" },
+      }),
+      /public BTCUSDT bookTicker/,
+    );
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});

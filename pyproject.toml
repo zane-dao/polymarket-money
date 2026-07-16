@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Research and execution contracts for a safety-first trading system"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "rich>=13.9,<15.0",
+]
 
 [project.scripts]
 poly-lab = "research.polymarket_money.cli:main"

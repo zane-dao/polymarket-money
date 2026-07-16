@@ -323,6 +323,38 @@ class RawReplayTest(unittest.TestCase):
             with self.assertRaisesRegex(ManifestVerificationError, "transport scope"):
                 ManifestVerifier.verify(manifest_path, root)
 
+    def test_direct_binance_manifest_is_public_btc_book_ticker_only(self) -> None:
+        original = RawEventEnvelopeV1.from_json_line(
+            (FIXTURES / "raw-event-v1.golden.jsonl").read_text(encoding="utf-8").rstrip("\n")
+        )
+        event = replace(original, source="binance.spot", stream="book-ticker")
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = self._dataset(
+                root,
+                [event],
+                source="binance.spot",
+                stream="book-ticker",
+                subscription={
+                    "endpoint": "market-data-only",
+                    "stream": "bookTicker",
+                    "symbol": "btcusdt",
+                },
+                sanitized_config={
+                    "endpointClass": "public-read-only",
+                    "symbolFilter": "btcusdt",
+                },
+            )
+            self.assertEqual(
+                ManifestVerifier.verify(manifest_path, root).dataset_id,
+                "dataset-fixture",
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["subscription"]["endpoint"] = "trading"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ManifestVerificationError, "direct Binance"):
+                ManifestVerifier.verify(manifest_path, root)
+
 
 if __name__ == "__main__":
     unittest.main()

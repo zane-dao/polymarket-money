@@ -139,9 +139,66 @@ def _run_live(args: argparse.Namespace) -> int:
         command.extend(["--max-bytes", str(args.max_bytes)])
     if args.summary is not None:
         command.extend(["--summary", str(Path(args.summary).resolve())])
-    if args.json:
-        command.append("--json")
-    return subprocess.run(command, cwd=root, check=False).returncode
+    command.append("--json")
+    if args.json or not sys.stdout.isatty():
+        return subprocess.run(command, cwd=root, check=False).returncode
+
+    from rich.console import Console
+    from rich.live import Live
+    from rich.table import Table
+
+    def table(view: dict[str, Any]) -> Table:
+        result = Table(title=f"poly-lab {view.get('mode', args.command)}")
+        result.add_column("Field", style="cyan", no_wrap=True)
+        result.add_column("Value")
+        rows = (
+            ("At", view.get("at")),
+            ("Current / next", f"{view.get('currentMarket') or '-'} / {view.get('nextMarket') or '-'}"),
+            ("Book", f"{view.get('bookState')} · continuity {view.get('continuity')}"),
+            ("UP bid / ask", _quote(view.get("up"))),
+            ("DOWN bid / ask", _quote(view.get("down"))),
+            ("Chainlink BTC/USD", view.get("chainlink")),
+            ("Binance spot", view.get("binanceSpot")),
+            ("Binance perpetual", view.get("binancePerpetual")),
+            ("Opportunities", len(view.get("opportunities", []))),
+            ("Disk free bytes", view.get("diskFreeBytes")),
+            ("Raw bytes/hour", view.get("rawWriteBytesPerHour")),
+        )
+        for label, value in rows:
+            result.add_row(label, "-" if value is None else str(value))
+        return result
+
+    def _quote(value: object) -> str:
+        if not isinstance(value, dict):
+            return "-"
+        return f"{value.get('bid', '-')} / {value.get('ask', '-')}"
+
+    process = subprocess.Popen(
+        command,
+        cwd=root,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    summary: dict[str, Any] | None = None
+    placeholder = Table(title=f"poly-lab {args.command}")
+    placeholder.add_column("Status")
+    placeholder.add_row("Waiting for public market data")
+    assert process.stdout is not None
+    with Live(placeholder, refresh_per_second=4) as live:
+        for line in process.stdout:
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if value.get("type") == "runtime_snapshot":
+                live.update(table(value))
+            elif value.get("type") == "runtime_summary":
+                summary = value
+    return_code = process.wait()
+    if summary is not None:
+        Console().print_json(data=summary)
+    return return_code
 
 
 def _run_inventory(args: argparse.Namespace) -> int:

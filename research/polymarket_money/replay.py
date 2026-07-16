@@ -197,6 +197,19 @@ def _validate_subscription(source: str, value: Any) -> None:
         if item != expected:
             raise ManifestVerificationError("RTDS subscription does not match its declared source")
         return
+    if source in {"binance.spot", "binance.perpetual"}:
+        _require_exact_fields(
+            value,
+            frozenset({"endpoint", "stream", "symbol"}),
+            "subscription",
+        )
+        if value != {
+            "endpoint": "market-data-only",
+            "stream": "bookTicker",
+            "symbol": "btcusdt",
+        }:
+            raise ManifestVerificationError("invalid direct Binance public subscription")
+        return
     if source.startswith("fixture."):
         if value != {"topic": "public-fixture"}:
             raise ManifestVerificationError("fixture subscription must use the public-fixture marker")
@@ -264,9 +277,15 @@ def _assert_ingress_config_matches_subscription(
                 "Binance effective filter and transport scope do not match subscription"
             )
         return
+    if source in {"binance.spot", "binance.perpetual"}:
+        if config.get("symbolFilter") != "btcusdt" or "transportScope" in config:
+            raise ManifestVerificationError(
+                "direct Binance manifest must record the btcusdt effective filter"
+            )
+        return
     if "symbolFilter" in config or "transportScope" in config:
         raise ManifestVerificationError(
-            "symbolFilter and transportScope are reserved for RTDS manifests"
+            "symbolFilter and transportScope are reserved for allowlisted Binance/RTDS manifests"
         )
 
 

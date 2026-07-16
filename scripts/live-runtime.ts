@@ -1,7 +1,10 @@
 import { randomUUID, createHash } from "node:crypto";
-import { gzipSync } from "node:zlib";
-import { mkdir, readFile, statfs, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { mkdir, statfs, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { Writable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createGzip } from "node:zlib";
 
 import { BookState, PublicOrderBook } from "../execution/src/adapters/market-data/book-state.js";
 import {
@@ -9,12 +12,13 @@ import {
   parseRtdsPriceMessage,
 } from "../execution/src/adapters/market-data/parsers.js";
 import {
-  PUBLIC_ENDPOINTS,
+  capturePublicSocket,
   clobMarketSubscription,
   fetchPublicMarketBySlug,
   rtdsSubscription,
   validatePublicBtcFiveMinuteMarket,
   type PublicBtcFiveMinuteMarket,
+  type PublicSocketRequest,
 } from "../execution/src/adapters/market-data/public-sources.js";
 import { createEnvelopeDraft, type ParserStatus } from "../execution/src/domain/raw-event.js";
 import {
@@ -35,6 +39,7 @@ import {
 } from "../execution/src/runtime/recording.js";
 import {
   RawByteLimitReached,
+  DatasetManifestWriter,
   RawSegmentWriter,
   type ClosedSegment,
 } from "../execution/src/storage/raw-segment.js";
@@ -192,8 +197,10 @@ class RuntimeRecorder {
   readonly #config: RuntimeOptions;
   readonly #runId: string;
   readonly #budget: SharedByteBudget | null;
-  readonly #writers = new Map<StreamName, RawSegmentWriter>();
-  readonly #closed: ClosedSegment[] = [];
+  readonly #writers = new Map<string, RawSegmentWriter>();
+  readonly #gammaSlugs = new Map<string, string>();
+  readonly #clobAssets = new Set<string>();
+  readonly #closed: Array<{ readonly key: string; readonly stream: StreamName; readonly segment: ClosedSegment }> = [];
   readonly #metrics: Record<string, unknown>[] = [];
   stoppedByLimit = false;
 
@@ -214,7 +221,7 @@ class RuntimeRecorder {
       binance_spot: ["binance.spot", "book-ticker"],
       binance_perpetual: ["binance.perpetual", "book-ticker"],
     };
-    for (const stream of STREAMS) {
+    for (const stream of STREAMS.filter((name) => name !== "gamma")) {
       const [source, name] = mapping[stream];
       this.#writers.set(stream, await RawSegmentWriter.open({
         dataRoot: this.#config.record.outputPath,
@@ -238,13 +245,33 @@ class RuntimeRecorder {
       readonly sourceSequence?: string | null;
       readonly market?: PublicBtcFiveMinuteMarket | null;
       readonly assetId?: string | null;
+      readonly marketSlug?: string | null;
       readonly parserStatus: ParserStatus;
       readonly parserError?: string | null;
       readonly connectionId: string;
     },
   ): Promise<void> {
     if (this.#config.record.mode !== "raw" || this.stoppedByLimit) return;
-    const writer = this.#writers.get(stream);
+    if (stream === "clob" && input.market !== null && input.market !== undefined) {
+      this.#clobAssets.add(input.market.upTokenId);
+      this.#clobAssets.add(input.market.downTokenId);
+    }
+    const key = stream === "gamma" ? `gamma:${input.marketSlug ?? ""}` : stream;
+    if (stream === "gamma" && input.marketSlug === undefined) {
+      throw new Error("Gamma raw event requires its exact market slug");
+    }
+    if (stream === "gamma" && !this.#writers.has(key)) {
+      this.#gammaSlugs.set(key, input.marketSlug!);
+      this.#writers.set(key, await RawSegmentWriter.open({
+        dataRoot: this.#config.record.outputPath,
+        segmentId: `${this.#runId}-gamma-${input.marketSlug}`,
+        source: "polymarket.gamma",
+        stream: "market-discovery",
+        partitionDate: input.receiveTime.slice(0, 10),
+        reserveBytes: this.#budget!.reserve,
+      }));
+    }
+    const writer = this.#writers.get(key);
     if (writer === undefined) throw new Error(`raw writer missing for ${stream}`);
     try {
       await writer.append(createEnvelopeDraft({
@@ -281,9 +308,11 @@ class RuntimeRecorder {
 
   async close(): Promise<readonly CompressedSegmentResult[]> {
     if (this.#config.record.mode === "raw") {
-      for (const writer of this.#writers.values()) {
+      for (const [key, writer] of this.#writers) {
         try {
-          this.#closed.push(await writer.close());
+          const segment = await writer.close();
+          const stream = key.startsWith("gamma:") ? "gamma" : key as StreamName;
+          this.#closed.push({ key, stream, segment });
         } catch (error) {
           await writer.leaveIncomplete().catch(() => undefined);
           if (!(error instanceof Error && /empty segment/u.test(error.message))) throw error;
@@ -297,20 +326,56 @@ class RuntimeRecorder {
     }
     const compressed: CompressedSegmentResult[] = [];
     if (this.#config.record.mode === "raw") {
-      for (const segment of this.#closed) {
+      const manifestWriter = new DatasetManifestWriter(this.#config.record.outputPath);
+      for (const closed of this.#closed) {
+        const { segment } = closed;
+        const subscription = closed.stream === "gamma"
+          ? { endpoint: "gamma-market-by-slug", slug: this.#gammaSlugs.get(closed.key)! }
+          : closed.stream === "clob"
+            ? clobMarketSubscription([...this.#clobAssets])
+            : closed.stream === "chainlink"
+              ? rtdsSubscription("chainlink")
+              : closed.stream === "polymarket_binance"
+                ? rtdsSubscription("binance")
+                : { endpoint: "market-data-only", stream: "bookTicker", symbol: "btcusdt" };
+        await manifestWriter.publish({
+          datasetId: `${segment.segmentId}-dataset`,
+          source: segment.source,
+          stream: segment.stream,
+          subscription,
+          collectorGitCommit: this.#config.collectorGitCommit,
+          collectionStart: segment.firstReceiveTime,
+          collectionEnd: segment.lastReceiveTime,
+          segments: [segment],
+          sanitizedConfig: {
+            endpointClass: "public-read-only",
+            ...(["polymarket.rtds.binance", "binance.spot", "binance.perpetual"].includes(segment.source)
+              ? { symbolFilter: "btcusdt" }
+              : {}),
+            ...(segment.source === "polymarket.rtds.binance" ? { transportScope: "btc-only" } : {}),
+            ...(segment.source === "polymarket.rtds.chainlink" ? { symbolFilter: "btc/usd" } : {}),
+          },
+        });
         const path = join(this.#config.record.outputPath, ...segment.relativePath.split("/"));
-        const bytes = await readFile(path);
-        const gz = gzipSync(bytes, { level: 6 });
-        await writeFile(`${path}.gz`, gz, { flag: "wx", mode: 0o400 });
+        const hash = createHash("sha256");
+        let compressedBytes = 0;
+        const sink = new Writable({
+          write(chunk: Buffer, _encoding, callback) {
+            compressedBytes += chunk.byteLength;
+            hash.update(chunk);
+            callback();
+          },
+        });
+        await pipeline(createReadStream(path), createGzip({ level: 6 }), sink);
         compressed.push({
           source: segment.source,
           stream: segment.stream,
           eventCount: segment.eventCount,
           uncompressedBytes: segment.byteCount,
           uncompressedSha256: segment.sha256,
-          compressedBytes: gz.byteLength,
-          compressedSha256: createHash("sha256").update(gz).digest("hex"),
-          compressionRatio: gz.byteLength / segment.byteCount,
+          compressedBytes,
+          compressedSha256: hash.digest("hex"),
+          compressionRatio: compressedBytes / segment.byteCount,
         });
       }
     }
@@ -357,7 +422,21 @@ function observe(stats: StreamStats, raw: string, receiveTime: string, reference
 
 async function discover(epoch: number, recorder: RuntimeRecorder, stats: StreamStats): Promise<PublicBtcFiveMinuteMarket | null> {
   const slug = `btc-updown-5m-${epoch}`;
-  const response = await fetchPublicMarketBySlug(slug, { timeoutMilliseconds: 10_000, maxResponseBytes: 2 * 1024 * 1024 });
+  let response;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      response = await fetchPublicMarketBySlug(slug, { timeoutMilliseconds: 10_000, maxResponseBytes: 2 * 1024 * 1024 });
+      break;
+    } catch (error) {
+      stats.reconnects += 1;
+      if (attempt === 3) {
+        stats.quarantines += 1;
+        return null;
+      }
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 500 * attempt));
+    }
+  }
+  if (response === undefined) return null;
   observe(stats, response.rawPayload, response.receiveTime, null);
   let market: PublicBtcFiveMinuteMarket | null = null;
   let status: ParserStatus = "parsed";
@@ -375,6 +454,7 @@ async function discover(epoch: number, recorder: RuntimeRecorder, stats: StreamS
     rawPayload: response.rawPayload,
     receiveTime: response.receiveTime,
     market,
+    marketSlug: slug,
     parserStatus: status,
     parserError: error,
     connectionId: `gamma-http-${slug}`,
@@ -382,62 +462,44 @@ async function discover(epoch: number, recorder: RuntimeRecorder, stats: StreamS
   return market;
 }
 
-interface SocketPlan {
+interface RuntimeCapturePlan {
   readonly stream: StreamName;
-  readonly url: string;
-  readonly subscription: Readonly<Record<string, unknown>> | null;
-  readonly heartbeatMilliseconds: number | null;
-  readonly market: PublicBtcFiveMinuteMarket | null;
-  readonly until: number;
-  readonly connectionId?: string;
+  readonly request: PublicSocketRequest;
+  readonly beforeAttempt?: (connectionId: string) => void;
+  readonly afterAttempt?: () => void;
   readonly handle: (raw: string, receiveTime: string, connectionId: string) => Promise<void>;
 }
 
-async function socketOnce(plan: SocketPlan, stats: StreamStats): Promise<void> {
-  await new Promise<void>((resolvePromise) => {
-    const socket = new WebSocket(plan.url);
-    const connectionId = plan.connectionId ?? `${plan.stream}-${randomUUID()}`;
-    let settled = false;
-    let heartbeat: ReturnType<typeof setInterval> | null = null;
-    let chain = Promise.resolve();
-    const finish = (): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(endTimer);
-      if (heartbeat !== null) clearInterval(heartbeat);
-      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
-        socket.close(1000, "bounded research runtime interval complete");
-      }
-      void chain.finally(resolvePromise);
-    };
-    const endTimer = setTimeout(finish, Math.max(1, plan.until - Date.now()));
-    socket.addEventListener("open", () => {
-      if (plan.subscription !== null) socket.send(JSON.stringify(plan.subscription));
-      if (plan.heartbeatMilliseconds !== null) {
-        heartbeat = setInterval(() => {
-          if (socket.readyState === WebSocket.OPEN) socket.send("PING");
-        }, plan.heartbeatMilliseconds);
-      }
-    });
-    socket.addEventListener("message", (event) => {
-      if (settled || typeof event.data !== "string" || event.data === "PONG") return;
-      const receiveTime = new Date().toISOString();
-      chain = chain.then(() => plan.handle(event.data as string, receiveTime, connectionId));
-      void chain.catch(() => {
-        stats.quarantines += 1;
-      });
-    });
-    socket.addEventListener("error", finish);
-    socket.addEventListener("close", finish);
-  });
-}
-
-async function reconnectingSocket(plan: Omit<SocketPlan, "until">, end: number, stats: StreamStats, recorder: RuntimeRecorder): Promise<void> {
+async function captureUntil(
+  plan: RuntimeCapturePlan,
+  end: number,
+  stats: StreamStats,
+  recorder: RuntimeRecorder,
+): Promise<void> {
   let first = true;
   while (Date.now() < end && !recorder.stoppedByLimit) {
     if (!first) stats.reconnects += 1;
     first = false;
-    await socketOnce({ ...plan, until: end }, stats);
+    const connectionId = `${plan.stream}-${randomUUID()}`;
+    const timeoutMilliseconds = Math.max(1, end - Date.now());
+    plan.beforeAttempt?.(connectionId);
+    try {
+      await capturePublicSocket({
+        ...plan.request,
+        timeoutMilliseconds,
+        maxFrames: 10_000_000,
+        maxFrameBytes: 16 * 1024 * 1024,
+        maxTotalBytes: 2 * 1024 * 1024 * 1024,
+        accept: async (frame) => {
+          await plan.handle(frame.rawPayload, frame.receiveTime, connectionId);
+          return recorder.stoppedByLimit || Date.now() >= end;
+        },
+      });
+    } catch {
+      if (Date.now() >= end || recorder.stoppedByLimit) return;
+    } finally {
+      plan.afterAttempt?.();
+    }
     if (Date.now() < end) await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
   }
 }
@@ -490,6 +552,7 @@ function clobHandler(state: RuntimeState, recorder: RuntimeRecorder, stats: Stre
       rawPayload: raw,
       receiveTime,
       market,
+      assetId: parsed.messages[0]?.assetId ?? null,
       parserStatus: status,
       parserError: status === "error" ? (error ?? "CLOB parse failed") : null,
       connectionId,
@@ -577,19 +640,13 @@ async function marketLoop(end: number, state: RuntimeState, recorder: RuntimeRec
     while (Date.now() < marketEnd && !recorder.stoppedByLimit) {
       if (!first) stats.clob.reconnects += 1;
       first = false;
-      const connectionId = `clob-${randomUUID()}`;
-      state.orderBook.connected(connectionId, new Date().toISOString());
-      await socketOnce({
+      await captureUntil({
         stream: "clob",
-        url: PUBLIC_ENDPOINTS.clobMarketWebSocket,
-        subscription: clobMarketSubscription([chosen.upTokenId, chosen.downTokenId]),
-        heartbeatMilliseconds: 10_000,
-        market: chosen,
-        until: marketEnd,
-        connectionId,
+        request: { source: "clob-market", assetIds: [chosen.upTokenId, chosen.downTokenId] },
+        beforeAttempt: (connectionId) => state.orderBook?.connected(connectionId, new Date().toISOString()),
+        afterAttempt: () => state.orderBook?.disconnected(),
         handle: clobHandler(state, recorder, stats.clob, chosen),
-      }, stats.clob);
-      state.orderBook.disconnected();
+      }, marketEnd, stats.clob, recorder);
       if (Date.now() < marketEnd) await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
     }
   }
@@ -682,10 +739,7 @@ async function dashboardLoop(config: RuntimeOptions, end: number, started: numbe
       rawWriteBytesPerHour: recorder.usedRawBytes / elapsedHours,
     };
     recorder.metric(view);
-    if (config.json || !process.stdout.isTTY) process.stdout.write(`${JSON.stringify(view)}\n`);
-    else {
-      process.stdout.write(`\u001b[2J\u001b[Hpoly-lab ${config.mode}  ${now}\nmarket ${view.currentMarket ?? "unavailable"}  next ${view.nextMarket ?? "unavailable"}\nbook ${view.bookState} continuity UNVERIFIED\nUP ${paperSnapshot?.up.bid ?? "-"}/${paperSnapshot?.up.ask ?? "-"}  DOWN ${paperSnapshot?.down.bid ?? "-"}/${paperSnapshot?.down.ask ?? "-"}\nChainlink ${view.chainlink ?? "-"}  Binance spot ${view.binanceSpot ?? "-"}  perpetual ${view.binancePerpetual ?? "-"}\nopportunities ${audits.filter((audit) => audit.fills.length || audit.details.detected === true).length}  raw bytes ${recorder.usedRawBytes}\n`);
-    }
+    process.stdout.write(`${JSON.stringify(view)}\n`);
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
   }
 }
@@ -700,36 +754,24 @@ async function main(): Promise<void> {
   const started = Date.now();
   const end = started + config.durationMilliseconds;
   const external = [
-    reconnectingSocket({
+    captureUntil({
       stream: "chainlink",
-      url: PUBLIC_ENDPOINTS.rtdsWebSocket,
-      subscription: rtdsSubscription("chainlink"),
-      heartbeatMilliseconds: 5_000,
-      market: null,
+      request: { source: "rtds-chainlink" },
       handle: rtdsHandler("chainlink", state, recorder, stats.chainlink),
     }, end, stats.chainlink, recorder),
-    reconnectingSocket({
+    captureUntil({
       stream: "polymarket_binance",
-      url: PUBLIC_ENDPOINTS.rtdsWebSocket,
-      subscription: rtdsSubscription("binance"),
-      heartbeatMilliseconds: 5_000,
-      market: null,
+      request: { source: "rtds-binance" },
       handle: rtdsHandler("binance", state, recorder, stats.polymarket_binance),
     }, end, stats.polymarket_binance, recorder),
-    reconnectingSocket({
+    captureUntil({
       stream: "binance_spot",
-      url: "wss://data-stream.binance.vision/ws/btcusdt@bookTicker",
-      subscription: null,
-      heartbeatMilliseconds: null,
-      market: null,
+      request: { source: "binance-spot-book" },
       handle: directHandler("binance_spot", state, recorder, stats.binance_spot),
     }, end, stats.binance_spot, recorder),
-    reconnectingSocket({
+    captureUntil({
       stream: "binance_perpetual",
-      url: "wss://fstream.binance.com/ws/btcusdt@bookTicker",
-      subscription: null,
-      heartbeatMilliseconds: null,
-      market: null,
+      request: { source: "binance-perpetual-book" },
       handle: directHandler("binance_perpetual", state, recorder, stats.binance_perpetual),
     }, end, stats.binance_perpetual, recorder),
   ];
@@ -786,7 +828,7 @@ async function main(): Promise<void> {
     collectorGitCommit: config.collectorGitCommit,
   };
   if (config.summaryPath !== null) await writeFile(config.summaryPath, `${JSON.stringify(summary, null, 2)}\n`, { flag: "wx", mode: 0o400 });
-  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(summary)}\n`);
 }
 
 await main();

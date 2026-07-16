@@ -669,6 +669,17 @@ function validatePublicSubscription(
       subscriptions: Object.freeze([Object.freeze(expected)]),
     });
   }
+  if (source === "binance.spot" || source === "binance.perpetual") {
+    requireExactKeys(subscription, ["endpoint", "stream", "symbol"], "direct Binance subscription");
+    if (
+      subscription.endpoint !== "market-data-only"
+      || subscription.stream !== "bookTicker"
+      || subscription.symbol !== "btcusdt"
+    ) {
+      throw new Error("direct Binance subscription must be the public BTCUSDT bookTicker stream");
+    }
+    return Object.freeze({ endpoint: "market-data-only", stream: "bookTicker", symbol: "btcusdt" });
+  }
   if (source.startsWith("fixture.")) {
     requireExactKeys(subscription, ["topic"], "fixture subscription");
     if (subscription.topic !== "public-fixture") throw new Error("fixture subscription must be public-fixture");
@@ -749,6 +760,12 @@ function assertIngressConfigMatchesSubscription(
     const expectedScope = child.filters === undefined ? "all-symbols-quarantine" : "btc-only";
     if (config.symbolFilter !== "btcusdt" || config.transportScope !== expectedScope) {
       throw new Error("Binance manifest effective filter and transport scope do not match its subscription");
+    }
+    return;
+  }
+  if (source === "binance.spot" || source === "binance.perpetual") {
+    if (config.symbolFilter !== "btcusdt" || config.transportScope !== undefined) {
+      throw new Error("direct Binance manifest must record the btcusdt effective filter");
     }
     return;
   }

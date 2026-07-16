@@ -112,9 +112,17 @@ test("public socket plans bind endpoint, subscription, and heartbeat to a closed
     source: "rtds-binance",
     transportMode: "all-symbols-quarantine",
   });
+  const spot = publicSocketCapturePlan({ source: "binance-spot-book" });
+  const perpetual = publicSocketCapturePlan({ source: "binance-perpetual-book" });
   assert.equal(clob.heartbeatMilliseconds, 10_000);
   assert.equal(chainlink.heartbeatMilliseconds, 5_000);
   assert.equal(binance.heartbeatMilliseconds, 5_000);
+  assert.equal(spot.heartbeatMilliseconds, null);
+  assert.equal(perpetual.heartbeatMilliseconds, null);
+  assert.equal(spot.subscription, null);
+  assert.equal(perpetual.subscription, null);
+  assert.match(spot.url, /data-stream\.binance\.vision/);
+  assert.match(perpetual.url, /fstream\.binance\.com/);
   assert.match(JSON.stringify(clob.subscription), /"type":"market"/);
   assert.match(JSON.stringify(chainlink.subscription), /btc\/usd/);
   assert.match(JSON.stringify(binance.subscription), /btcusdt/);
@@ -126,6 +134,32 @@ test("public socket plans bind endpoint, subscription, and heartbeat to a closed
     () => publicSocketCapturePlan({ source: "unknown" } as never),
     /unsupported public socket source/,
   );
+});
+
+test("direct Binance public stream reuses bounded capture without app subscription or heartbeat", async () => {
+  const socket = new FakeWebSocket();
+  const audits: PublicSocketAuditEvent[] = [];
+  const capture = capturePublicSocket(
+    {
+      source: "binance-spot-book",
+      timeoutMilliseconds: 1_000,
+      maxFrames: 1,
+      maxFrameBytes: 1_000,
+      maxTotalBytes: 1_000,
+      accept: async () => true,
+      audit: async (event) => { audits.push(event); },
+    },
+    {
+      createWebSocket: () => socket as unknown as WebSocket,
+      now: () => "2026-07-15T00:00:00.100Z",
+    },
+  );
+  socket.open();
+  assert.deepEqual(socket.sent, []);
+  socket.message('{"s":"BTCUSDT"}');
+  assert.equal(await capture, 1);
+  assert.equal(audits.some((event) => event.eventType === "subscription_sent"), false);
+  assert.equal(audits.some((event) => event.eventType === "heartbeat_ping"), false);
 });
 
 test("public payload guard recursively rejects credential-like fields", () => {

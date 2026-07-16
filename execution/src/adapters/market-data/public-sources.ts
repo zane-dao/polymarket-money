@@ -3,6 +3,8 @@ export const PUBLIC_ENDPOINTS = Object.freeze({
   clobBook: "https://clob.polymarket.com/book",
   clobMarketWebSocket: "wss://ws-subscriptions-clob.polymarket.com/ws/market",
   rtdsWebSocket: "wss://ws-live-data.polymarket.com",
+  binanceSpotBookTickerWebSocket: "wss://data-stream.binance.vision/ws/btcusdt@bookTicker",
+  binancePerpetualBookTickerWebSocket: "wss://fstream.binance.com/ws/btcusdt@bookTicker",
 });
 
 export interface PublicBtcFiveMinuteMarket {
@@ -55,21 +57,28 @@ interface PublicSocketCaptureCommon {
   readonly audit?: (event: PublicSocketAuditEvent) => Promise<void>;
 }
 
-export type PublicSocketSource = "clob-market" | "rtds-chainlink" | "rtds-binance";
+export type PublicSocketSource =
+  | "clob-market"
+  | "rtds-chainlink"
+  | "rtds-binance"
+  | "binance-spot-book"
+  | "binance-perpetual-book";
 export type BinanceTransportMode = "btc-only" | "all-symbols-quarantine";
 
 export type PublicSocketRequest =
   | { readonly source: "clob-market"; readonly assetIds: readonly string[] }
   | { readonly source: "rtds-chainlink" }
-  | { readonly source: "rtds-binance"; readonly transportMode?: BinanceTransportMode };
+  | { readonly source: "rtds-binance"; readonly transportMode?: BinanceTransportMode }
+  | { readonly source: "binance-spot-book" }
+  | { readonly source: "binance-perpetual-book" };
 
 export type PublicSocketCaptureOptions = PublicSocketCaptureCommon & PublicSocketRequest;
 
 export interface PublicSocketCapturePlan {
   readonly source: PublicSocketSource;
   readonly url: string;
-  readonly subscription: Readonly<Record<string, unknown>>;
-  readonly heartbeatMilliseconds: 5_000 | 10_000;
+  readonly subscription: Readonly<Record<string, unknown>> | null;
+  readonly heartbeatMilliseconds: 5_000 | 10_000 | null;
 }
 
 export interface PublicSocketRuntime {
@@ -301,10 +310,19 @@ export function publicSocketCapturePlan(request: PublicSocketRequest): PublicSoc
       ),
       heartbeatMilliseconds: 5_000,
     };
+  } else if (request.source === "binance-spot-book" || request.source === "binance-perpetual-book") {
+    plan = {
+      source: request.source,
+      url: request.source === "binance-spot-book"
+        ? PUBLIC_ENDPOINTS.binanceSpotBookTickerWebSocket
+        : PUBLIC_ENDPOINTS.binancePerpetualBookTickerWebSocket,
+      subscription: null,
+      heartbeatMilliseconds: null,
+    };
   } else {
     throw new Error("unsupported public socket source");
   }
-  assertCredentialFreePublicPayload(plan.subscription);
+  if (plan.subscription !== null) assertCredentialFreePublicPayload(plan.subscription);
   return Object.freeze(plan);
 }
 
@@ -519,7 +537,7 @@ export function capturePublicSocket(
       let subscribedAt: string;
       try {
         openedAt = runtime.now();
-        socket.send(JSON.stringify(plan.subscription));
+        if (plan.subscription !== null) socket.send(JSON.stringify(plan.subscription));
         subscribedAt = runtime.now();
       } catch (error) {
         finish(error, "connection_error");
@@ -533,34 +551,34 @@ export function capturePublicSocket(
             details: { endpoint: plan.url, source: plan.source },
           }),
         )
-        .then(() =>
-          options.audit?.({
-            eventType: "subscription_sent",
-            receiveTime: subscribedAt,
-            details: { public: true, source: plan.source },
-          }),
-        );
+        .then(() => plan.subscription === null ? undefined : options.audit?.({
+          eventType: "subscription_sent",
+          receiveTime: subscribedAt,
+          details: { public: true, source: plan.source },
+        }));
       void chain.catch(finish);
-      heartbeat = setInterval(() => {
-        if (!finished && socket.readyState === 1) {
-          let sentAt: string;
-          try {
-            sentAt = runtime.now();
-            socket.send("PING");
-          } catch (error) {
-            finish(error, "connection_error");
-            return;
+      if (plan.heartbeatMilliseconds !== null) {
+        heartbeat = setInterval(() => {
+          if (!finished && socket.readyState === 1) {
+            let sentAt: string;
+            try {
+              sentAt = runtime.now();
+              socket.send("PING");
+            } catch (error) {
+              finish(error, "connection_error");
+              return;
+            }
+            chain = chain.then(() =>
+              options.audit?.({
+                eventType: "heartbeat_ping",
+                receiveTime: sentAt,
+                details: { source: plan.source },
+              }),
+            );
+            void chain.catch(finish);
           }
-          chain = chain.then(() =>
-            options.audit?.({
-              eventType: "heartbeat_ping",
-              receiveTime: sentAt,
-              details: { source: plan.source },
-            }),
-          );
-          void chain.catch(finish);
-        }
-      }, plan.heartbeatMilliseconds);
+        }, plan.heartbeatMilliseconds);
+      }
     });
     socket.addEventListener("message", (event) => {
       if (finished) return;

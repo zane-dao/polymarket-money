@@ -322,6 +322,24 @@ test("replay and runtime insertion order produce identical as-of horizon semanti
   );
 });
 
+test("retiring settled market working history preserves immutable grid evidence", () => {
+  const { engine, triggerId } = engineWithTrigger();
+  engine.ingestPolymarket(book(640_000_000, 5, "0.51"));
+  engine.evaluateHorizon({
+    triggerId,
+    horizonMs: 50,
+    targetWatermark: stamp(650_000_000, 5),
+  });
+  const before = engine.grid();
+  assert.ok(engine.workingHistoryCounts().books > 0);
+  engine.retirePolymarketWorkingHistory("market-1");
+  assert.equal(engine.workingHistoryCounts().books, 0);
+  assert.equal(engine.workingHistoryCounts().polymarketResets, 0);
+  assert.equal(engine.workingHistoryCounts().polymarketQualityFailures, 0);
+  assert.deepEqual(engine.grid(), before);
+  assert.equal(engine.trigger(triggerId).market_id, "market-1");
+});
+
 test("episode v1 extends only within frozen gap and grouping dimensions", () => {
   const tracker = new EpisodeTracker();
   const identity = {

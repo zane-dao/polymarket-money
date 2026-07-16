@@ -1,6 +1,6 @@
 # Batch 4B-R2 observation method
 
-状态：**PRE-LAUNCH METHOD FROZEN**
+状态：**METHOD FROZEN / OBSERVATION CLOSED**
 
 启动包装器只负责配置哈希、Git/磁盘/单 session 安全门和进程生命周期；实际公共数据读取、
 盘口、ReceiveStamp、费用、Opportunity 与 lead-lag 全部继续调用 `scripts/live-runtime.ts` 及
@@ -22,3 +22,16 @@ stderr、exit status、stop reason、metrics 与报告路径。包装器提供 `
 启动健康门确认当前 Gamma 将 `feeSchedule.rate` 返回为 JSON number。兼容层只从原始响应中
 保留其精确数值词法（例如 `0.07`），再交给 R1 Money/FeeEdgeCalculator；不把 JavaScript
 number 传入金额合同。指数或非 canonical 数值词法继续失败关闭。
+
+## 运行后降级与有界性整改
+
+本次证据确认原 R1 已有 reconnect、connection reset censor、quarantine、stale/empty/crossed
+排除、`UNVERIFIED` continuity 和 RuntimeIncident fail-closed，但长期运行仍缺三项：
+
+1. 市场窗口外的 fee evidence 应成为“不生成机会/trigger”的质量拒绝，而非 terminal error；
+2. 已结算市场的 as-of working history 应在最长 3 秒 horizon 落定后清理，不能长期全表增长；
+3. SIGTERM 或 terminal failure 必须统一 abort 所有 socket，等待 recorder 收口后退出。
+
+收口实现补齐以上三项，并移除每秒 metrics snapshot 中重复构造的 252-cell grid；最终 summary
+仍输出完整 252 格。专项测试证明清理 working history 不删除 trigger/horizon/episode/grid 证据，
+AbortSignal 会关闭并 resolve 公共 socket。该整改只修复未来运行，不追认本次不完整观测。

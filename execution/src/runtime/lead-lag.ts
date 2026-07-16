@@ -600,6 +600,32 @@ export class LeadLagEngine {
     }));
   }
 
+  /**
+   * Drops only mutable as-of working history for a market after every <=3s
+   * pending horizon has settled. Trigger, horizon, episode and grid evidence
+   * remain immutable and available for the final report.
+   */
+  retirePolymarketWorkingHistory(marketIdValue: string): void {
+    const marketId = nonEmpty(marketIdValue, "marketId");
+    const remove = <T extends { readonly market_id: string }>(values: T[]): void => {
+      for (let index = values.length - 1; index >= 0; index -= 1) {
+        if (values[index]?.market_id === marketId) values.splice(index, 1);
+      }
+    };
+    remove(this.#books);
+    remove(this.#polymarketResets);
+    remove(this.#polymarketQualityFailures);
+    this.#episodes.endMarket(marketId);
+  }
+
+  workingHistoryCounts(): Readonly<{ books: number; polymarketResets: number; polymarketQualityFailures: number }> {
+    return Object.freeze({
+      books: this.#books.length,
+      polymarketResets: this.#polymarketResets.length,
+      polymarketQualityFailures: this.#polymarketQualityFailures.length,
+    });
+  }
+
   createTriggers(input: {
     readonly externalEventId: string;
     readonly marketId: string;

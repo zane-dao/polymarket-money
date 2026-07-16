@@ -520,6 +520,7 @@ class RuntimeState {
   readonly observations: OpportunityObservationV1[] = [];
   readonly routeEvaluations: RouteEvaluationV1[] = [];
   readonly horizonTimers = new Set<ReturnType<typeof setTimeout>>();
+  readonly maintenanceTimers = new Set<ReturnType<typeof setTimeout>>();
   readonly leadLagMarketIds = new Set<string>();
   readonly triggerRejections: TriggerRejection[] = [];
   rawTriggerCount = 0;
@@ -616,6 +617,7 @@ interface RuntimeCapturePlan {
   readonly beforeAttempt?: (connectionId: string) => void;
   readonly afterAttempt?: (connectionId: string, receiveStamp: ReceiveStamp) => void;
   readonly handle: (raw: string, receiveStamp: ReceiveStamp, connectionId: string) => Promise<void>;
+  readonly signal: AbortSignal;
 }
 
 async function captureUntil(
@@ -626,7 +628,7 @@ async function captureUntil(
   failureRuntime: FailClosedRuntime,
 ): Promise<void> {
   let first = true;
-  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated) {
+  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated && !plan.signal.aborted) {
     if (!first) stats.reconnects += 1;
     first = false;
     const connectionId = `${plan.stream}-${randomUUID()}`;
@@ -639,14 +641,15 @@ async function captureUntil(
         maxFrames: 10_000_000,
         maxFrameBytes: 16 * 1024 * 1024,
         maxTotalBytes: 2 * 1024 * 1024 * 1024,
+        signal: plan.signal,
         accept: async (frame) => {
           await plan.handle(frame.rawPayload, frame.receiveStamp, connectionId);
-          return recorder.stoppedByLimit || Date.now() >= end;
+          return recorder.stoppedByLimit || Date.now() >= end || plan.signal.aborted;
         },
       });
     } catch (captureError) {
       const terminal = captureError instanceof RuntimeStorageError;
-      if (!terminal && (Date.now() >= end || recorder.stoppedByLimit)) return;
+      if (!terminal && (Date.now() >= end || recorder.stoppedByLimit || plan.signal.aborted)) return;
       const received = publicReceiveClock().capture();
       const incident = createRuntimeIncident({
         errorClass: captureError instanceof Error ? captureError.name : "UnknownError",
@@ -842,7 +845,10 @@ function ingestExternalPrice(
   });
   const market = state.currentMarket;
   const watermarks = baselineWatermarks(price.receiveStamp);
-  if (market === null || watermarks === null) return;
+  const observedAt = Date.parse(price.receiveTime);
+  if (market === null || watermarks === null
+    || observedAt < Date.parse(market.intervalStart)
+    || observedAt >= Date.parse(market.intervalEnd)) return;
   const batch = state.leadLagEngine.createTriggers({
     externalEventId: price.externalEventId,
     marketId: market.marketId,
@@ -1083,17 +1089,27 @@ async function marketLoop(
   recorder: RuntimeRecorder,
   stats: Record<StreamName, StreamStats>,
   failureRuntime: FailClosedRuntime,
+  signal: AbortSignal,
 ): Promise<void> {
-  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated) {
+  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated && !signal.aborted) {
     const epoch = Math.floor(Date.now() / 300_000) * 300;
     const current = await discover(epoch, recorder, stats.gamma);
     const next = await discover(epoch + 300, recorder, stats.gamma);
     const chosen = current?.collectible === true ? current : next?.collectible === true ? next : null;
+    const priorMarket = state.currentMarket;
     state.currentMarket = chosen;
     state.nextMarket = chosen === current ? next : await discover(epoch + 600, recorder, stats.gamma);
     if (chosen === null) {
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000));
       continue;
+    }
+    if (priorMarket !== null && priorMarket.marketId !== chosen.marketId) {
+      const retiredMarketId = priorMarket.marketId;
+      const timer = setTimeout(() => {
+        state.maintenanceTimers.delete(timer);
+        state.leadLagEngine.retirePolymarketWorkingHistory(retiredMarketId);
+      }, 3_500);
+      state.maintenanceTimers.add(timer);
     }
     state.orderBook = new PublicOrderBook({
       expectedConditionId: chosen.conditionId,
@@ -1102,11 +1118,12 @@ async function marketLoop(
     });
     const marketEnd = Math.min(end, Date.parse(chosen.intervalEnd));
     let first = true;
-    while (Date.now() < marketEnd && !recorder.stoppedByLimit && !failureRuntime.terminated) {
+    while (Date.now() < marketEnd && !recorder.stoppedByLimit && !failureRuntime.terminated && !signal.aborted) {
       if (!first) stats.clob.reconnects += 1;
       first = false;
       await captureUntil({
         stream: "clob",
+        signal,
         request: { source: "clob-market", assetIds: [chosen.upTokenId, chosen.downTokenId] },
         beforeAttempt: (connectionId) => state.orderBook?.connected(connectionId, new Date().toISOString()),
         afterAttempt: (_connectionId, receiveStamp) => {
@@ -1120,6 +1137,9 @@ async function marketLoop(
       }, marketEnd, stats.clob, recorder, failureRuntime);
       if (Date.now() < marketEnd) await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
     }
+    state.orderBook = null;
+    state.latestPolymarketInput = null;
+    state.completeSetCandidateSince = null;
   }
 }
 
@@ -1127,6 +1147,10 @@ function snapshot(state: RuntimeState): PaperSnapshot | null {
   const market = state.currentMarket;
   const book = state.orderBook;
   if (market === null || book === null || book.state !== BookState.ACTIVE_UNVERIFIED) return null;
+  const observedAt = new Date().toISOString();
+  const observedMilliseconds = Date.parse(observedAt);
+  if (observedMilliseconds < Date.parse(market.intervalStart)
+    || observedMilliseconds >= Date.parse(market.intervalEnd)) return null;
   const values = {
     upBid: book.bestBid(market.upTokenId),
     upAsk: book.bestAsk(market.upTokenId),
@@ -1139,7 +1163,7 @@ function snapshot(state: RuntimeState): PaperSnapshot | null {
   };
   if (Object.values(values).some((value) => value === null)) return null;
   return {
-    observedAt: new Date().toISOString(),
+    observedAt,
     marketId: market.marketId,
     up: { bid: values.upBid!, ask: values.upAsk!, bidSize: values.upBidSize!, askSize: values.upAskSize! },
     down: { bid: values.downBid!, ask: values.downAsk!, bidSize: values.downBidSize!, askSize: values.downAskSize! },
@@ -1262,9 +1286,10 @@ async function dashboardLoop(
   recorder: RuntimeRecorder,
   stats: Record<StreamName, StreamStats>,
   failureRuntime: FailClosedRuntime,
+  signal: AbortSignal,
 ): Promise<void> {
   let previousBookState: BookState | null = null;
-  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated) {
+  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated && !signal.aborted) {
     const now = new Date().toISOString();
     const bookState = state.orderBook?.state ?? BookState.DISCONNECTED;
     state.orderBook?.markStaleIfExpired(now);
@@ -1310,7 +1335,6 @@ async function dashboardLoop(
         p95Ms: percentile(stats[name].providerToLocalWallDeltas, 0.95),
       }])),
       opportunities: audits,
-      leadLagGrid: state.leadLagEngine.grid(),
       streamCounters: Object.fromEntries(STREAMS.map((name) => [name, {
         events: stats[name].events,
         reconnects: stats[name].reconnects,
@@ -1334,6 +1358,10 @@ async function dashboardLoop(
 
 async function main(): Promise<void> {
   const config = await options();
+  const sessionAbort = new AbortController();
+  const requestShutdown = (): void => sessionAbort.abort();
+  process.once("SIGTERM", requestShutdown);
+  process.once("SIGINT", requestShutdown);
   const runId = `runtime-${new Date().toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
   const incidentDirectory = config.outputPath ?? "/tmp/polymarket-runtime-incidents";
   await mkdir(incidentDirectory, { recursive: true, mode: 0o700 });
@@ -1374,24 +1402,28 @@ async function main(): Promise<void> {
   const external = [
     captureUntil({
       stream: "chainlink",
+      signal: sessionAbort.signal,
       request: { source: "rtds-chainlink" },
       afterAttempt: (_connectionId, receiveStamp) => markExternalConnectionReset(state, "chainlink", receiveStamp),
       handle: rtdsHandler("chainlink", state, recorder, stats.chainlink, failureRuntime),
     }, end, stats.chainlink, recorder, failureRuntime),
     captureUntil({
       stream: "polymarket_binance",
+      signal: sessionAbort.signal,
       request: { source: "rtds-binance" },
       afterAttempt: (_connectionId, receiveStamp) => markExternalConnectionReset(state, "polymarket_binance", receiveStamp),
       handle: rtdsHandler("binance", state, recorder, stats.polymarket_binance, failureRuntime),
     }, end, stats.polymarket_binance, recorder, failureRuntime),
     captureUntil({
       stream: "binance_spot",
+      signal: sessionAbort.signal,
       request: { source: "binance-spot-book" },
       afterAttempt: (_connectionId, receiveStamp) => markExternalConnectionReset(state, "binance_spot", receiveStamp),
       handle: directHandler("binance_spot", state, recorder, stats.binance_spot, failureRuntime),
     }, end, stats.binance_spot, recorder, failureRuntime),
     captureUntil({
       stream: "binance_perpetual",
+      signal: sessionAbort.signal,
       request: { source: "binance-perpetual-book" },
       afterAttempt: (_connectionId, receiveStamp) => markExternalConnectionReset(state, "binance_perpetual", receiveStamp),
       handle: directHandler("binance_perpetual", state, recorder, stats.binance_perpetual, failureRuntime),
@@ -1399,8 +1431,8 @@ async function main(): Promise<void> {
   ];
   try {
     await Promise.all([
-      marketLoop(end, state, recorder, stats, failureRuntime),
-      dashboardLoop(config, end, started, state, recorder, stats, failureRuntime),
+      marketLoop(end, state, recorder, stats, failureRuntime, sessionAbort.signal),
+      dashboardLoop(config, end, started, state, recorder, stats, failureRuntime, sessionAbort.signal),
       ...external,
     ]);
   } catch (runtimeError) {
@@ -1417,9 +1449,13 @@ async function main(): Promise<void> {
         stopReason: "UNRECOVERABLE_RUNTIME_FAILURE",
       }));
     }
+    sessionAbort.abort();
   }
+  sessionAbort.abort();
   for (const timer of state.horizonTimers) clearTimeout(timer);
   state.horizonTimers.clear();
+  for (const timer of state.maintenanceTimers) clearTimeout(timer);
+  state.maintenanceTimers.clear();
   for (const startedAt of state.opportunities.values()) state.opportunityDurations.push(Date.now() - startedAt);
   let segments: readonly CompressedSegmentResult[] = [];
   try {
@@ -1525,6 +1561,8 @@ async function main(): Promise<void> {
   };
   if (config.summaryPath !== null) await writeFile(config.summaryPath, `${JSON.stringify(summary, null, 2)}\n`, { flag: "wx", mode: 0o400 });
   process.stdout.write(`${JSON.stringify(summary)}\n`);
+  process.removeListener("SIGTERM", requestShutdown);
+  process.removeListener("SIGINT", requestShutdown);
 }
 
 await main();

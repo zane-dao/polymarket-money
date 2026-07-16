@@ -1,0 +1,1398 @@
+{
+  "schema_version": "batch-04b-r2-market-quality-v1",
+  "run_id": "runtime-20260716122610-05489399",
+  "quality_gate": {
+    "minimum_coverage_ms": 285000,
+    "maximum_start_delay_ms": 15000,
+    "maximum_end_shortfall_ms": 1000
+  },
+  "observed_market_count": 24,
+  "completed_market_count": 15,
+  "markets": [
+    {
+      "marketId": "2934391",
+      "conditionId": "0x9aa3b89614b98eaeea0da6633eaad92f6e8919982cb5820757a00a4956b82815",
+      "slug": "btc-updown-5m-1784204700",
+      "intervalStart": "2026-07-16T12:25:00Z",
+      "intervalEnd": "2026-07-16T12:30:00Z",
+      "dataStart": "2026-07-16T12:26:11.686Z",
+      "dataEnd": "2026-07-16T12:30:00.936Z",
+      "coverageMs": 228314,
+      "startDelayMs": 71686,
+      "endShortfallMs": 0,
+      "completed": false,
+      "samples": 179,
+      "snapshotReadySamples": 135,
+      "opportunityObserverValidInputCoverage": 0.7541899441340782,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 2,
+        "ACTIVE_UNVERIFIED": 176,
+        "DISCONNECTED": 1
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:90905803452511684716521021232436276610169076645869243996745833547009886057293",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:55817919785595152157692887823864817585770183310464707120876483593634394542608"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 91890,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 227,
+          "reconnects": 0,
+          "quarantines": 2
+        },
+        "polymarket_binance": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 1
+        },
+        "binance_spot": {
+          "events": 1076,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 1074,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934397",
+      "conditionId": "0x2a5cb86b5241a27c9e7c1852a8be4482e01d6d16c58c35679519eec41a1405f2",
+      "slug": "btc-updown-5m-1784205000",
+      "intervalStart": "2026-07-16T12:30:00Z",
+      "intervalEnd": "2026-07-16T12:35:00Z",
+      "dataStart": "2026-07-16T12:30:02.072Z",
+      "dataEnd": "2026-07-16T12:35:01.238Z",
+      "coverageMs": 297928,
+      "startDelayMs": 2072,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 269,
+      "snapshotReadySamples": 256,
+      "opportunityObserverValidInputCoverage": 0.9516728624535316,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 3,
+        "ACTIVE_UNVERIFIED": 263,
+        "DISCONNECTED": 3
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:27606885523500233259936950853495176686885988387667823229908665071507025776415",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:105792221553215520525302301447164313379625892986083236498656945385707610382327",
+        "CROSSED_BOOK:105792221553215520525302301447164313379625892986083236498656945385707610382327",
+        "CROSSED_BOOK:27606885523500233259936950853495176686885988387667823229908665071507025776415"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 175266,
+          "reconnects": 1,
+          "quarantines": 10
+        },
+        "chainlink": {
+          "events": 298,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 2394,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 2392,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934447",
+      "conditionId": "0xa64cc4b2ce02e60b9b024dd5b63b863044705d9118d393e28cd32dba1806471f",
+      "slug": "btc-updown-5m-1784205300",
+      "intervalStart": "2026-07-16T12:35:00Z",
+      "intervalEnd": "2026-07-16T12:40:00Z",
+      "dataStart": "2026-07-16T12:35:02.249Z",
+      "dataEnd": "2026-07-16T12:40:02.425Z",
+      "coverageMs": 297751,
+      "startDelayMs": 2249,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 276,
+      "snapshotReadySamples": 158,
+      "opportunityObserverValidInputCoverage": 0.572463768115942,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 2,
+        "ACTIVE_UNVERIFIED": 270,
+        "DISCONNECTED": 4
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:41695580986786020030582710854280255631951977381245827698354612854576909310196",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:35748724041078940305431546960135539323665265462590183087283339818545551938514",
+        "CROSSED_BOOK:35748724041078940305431546960135539323665265462590183087283339818545551938514"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 130292,
+          "reconnects": 1,
+          "quarantines": 3
+        },
+        "chainlink": {
+          "events": 290,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 2704,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 2731,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934490",
+      "conditionId": "0xdcc710d51cc307e0ed93a7764b3e37291203033a4ca66802bb6d1e9eab95a80e",
+      "slug": "btc-updown-5m-1784205600",
+      "intervalStart": "2026-07-16T12:40:00Z",
+      "intervalEnd": "2026-07-16T12:45:00Z",
+      "dataStart": "2026-07-16T12:40:03.462Z",
+      "dataEnd": "2026-07-16T12:45:01.972Z",
+      "coverageMs": 296538,
+      "startDelayMs": 3462,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 180,
+      "snapshotReadySamples": 128,
+      "opportunityObserverValidInputCoverage": 0.7111111111111111,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 6,
+        "ACTIVE_UNVERIFIED": 172,
+        "DISCONNECTED": 2
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:34437728115951161472473177907033801233923243863013500086088256981424249677912",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:76473272999988207396464193898130050807595793362117747946829255256869459705267",
+        "CROSSED_BOOK:76473272999988207396464193898130050807595793362117747946829255256869459705267"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 134976,
+          "reconnects": 2,
+          "quarantines": 3
+        },
+        "chainlink": {
+          "events": 294,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 929,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 928,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934493",
+      "conditionId": "0xf152a7fc0af93c9c16e6be49fa320fe3b59d41cc6659b8a0995de6fa7351372e",
+      "slug": "btc-updown-5m-1784205900",
+      "intervalStart": "2026-07-16T12:45:00Z",
+      "intervalEnd": "2026-07-16T12:50:00Z",
+      "dataStart": "2026-07-16T12:45:02.977Z",
+      "dataEnd": "2026-07-16T12:50:09.680Z",
+      "coverageMs": 297023,
+      "startDelayMs": 2977,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 150,
+      "snapshotReadySamples": 121,
+      "opportunityObserverValidInputCoverage": 0.8066666666666666,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 2,
+        "ACTIVE_UNVERIFIED": 143,
+        "DISCONNECTED": 5
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:45224792726044633526469263479633344118473991462826606135513165069404960272654",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:90482235277538532586537920241312895708820191398941112455303384616020945411958",
+        "CROSSED_BOOK:90482235277538532586537920241312895708820191398941112455303384616020945411958"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 167154,
+          "reconnects": 0,
+          "quarantines": 3
+        },
+        "chainlink": {
+          "events": 144,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 786,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 786,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934513",
+      "conditionId": "0x0c2df34422d88c3cf22e15431da764e910df2d1e65b953bb350214d8bd917a53",
+      "slug": "btc-updown-5m-1784206200",
+      "intervalStart": "2026-07-16T12:50:00Z",
+      "intervalEnd": "2026-07-16T12:55:00Z",
+      "dataStart": "2026-07-16T12:50:16.061Z",
+      "dataEnd": "2026-07-16T12:55:02.604Z",
+      "coverageMs": 283939,
+      "startDelayMs": 16061,
+      "endShortfallMs": 0,
+      "completed": false,
+      "samples": 180,
+      "snapshotReadySamples": 129,
+      "opportunityObserverValidInputCoverage": 0.7166666666666667,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 5,
+        "ACTIVE_UNVERIFIED": 171,
+        "DISCONNECTED": 4
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:56927469413177384881386509699579568581412194920488688186872185842672436079194",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:76157298775609637353539936416793494245327459414297179861480620609342127423645"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 149595,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 331,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 332,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 332,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934573",
+      "conditionId": "0x65c6e99e833b6d292ea1e3f11fb9e3a817b6b46dec52e2ea608737a2b81cad83",
+      "slug": "btc-updown-5m-1784206500",
+      "intervalStart": "2026-07-16T12:55:00Z",
+      "intervalEnd": "2026-07-16T13:00:00Z",
+      "dataStart": "2026-07-16T12:55:03.894Z",
+      "dataEnd": "2026-07-16T13:00:09.659Z",
+      "coverageMs": 296106,
+      "startDelayMs": 3894,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 154,
+      "snapshotReadySamples": 126,
+      "opportunityObserverValidInputCoverage": 0.8181818181818182,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 2,
+        "ACTIVE_UNVERIFIED": 146,
+        "DISCONNECTED": 6
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:67669520244909806383111994898546140216903519096979548776113365162703897297999",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:73616761042923793648157073495738097896560985735492163683113860350575045456525",
+        "CROSSED_BOOK:67669520244909806383111994898546140216903519096979548776113365162703897297999"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 140524,
+          "reconnects": 0,
+          "quarantines": 3
+        },
+        "chainlink": {
+          "events": 248,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 248,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 246,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934577",
+      "conditionId": "0xb05a5bf27c2b31acf1182785d998d0a8a57716c898dd362f7b6b17890c7ab693",
+      "slug": "btc-updown-5m-1784206800",
+      "intervalStart": "2026-07-16T13:00:00Z",
+      "intervalEnd": "2026-07-16T13:05:00Z",
+      "dataStart": "2026-07-16T13:00:11.298Z",
+      "dataEnd": "2026-07-16T13:05:21.890Z",
+      "coverageMs": 288702,
+      "startDelayMs": 11298,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 41,
+      "snapshotReadySamples": 27,
+      "opportunityObserverValidInputCoverage": 0.6585365853658537,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 4,
+        "ACTIVE_UNVERIFIED": 27,
+        "STALE": 1,
+        "DISCONNECTED": 9
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:33868663311286538210096706563952459107982109645707436180330592474280065307939",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:69182141653044766368994030668026785617240138779264083591354494551714354252617"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 46293,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 28,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 28,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 28,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934590",
+      "conditionId": "0xae273819c470b9e597850be51280985ca7fb02590707082774f83b3aab750c17",
+      "slug": "btc-updown-5m-1784207100",
+      "intervalStart": "2026-07-16T13:05:00Z",
+      "intervalEnd": "2026-07-16T13:10:00Z",
+      "dataStart": "2026-07-16T13:05:24.291Z",
+      "dataEnd": "2026-07-16T13:10:08.331Z",
+      "coverageMs": 275709,
+      "startDelayMs": 24291,
+      "endShortfallMs": 0,
+      "completed": false,
+      "samples": 46,
+      "snapshotReadySamples": 30,
+      "opportunityObserverValidInputCoverage": 0.6521739130434783,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 7,
+        "STALE": 1,
+        "ACTIVE_UNVERIFIED": 31,
+        "DISCONNECTED": 7
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:49645348133347671758208283162508699147237724944154920956369158661827037427457",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:111769008617061940572170245257628589196674753279397420080964649896404945461401"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 77290,
+          "reconnects": 2,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 36,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 36,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 36,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934605",
+      "conditionId": "0xefc4e8f0ce4022364af40b107e500f7e73cd8b37019472373b2a32264b9c4e8b",
+      "slug": "btc-updown-5m-1784207400",
+      "intervalStart": "2026-07-16T13:10:00Z",
+      "intervalEnd": "2026-07-16T13:15:00Z",
+      "dataStart": "2026-07-16T13:10:09.719Z",
+      "dataEnd": "2026-07-16T13:15:08.409Z",
+      "coverageMs": 290281,
+      "startDelayMs": 9719,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 35,
+      "snapshotReadySamples": 24,
+      "opportunityObserverValidInputCoverage": 0.6857142857142857,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 6,
+        "ACTIVE_UNVERIFIED": 23,
+        "DISCONNECTED": 6
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:111171986125448762814094788455136980695241715506434729668716525620958362431997",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:80626469651410274713725113271562946790994194878057465908995886360769795735865"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 48964,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 21,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 22,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 22,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934623",
+      "conditionId": "0x765a53a9e482ea72a8b15e89342bff06d73b59dca357720f780164630c176cb9",
+      "slug": "btc-updown-5m-1784207700",
+      "intervalStart": "2026-07-16T13:15:00Z",
+      "intervalEnd": "2026-07-16T13:20:00Z",
+      "dataStart": "2026-07-16T13:15:10.798Z",
+      "dataEnd": "2026-07-16T13:20:23.714Z",
+      "coverageMs": 289202,
+      "startDelayMs": 10798,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 57,
+      "snapshotReadySamples": 34,
+      "opportunityObserverValidInputCoverage": 0.5964912280701754,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 9,
+        "ACTIVE_UNVERIFIED": 34,
+        "DISCONNECTED": 11,
+        "STALE": 3
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:23960812708683558006003518233578696851763822124562829669628625141074317319204",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:69412002282773374030985615679279536072123694144270115284410519205577762561264",
+        "CROSSED_BOOK:23960812708683558006003518233578696851763822124562829669628625141074317319204"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 60598,
+          "reconnects": 2,
+          "quarantines": 2
+        },
+        "chainlink": {
+          "events": 40,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 40,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 39,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934636",
+      "conditionId": "0xe6d11b8a851aac2ba8f9d31f808f23932c00845a5e52ac8871de5988d59e19e2",
+      "slug": "btc-updown-5m-1784208000",
+      "intervalStart": "2026-07-16T13:20:00Z",
+      "intervalEnd": "2026-07-16T13:25:00Z",
+      "dataStart": "2026-07-16T13:20:26.300Z",
+      "dataEnd": "2026-07-16T13:25:09.133Z",
+      "coverageMs": 273700,
+      "startDelayMs": 26300,
+      "endShortfallMs": 0,
+      "completed": false,
+      "samples": 45,
+      "snapshotReadySamples": 22,
+      "opportunityObserverValidInputCoverage": 0.4888888888888889,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 6,
+        "ACTIVE_UNVERIFIED": 33,
+        "DISCONNECTED": 6
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:61404018448838110381768279746754388603695584335864200342954754131862110180586",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:1994363669895556219899919564660753904718748893869774411419979384878690562943"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 47525,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 30,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 31,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 30,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934650",
+      "conditionId": "0x433bdaf8fb06f9762198b523c2a0858cbcd2dd3be2f6df28d89a8766ccd2114f",
+      "slug": "btc-updown-5m-1784208300",
+      "intervalStart": "2026-07-16T13:25:00Z",
+      "intervalEnd": "2026-07-16T13:30:00Z",
+      "dataStart": "2026-07-16T13:25:10.995Z",
+      "dataEnd": "2026-07-16T13:30:17.275Z",
+      "coverageMs": 289005,
+      "startDelayMs": 10995,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 43,
+      "snapshotReadySamples": 26,
+      "opportunityObserverValidInputCoverage": 0.6046511627906976,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 8,
+        "ACTIVE_UNVERIFIED": 26,
+        "DISCONNECTED": 9
+      },
+      "qualityEvents": [
+        "CROSSED_BOOK:21026953409673705055029643340254144793928549643627193453575746056609315252655",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:21026953409673705055029643340254144793928549643627193453575746056609315252655",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:23510355731990902498385242018841379811016878237860687072908211336519873146609"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 51107,
+          "reconnects": 1,
+          "quarantines": 2
+        },
+        "chainlink": {
+          "events": 28,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 27,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 28,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934730",
+      "conditionId": "0xfd508d447355cf16f2089965c05f30a4cb0191aa12ee0aa656402053fe5ecb18",
+      "slug": "btc-updown-5m-1784208600",
+      "intervalStart": "2026-07-16T13:30:00Z",
+      "intervalEnd": "2026-07-16T13:35:00Z",
+      "dataStart": "2026-07-16T13:30:19.327Z",
+      "dataEnd": "2026-07-16T13:35:01.498Z",
+      "coverageMs": 280673,
+      "startDelayMs": 19327,
+      "endShortfallMs": 0,
+      "completed": false,
+      "samples": 102,
+      "snapshotReadySamples": 54,
+      "opportunityObserverValidInputCoverage": 0.5294117647058824,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 6,
+        "ACTIVE_UNVERIFIED": 94,
+        "DISCONNECTED": 2
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:81897399631754737782064522286317042448288907998076298392447472275431188863849",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:38744319541216407266281517115979496201504773982239793343837441058902937026986"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 63960,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 279,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 281,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 281,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934777",
+      "conditionId": "0x8b5c4063b290b85784c903ed4c798562497ad0548aada999bfe99ec4ba3b9125",
+      "slug": "btc-updown-5m-1784208900",
+      "intervalStart": "2026-07-16T13:35:00Z",
+      "intervalEnd": "2026-07-16T13:40:00Z",
+      "dataStart": "2026-07-16T13:35:02.775Z",
+      "dataEnd": "2026-07-16T13:40:03.594Z",
+      "coverageMs": 297225,
+      "startDelayMs": 2775,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 230,
+      "snapshotReadySamples": 211,
+      "opportunityObserverValidInputCoverage": 0.9173913043478261,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 9,
+        "ACTIVE_UNVERIFIED": 214,
+        "DISCONNECTED": 7
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:17895801815328067549554346438576020580570538807595216953064729353243428872052",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:99979642625158221966291692670626198511793488362911833005264104858441683889430",
+        "CROSSED_BOOK:17895801815328067549554346438576020580570538807595216953064729353243428872052",
+        "CROSSED_BOOK:99979642625158221966291692670626198511793488362911833005264104858441683889430"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 169273,
+          "reconnects": 4,
+          "quarantines": 8
+        },
+        "chainlink": {
+          "events": 628,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 630,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 627,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934814",
+      "conditionId": "0xecc11ed72c0e0bd10035d13ada48a2083ae02c409dd4ffe0845d83d3b4fcf49d",
+      "slug": "btc-updown-5m-1784209200",
+      "intervalStart": "2026-07-16T13:40:00Z",
+      "intervalEnd": "2026-07-16T13:45:00Z",
+      "dataStart": "2026-07-16T13:40:04.884Z",
+      "dataEnd": "2026-07-16T13:45:03.288Z",
+      "coverageMs": 295116,
+      "startDelayMs": 4884,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 239,
+      "snapshotReadySamples": 173,
+      "opportunityObserverValidInputCoverage": 0.7238493723849372,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 8,
+        "DISCONNECTED": 6,
+        "ACTIVE_UNVERIFIED": 225
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:13676308860394940569701381477506350486284999997088177207169435500664502776737",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:110748328606851133983670489655406052906438956230752277706591868183235118750665",
+        "CROSSED_BOOK:13676308860394940569701381477506350486284999997088177207169435500664502776737"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 145477,
+          "reconnects": 5,
+          "quarantines": 3
+        },
+        "chainlink": {
+          "events": 694,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 695,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 693,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934831",
+      "conditionId": "0x430f118582499b0e0004be6c6afe6a03da66678a019d0d4de5a31dbf1bd3444f",
+      "slug": "btc-updown-5m-1784209500",
+      "intervalStart": "2026-07-16T13:45:00Z",
+      "intervalEnd": "2026-07-16T13:50:00Z",
+      "dataStart": "2026-07-16T13:45:04.428Z",
+      "dataEnd": "2026-07-16T13:50:04.883Z",
+      "coverageMs": 295572,
+      "startDelayMs": 4428,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 219,
+      "snapshotReadySamples": 202,
+      "opportunityObserverValidInputCoverage": 0.9223744292237442,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 3,
+        "ACTIVE_UNVERIFIED": 210,
+        "DISCONNECTED": 6
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:114507324450680252761885787225807434112536654643010930877105094308727765386527",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:26324349030380605747657631978178151152797490493354868338999817187977240119884",
+        "CROSSED_BOOK:114507324450680252761885787225807434112536654643010930877105094308727765386527",
+        "CROSSED_BOOK:26324349030380605747657631978178151152797490493354868338999817187977240119884"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 230820,
+          "reconnects": 1,
+          "quarantines": 19
+        },
+        "chainlink": {
+          "events": 505,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 507,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 506,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934863",
+      "conditionId": "0xdb80f3af4ca6d58e0a7d3a77f2ec714155d52917955f7f465d065d5a704322cf",
+      "slug": "btc-updown-5m-1784209800",
+      "intervalStart": "2026-07-16T13:50:00Z",
+      "intervalEnd": "2026-07-16T13:55:00Z",
+      "dataStart": "2026-07-16T13:50:05.960Z",
+      "dataEnd": "2026-07-16T13:55:02.080Z",
+      "coverageMs": 294040,
+      "startDelayMs": 5960,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 223,
+      "snapshotReadySamples": 149,
+      "opportunityObserverValidInputCoverage": 0.6681614349775785,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 4,
+        "ACTIVE_UNVERIFIED": 216,
+        "DISCONNECTED": 3
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:92767372176117909763243805999094433117109062729078801686387961102386111351711",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:95409796155578464567302374847769989626440593118652911484256189524049977801579"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 156208,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 549,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 549,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 550,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934877",
+      "conditionId": "0xb4092169baa7500f0916481793c354db27344af0e80ded5e10797947d2ae54a0",
+      "slug": "btc-updown-5m-1784210100",
+      "intervalStart": "2026-07-16T13:55:00Z",
+      "intervalEnd": "2026-07-16T14:00:00Z",
+      "dataStart": "2026-07-16T13:55:03.506Z",
+      "dataEnd": "2026-07-16T14:00:01.683Z",
+      "coverageMs": 296494,
+      "startDelayMs": 3506,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 211,
+      "snapshotReadySamples": 158,
+      "opportunityObserverValidInputCoverage": 0.7488151658767772,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 4,
+        "ACTIVE_UNVERIFIED": 189,
+        "DISCONNECTED": 3,
+        "STALE": 15
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:96956336724183165088007567114353706131212150968926134156972143643238937382131",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:39711128718915423691310945688013723907351275877666115757182817955154704174482",
+        "CROSSED_BOOK:39711128718915423691310945688013723907351275877666115757182817955154704174482"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 205153,
+          "reconnects": 1,
+          "quarantines": 5
+        },
+        "chainlink": {
+          "events": 435,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 439,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 440,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934890",
+      "conditionId": "0x4542b27825e0993bf1ef9943bfe9ea7bba1c22071b812581f6c2d2a3179c35a2",
+      "slug": "btc-updown-5m-1784210400",
+      "intervalStart": "2026-07-16T14:00:00Z",
+      "intervalEnd": "2026-07-16T14:05:00Z",
+      "dataStart": "2026-07-16T14:00:02.878Z",
+      "dataEnd": "2026-07-16T14:06:31.753Z",
+      "coverageMs": 297122,
+      "startDelayMs": 2878,
+      "endShortfallMs": 0,
+      "completed": true,
+      "samples": 158,
+      "snapshotReadySamples": 149,
+      "opportunityObserverValidInputCoverage": 0.9430379746835443,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 5,
+        "ACTIVE_UNVERIFIED": 147,
+        "DISCONNECTED": 5,
+        "STALE": 1
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:51772155834275273009671690843828166201037937672000552084264954847127983781308",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:13564102461411661626547852500011441588479564070267106518284765433582555671530",
+        "CROSSED_BOOK:51772155834275273009671690843828166201037937672000552084264954847127983781308"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 185186,
+          "reconnects": 1,
+          "quarantines": 5
+        },
+        "chainlink": {
+          "events": 201,
+          "reconnects": 0,
+          "quarantines": 2
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 350,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 348,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934906",
+      "conditionId": "0x61a0a4a9da52d43ca003e40d98d35f48db963c2ae4272f9ed41a9715ebe83fe1",
+      "slug": "btc-updown-5m-1784210700",
+      "intervalStart": "2026-07-16T14:05:00Z",
+      "intervalEnd": "2026-07-16T14:10:00Z",
+      "dataStart": "2026-07-16T14:06:33.092Z",
+      "dataEnd": "2026-07-16T14:23:01.206Z",
+      "coverageMs": 206908,
+      "startDelayMs": 93092,
+      "endShortfallMs": 0,
+      "completed": false,
+      "samples": 24,
+      "snapshotReadySamples": 19,
+      "opportunityObserverValidInputCoverage": 0.7916666666666666,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 2,
+        "ACTIVE_UNVERIFIED": 18,
+        "DISCONNECTED": 4
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:75165261606240969502576103286184675982564622970989057809406703449926274157220",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:55463538427228534655379016910223474400503708264285661621919186518360563021229"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 0,
+          "reconnects": 2,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 26942,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 40,
+          "reconnects": 1,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 1,
+          "reconnects": 1,
+          "quarantines": 1
+        },
+        "binance_spot": {
+          "events": 46,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 46,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934932",
+      "conditionId": "0x26d54d0b691200aea97c3b3aadb344d64a7d0fd30caf8b96abe03157b8d0e0b9",
+      "slug": "btc-updown-5m-1784211300",
+      "intervalStart": "2026-07-16T14:15:00Z",
+      "intervalEnd": "2026-07-16T14:20:00Z",
+      "dataStart": "2026-07-16T14:23:02.338Z",
+      "dataEnd": "2026-07-16T14:23:03.845Z",
+      "coverageMs": 0,
+      "startDelayMs": 482338,
+      "endShortfallMs": 0,
+      "completed": false,
+      "samples": 2,
+      "snapshotReadySamples": 0,
+      "opportunityObserverValidInputCoverage": 0,
+      "bookStates": {
+        "DISCONNECTED": 2
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:75165261606240969502576103286184675982564622970989057809406703449926274157220",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:55463538427228534655379016910223474400503708264285661621919186518360563021229"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 2,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 2,
+          "reconnects": 0,
+          "quarantines": 2
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 4,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 4,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934949",
+      "conditionId": "0x961370237a8e6df9b23aadb93865659bf774b9759e10092608fb169a96706124",
+      "slug": "btc-updown-5m-1784211600",
+      "intervalStart": "2026-07-16T14:20:00Z",
+      "intervalEnd": "2026-07-16T14:25:00Z",
+      "dataStart": "2026-07-16T14:23:05.112Z",
+      "dataEnd": "2026-07-16T14:26:00.406Z",
+      "coverageMs": 114888,
+      "startDelayMs": 185112,
+      "endShortfallMs": 0,
+      "completed": false,
+      "samples": 21,
+      "snapshotReadySamples": 9,
+      "opportunityObserverValidInputCoverage": 0.42857142857142855,
+      "bookStates": {
+        "WAITING_FOR_SNAPSHOT": 2,
+        "ACTIVE_UNVERIFIED": 9,
+        "DISCONNECTED": 10
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:19535523029296313590925715710695751601009999300338472616527297301256132625104",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:53842449315826719195723015088436792447078142055537845698334482253313894990840"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 0,
+          "reconnects": 4,
+          "quarantines": 1
+        },
+        "clob": {
+          "events": 15881,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 18,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 23,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 23,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    },
+    {
+      "marketId": "2934977",
+      "conditionId": "0x07cba302641facea236b973f57c292880f7eae1a34e45f2634f1b37bf6693ec1",
+      "slug": "btc-updown-5m-1784212200",
+      "intervalStart": "2026-07-16T14:30:00Z",
+      "intervalEnd": "2026-07-16T14:35:00Z",
+      "dataStart": "2026-07-16T14:26:01.915Z",
+      "dataEnd": "2026-07-16T14:26:05.594Z",
+      "coverageMs": 0,
+      "startDelayMs": 0,
+      "endShortfallMs": 534406,
+      "completed": false,
+      "samples": 4,
+      "snapshotReadySamples": 0,
+      "opportunityObserverValidInputCoverage": 0,
+      "bookStates": {
+        "DISCONNECTED": 2,
+        "WAITING_FOR_SNAPSHOT": 2
+      },
+      "qualityEvents": [
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:19535523029296313590925715710695751601009999300338472616527297301256132625104",
+        "CLOB_PROVIDER_TIMESTAMP_REVERSED:53842449315826719195723015088436792447078142055537845698334482253313894990840"
+      ],
+      "streams": {
+        "gamma": {
+          "events": 1,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "clob": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "chainlink": {
+          "events": 5,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "polymarket_binance": {
+          "events": 0,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_spot": {
+          "events": 6,
+          "reconnects": 0,
+          "quarantines": 0
+        },
+        "binance_perpetual": {
+          "events": 6,
+          "reconnects": 0,
+          "quarantines": 0
+        }
+      }
+    }
+  ]
+}

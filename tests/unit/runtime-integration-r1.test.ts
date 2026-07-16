@@ -33,6 +33,12 @@ test("live runtime is wired to the frozen R1 contracts", async () => {
   ]) assert.match(runtime, new RegExp(sourceName, "u"));
   assert.match(runtime, /leadLagGrid/u);
   assert.match(runtime, /leadLagEvidence\s*=\s*state\.leadLagObservations/u);
+  assert.match(runtime, /AbortController/u);
+  assert.match(runtime, /process\.once\("SIGTERM"/u);
+  assert.match(runtime, /sessionAbort\.abort\(\)/u);
+  assert.match(runtime, /retirePolymarketWorkingHistory/u);
+  assert.match(runtime, /observedMilliseconds\s*>=\s*Date\.parse\(market\.intervalEnd\)/u);
+  assert.doesNotMatch(runtime, /opportunities:\s*audits,\s*leadLagGrid:/u);
 });
 
 test("legacy observers delegate exact money and fee calculations", async () => {

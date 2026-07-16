@@ -64,6 +64,7 @@ interface PublicSocketCaptureCommon {
   readonly maxTotalBytes: number;
   readonly accept: (frame: CapturedFrame) => Promise<boolean>;
   readonly audit?: (event: PublicSocketAuditEvent) => Promise<void>;
+  readonly signal?: AbortSignal;
 }
 
 export type PublicSocketSource =
@@ -592,12 +593,14 @@ export function capturePublicSocket(
     let totalReceivedBytes = 0;
     let finished = false;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let abortCapture: (() => void) | undefined;
     let chain = Promise.resolve();
     const finish = (error?: unknown, auditType: PublicSocketAuditEvent["eventType"] = "capture_complete"): void => {
       if (finished) return;
       finished = true;
       clearTimeout(timeout);
       if (heartbeat !== undefined) clearInterval(heartbeat);
+      if (abortCapture !== undefined) options.signal?.removeEventListener("abort", abortCapture);
       // A slow or stuck consumer must not prevent a byte-limit, timeout, or
       // transport failure from closing and settling the bounded capture.
       void chain.catch((chainError) => {
@@ -643,6 +646,12 @@ export function capturePublicSocket(
         ),
       options.timeoutMilliseconds,
     );
+    abortCapture = () => finish(undefined, "capture_complete");
+    if (options.signal?.aborted === true) {
+      abortCapture();
+      return;
+    }
+    options.signal?.addEventListener("abort", abortCapture, { once: true });
     socket.addEventListener("open", () => {
       if (finished) return;
       let openedAt: ReceiveStamp | null;

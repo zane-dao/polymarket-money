@@ -44,3 +44,21 @@ the resulting canonical string to the existing Money/FeeEdgeCalculator. It conti
 programmatic JavaScript numbers, exponent tokens and non-canonical numeric lexemes. Node 93/93 and
 TypeScript passed, and three consecutive current markets then validated as collectible with fee
 rate `0.07`. Attempt 2 is retained outside Git; no observation evidence from it is accepted.
+
+## Attempt 3 — registered observation, incomplete
+
+- Session: `r2-20260716T122558Z`
+- Runtime run ID: `runtime-20260716122610-05489399`
+- Collector commit: `f22746112e25515e8817708b05866f34a417dae2`
+- Config SHA-256: `074324aaf10d867dfb3c40f5722dcf4354e77cf4f98802b55299ef2d8009127c`
+- Runner: `nohup-setsid`
+- Start: `2026-07-16T12:26:10.544Z`
+- Runtime summary end: `2026-07-16T14:27:13.406Z`
+- Elapsed: `7,262.862` seconds
+- Terminal: `UNRECOVERABLE_RUNTIME_FAILURE`, incident persisted, exit code 1
+
+The run was metrics-only and raw=false. It reached 24 market identities but only 15 passed the
+frozen complete-market gate. The terminal incident was
+`fee evidence is not effective at executableTime`; the outer session was then explicitly cleaned
+up because old socket handles kept Node alive after the summary was written. No acceptance tag was
+created.

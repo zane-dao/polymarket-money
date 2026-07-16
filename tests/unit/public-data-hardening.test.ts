@@ -203,6 +203,30 @@ test("PONG is transport audit data and does not consume a capture frame", async 
   assert.ok(audits.some((event) => event.eventType === "heartbeat_pong"));
 });
 
+test("an AbortSignal closes and resolves every active public socket capture", async () => {
+  const socket = new FakeWebSocket();
+  const controller = new AbortController();
+  const capture = capturePublicSocket(
+    {
+      source: "binance-spot-book",
+      timeoutMilliseconds: 10_000,
+      maxFrames: 10,
+      maxFrameBytes: 100,
+      maxTotalBytes: 1_000,
+      signal: controller.signal,
+      accept: async () => false,
+    },
+    {
+      createWebSocket: () => socket as unknown as WebSocket,
+      now: () => "2026-07-15T00:00:00.100Z",
+    },
+  );
+  socket.open();
+  controller.abort();
+  assert.equal(await capture, 0);
+  assert.equal(socket.readyState, 3);
+});
+
 test("HTTP receive time is captured at headers and requests have bounded timeout", async () => {
   let bodyRead = false;
   let observedSignal: AbortSignal | null = null;

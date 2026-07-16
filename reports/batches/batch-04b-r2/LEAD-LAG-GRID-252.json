@@ -1,0 +1,2276 @@
+{
+  "schema_version": "batch-04b-r2-lead-lag-grid-v1",
+  "run_id": "runtime-20260716122610-05489399",
+  "config_sha256": "074324aaf10d867dfb3c40f5722dcf4354e77cf4f98802b55299ef2d8009127c",
+  "cell_count": 252,
+  "cells": [
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 2,
+      "completed_horizon_count": 2,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 2,
+      "completed_horizon_count": 2,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 2,
+      "completed_horizon_count": 2,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 2,
+      "completed_horizon_count": 2,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 2,
+      "completed_horizon_count": 2,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 2,
+      "completed_horizon_count": 2,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 2,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 1
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 14,
+      "completed_horizon_count": 14,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 14,
+      "completed_horizon_count": 14,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 14,
+      "completed_horizon_count": 14,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 14,
+      "completed_horizon_count": 14,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 14,
+      "completed_horizon_count": 14,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 14,
+      "completed_horizon_count": 14,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 14,
+      "completed_horizon_count": 14,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 40,
+      "completed_horizon_count": 40,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 40,
+      "completed_horizon_count": 40,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 40,
+      "completed_horizon_count": 40,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 40,
+      "completed_horizon_count": 40,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 40,
+      "completed_horizon_count": 40,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 40,
+      "completed_horizon_count": 40,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 40,
+      "completed_horizon_count": 39,
+      "censored_horizon_count": 1
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 3,
+      "completed_horizon_count": 3,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 3,
+      "completed_horizon_count": 3,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 3,
+      "completed_horizon_count": 3,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 3,
+      "completed_horizon_count": 3,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 3,
+      "completed_horizon_count": 3,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 3,
+      "completed_horizon_count": 3,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 3,
+      "completed_horizon_count": 3,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 10,
+      "completed_horizon_count": 10,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 10,
+      "completed_horizon_count": 10,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 10,
+      "completed_horizon_count": 10,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 10,
+      "completed_horizon_count": 10,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 10,
+      "completed_horizon_count": 10,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 10,
+      "completed_horizon_count": 10,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 10,
+      "completed_horizon_count": 10,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 1,
+      "completed_horizon_count": 1,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_CHAINLINK",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "POLYMARKET_RTDS_BINANCE",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_SPOT",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "1",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "2",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 100,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 250,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 50,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 100,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 250,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 500,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 1000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 2000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    },
+    {
+      "source": "BINANCE_PERPETUAL",
+      "threshold": "5",
+      "window": 500,
+      "horizon": 3000,
+      "raw_trigger_count": 0,
+      "completed_horizon_count": 0,
+      "censored_horizon_count": 0
+    }
+  ]
+}

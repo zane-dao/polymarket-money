@@ -181,3 +181,7 @@ The live-artifact test also freezes serialization of fractional millisecond dura
 counts remain JSON numbers, while non-integer durations become canonical non-exponent decimal
 strings before entering `facts`. Without this boundary a real sub-millisecond horizon age would
 throw during observation hashing.
+
+Offline raw-v2 verification is also required to reject cross-domain or non-increasing segment
+ReceiveStamp order. The accepted same-nanosecond case is ordinal 1 then 2; reversing those lines
+must fail before `RawReplay` can expose them.

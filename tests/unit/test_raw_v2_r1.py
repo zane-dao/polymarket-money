@@ -15,18 +15,24 @@ from research.polymarket_money.raw_events import (
     parse_raw_event,
     require_subsecond_receive_stamp,
 )
-from research.polymarket_money.replay import ManifestVerifier, RawReplay
+from research.polymarket_money.replay import ManifestVerificationError, ManifestVerifier, RawReplay
 
 
 ROOT = Path(__file__).resolve().parents[2]
 GAMMA = ROOT / "data/fixtures/batch-2/gamma-btc-5m.json"
 
 
-def v2_mapping() -> dict[str, object]:
+def v2_mapping(
+    *,
+    event_id: str = "gamma-v2-1",
+    monotonic_ns: str = "100000000",
+    ordinal: str = "1",
+    clock_domain: str = "process-test-1",
+) -> dict[str, object]:
     payload = GAMMA.read_text(encoding="utf-8")
     return {
         "schema_version": "raw-event-v2",
-        "event_id": "gamma-v2-1",
+        "event_id": event_id,
         "source": "polymarket.gamma",
         "stream": "market-discovery",
         "event_type": "market_metadata",
@@ -38,9 +44,9 @@ def v2_mapping() -> dict[str, object]:
         "provider_source_time": None,
         "provider_server_time": None,
         "local_wall_receive_time": "2026-07-15T00:00:00.100Z",
-        "local_monotonic_receive_ns": "100000000",
-        "local_receive_ordinal": "1",
-        "clock_domain": "process-test-1",
+        "local_monotonic_receive_ns": monotonic_ns,
+        "local_receive_ordinal": ordinal,
+        "clock_domain": clock_domain,
         "process_time": "2026-07-15T00:00:00.110Z",
         "persist_time": "2026-07-15T00:00:00.120Z",
         "source_sequence": None,
@@ -52,9 +58,11 @@ def v2_mapping() -> dict[str, object]:
     }
 
 
-def verified_v2_dataset(root: Path):
-    event = RawEventEnvelopeV2.from_mapping(v2_mapping())
-    data = (json.dumps(event.to_mapping(), separators=(",", ":")) + "\n").encode()
+def verified_v2_dataset(root: Path, mappings: list[dict[str, object]] | None = None):
+    events = [RawEventEnvelopeV2.from_mapping(item) for item in (mappings or [v2_mapping()])]
+    data = "".join(
+        json.dumps(event.to_mapping(), separators=(",", ":")) + "\n" for event in events
+    ).encode()
     relative = Path("polymarket.gamma/2026-07-15/market-discovery/segment.jsonl")
     segment = root / relative
     segment.parent.mkdir(parents=True)
@@ -73,13 +81,13 @@ def verified_v2_dataset(root: Path):
             "relative_path": str(relative),
             "sha256": sha256(data).hexdigest(),
             "byte_count": len(data),
-            "event_count": 1,
+            "event_count": len(events),
             "parse_error_count": 0,
             "unknown_event_count": 0,
             "first_receive_time": "2026-07-15T00:00:00.100Z",
             "last_receive_time": "2026-07-15T00:00:00.100Z",
         }],
-        "event_count": 1,
+        "event_count": len(events),
         "parse_error_count": 0,
         "unknown_event_count": 0,
         "first_receive_time": "2026-07-15T00:00:00.100Z",
@@ -125,3 +133,22 @@ def test_manifest_replay_and_normalizer_consume_raw_v2(tmp_path: Path) -> None:
         [verified], "raw-v2-normalized", commit, NormalizerConfig()
     )
     assert any(item.raw_lineage.event_id == "gamma-v2-1" for item in build.records)
+
+
+def test_manifest_verifier_enforces_v2_receive_stamp_segment_order(tmp_path: Path) -> None:
+    verified = verified_v2_dataset(tmp_path / "ordered", [
+        v2_mapping(event_id="same-ns-1", ordinal="1"),
+        v2_mapping(event_id="same-ns-2", ordinal="2"),
+    ])
+    assert [item.local_receive_ordinal for item in RawReplay.iter_raw(verified)] == ["1", "2"]
+
+    with pytest.raises(ManifestVerificationError, match="ReceiveStamp.*order"):
+        verified_v2_dataset(tmp_path / "reversed", [
+            v2_mapping(event_id="same-ns-2", ordinal="2"),
+            v2_mapping(event_id="same-ns-1", ordinal="1"),
+        ])
+    with pytest.raises(ManifestVerificationError, match="clock_domain"):
+        verified_v2_dataset(tmp_path / "cross-domain", [
+            v2_mapping(event_id="domain-1", ordinal="1", clock_domain="process-1"),
+            v2_mapping(event_id="domain-2", ordinal="2", clock_domain="process-2"),
+        ])

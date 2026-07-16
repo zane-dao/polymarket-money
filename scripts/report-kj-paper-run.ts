@@ -59,6 +59,10 @@ function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+function notFound(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
 async function syncDirectory(path: string): Promise<void> {
   const handle = await open(path, "r");
   try {
@@ -120,7 +124,17 @@ async function main(): Promise<void> {
   }
 
   const planEvidence = await readJson(join(runDirectory, "run-plan.json"), "run plan");
-  const resultEvidence = await readJson(join(runDirectory, "result.json"), "MVP result");
+  let resultFileName: "result.json" | "final-result.json" = "result.json";
+  try {
+    const finalInfo = await lstat(join(runDirectory, "final-result.json"));
+    if (!finalInfo.isFile() || finalInfo.isSymbolicLink()) {
+      throw new Error("final-result.json must be a regular non-symlink file");
+    }
+    resultFileName = "final-result.json";
+  } catch (error) {
+    if (!notFound(error)) throw error;
+  }
+  const resultEvidence = await readJson(join(runDirectory, resultFileName), "MVP result");
   const runtimeEvidence = await readJson(join(runDirectory, "runtime-summary.json"), "runtime summary");
   const runPlan = object(planEvidence.value, "run plan");
   const journalPath = text(runPlan.journalPath, "run plan journalPath");
@@ -158,6 +172,7 @@ async function main(): Promise<void> {
       result: sha256(resultEvidence.raw),
       runtimeSummary: sha256(runtimeEvidence.raw),
     }),
+    resultFileName,
     marketsCsvSha256: sha256(csv),
   });
   const artifactHash = kjPaperReportArtifactHash(artifactCore);

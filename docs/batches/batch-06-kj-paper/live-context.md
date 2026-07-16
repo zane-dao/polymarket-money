@@ -81,7 +81,10 @@ Legacy journals without `RUN_PLAN` are disclosed as `LEGACY_UNBOUND`.
 2. A delayed, ambiguous, 50/50, identity-conflicting, or otherwise unsupported
    Gamma result is not guessed; the run remains unaccepted or terminates safely.
    `paper:settle` can later resume only the frozen target window against the
-   same durable journal, without opening a new paper market.
+   same durable journal, without opening a new paper market.  `paper:finalize`
+   then reuses the MVP acceptance builder to produce a no-overwrite
+   `RECOVERED_FINAL` result; it requires a clean original child exit and the
+   hash-chained plan.
 3. TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
    approximation.  `data/golden/batch-06/kj-probability-v1.json` bounds it to
    `0.0000002` absolute error against Python `erf` for representative and

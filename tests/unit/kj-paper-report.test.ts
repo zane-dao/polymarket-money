@@ -139,6 +139,7 @@ test("paper report verifies target settlements and exact wallet PnL identities",
     schemaVersion: "kj-paper-report-artifact-v1",
     report,
     sourceFileSha256: { runPlan: HASH, result: HASH, runtimeSummary: HASH },
+    resultFileName: "result.json",
     marketsCsvSha256: HASH,
   }), /^[0-9a-f]{64}$/u);
 });

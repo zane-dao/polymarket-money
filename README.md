@@ -137,6 +137,20 @@ Recovery reopens and validates the hash-chained journal, polls only ended
 markets in that half-open interval, and appends the exact official response.  A
 still-open result remains pending rather than being inferred from price.
 
+For a plan-bound run whose original result was unaccepted only because official
+resolution arrived after its finite window, complete the local acceptance step:
+
+```bash
+npm run paper:finalize -- /absolute/path/to/mvp-run
+```
+
+Finalization requires the original result to prove a clean child exit, then
+reuses the same acceptance builder as `paper:mvp` to check runtime identity,
+paper-only safety, hash-chained plan, exact target count, current journal tail,
+settlement, and pending risk.  It writes a no-overwrite `final-result.json` with
+`resultKind=RECOVERED_FINAL`; it cannot legitimize legacy unbound plans or a
+runtime safety failure.
+
 After an accepted run, generate a replay-verified research report:
 
 ```bash
@@ -151,7 +165,8 @@ and aggregate PnL identities.  It writes a no-overwrite `summary.json` and
 from runs created before journal plan binding are explicitly labeled
 `LEGACY_UNBOUND` and remain descriptive only.  All reports set
 `profitabilityClaimEligible=false`; multiple paper markets are still not live
-fill evidence.
+fill evidence.  When `final-result.json` exists, `paper:report` validates and
+uses it in preference to the original timed-out result.
 
 `data/golden/batch-06/kj-ewma-intent-parity-v1.json` feeds the same five-second
 price path, book, fee, delayed fill, and official settlement to Python and

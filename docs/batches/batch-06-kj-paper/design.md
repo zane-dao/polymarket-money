@@ -168,7 +168,9 @@ replayable settlement evidence.  The bounded `paper:mvp` wrapper aligns capture
 to the next complete interval, prevents the following market from entering the
 run, adds a finite settlement grace window, and emits a machine-readable
 acceptance result.  `paper:settle` can resume a frozen half-open target window
-when official resolution is delayed beyond that bound.  `paper:report` replays
+when official resolution is delayed beyond that bound, and `paper:finalize`
+re-runs the same acceptance contract against the advanced journal before
+writing `RECOVERED_FINAL`.  `paper:report` replays
 the journal, verifies source/snapshot/safety/settlement/PnL identities, and
 exports a hashed descriptive summary plus per-market CSV.  A shared probability
 golden bounds the TypeScript approximation to `0.0000002` absolute error against

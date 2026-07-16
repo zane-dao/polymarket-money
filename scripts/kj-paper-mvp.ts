@@ -4,22 +4,12 @@ import { open, mkdir, readFile, realpath, writeFile, type FileHandle } from "nod
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Money } from "../execution/src/domain/money.js";
 import {
-  KJ_PAPER_MVP_VERSION,
   planKJPaperMvp,
   type KJPaperMvpPlan,
 } from "../execution/src/product/kj-paper-mvp.js";
-import { DEFAULT_KJ_PAPER_ENGINE_CONFIG } from "../execution/src/runtime/kj-paper-engine.js";
+import { buildKJPaperMvpResult } from "../execution/src/product/kj-paper-mvp-result.js";
 import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
-
-interface RuntimeSummary {
-  readonly runId?: unknown;
-  readonly terminalFailure?: unknown;
-  readonly realOrderCount?: unknown;
-  readonly kjSettledMarketCount?: unknown;
-  readonly safety?: unknown;
-}
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -60,79 +50,22 @@ function runId(now: Date): string {
 }
 
 async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, commit: string): Promise<unknown> {
-  const summary = JSON.parse(await readFile(plan.summaryPath, "utf8")) as RuntimeSummary;
+  const summary = JSON.parse(await readFile(plan.summaryPath, "utf8")) as unknown;
   const journal = await KJPaperJournal.open(plan.journalPath);
   try {
-    const state = journal.engine.snapshot();
-    const targetMarkets = state.markets.filter((market) => (
-      Date.parse(market.intervalStart) >= Date.parse(plan.firstFullMarketStart)
-      && Date.parse(market.intervalStart) < Date.parse(plan.captureEnd)
-    ));
-    const targetMarketIds = new Set(targetMarkets.map((market) => market.marketId));
-    const completedMarkets = targetMarkets.filter((market) => market.state === "DONE").length;
-    const unsettledMarkets = journal.unsettledMarkets()
-      .filter((market) => targetMarketIds.has(market.marketId))
-      .map((market) => market.marketId);
-    const safety = object(summary.safety);
-    const chainedPlan = journal.runPlanEvidence;
-    const planBound = chainedPlan !== null
-      && chainedPlan.runId === plan.runId
-      && chainedPlan.targetMarketCount === plan.targetMarketCount
-      && chainedPlan.firstFullMarketStart === plan.firstFullMarketStart
-      && chainedPlan.captureEnd === plan.captureEnd
-      && chainedPlan.collectorGitCommit === commit;
-    const checks = Object.freeze({
+    return buildKJPaperMvpResult({
+      plan,
+      resultKind: "INITIAL",
+      resultPath: plan.resultPath,
       childExitedCleanly: exitCode === 0,
-      noTerminalFailure: summary.terminalFailure === null,
-      noRealOrders: summary.realOrderCount === 0
-        && safety?.ordersSent === 0
-        && safety.liveClientConstructed === false
-        && safety.userChannelConnected === false
-        && safety.credentialsRead === false,
-      targetMarketsObserved: targetMarkets.length === plan.targetMarketCount,
-      targetMarketsSettled: completedMarkets === plan.targetMarketCount,
-      noPendingMarkets: unsettledMarkets.length === 0
-        && state.pendingIntents.every((intent) => !targetMarketIds.has(intent.marketId)),
-      durableInputsPresent: journal.recordCount > 1 && journal.lastRecordHash !== null,
-      hashChainedRunPlan: planBound,
-    });
-    const accepted = Object.values(checks).every(Boolean);
-    const cash = state.wallets;
-    return Object.freeze({
-      schemaVersion: KJ_PAPER_MVP_VERSION,
-      accepted,
-      checks,
-      runId: plan.runId,
-      runtimeRunId: typeof summary.runId === "string" ? summary.runId : null,
       collectorGitCommit: commit,
-      planBinding: planBound ? "HASH_CHAINED" : "MISSING_OR_CONFLICTING",
-      targetMarketCount: plan.targetMarketCount,
-      completedMarketCount: completedMarkets,
-      observedTargetMarketCount: targetMarkets.length,
-      totalEngineMarketCount: state.markets.length,
+      runtimeSummary: summary,
+      journalPath: journal.path,
       journalRecordCount: journal.recordCount,
       journalLastRecordHash: journal.lastRecordHash,
-      unsettledMarketIds: unsettledMarkets,
-      strategies: {
-        J_FEE_AWARE: {
-          finalCash: cash.J_FEE_AWARE.cash,
-          netPnl: Money.from(cash.J_FEE_AWARE.cash)
-            .minus(Money.from(DEFAULT_KJ_PAPER_ENGINE_CONFIG.initialCash)).toCanonical(),
-        },
-        K_DUAL_VOL: {
-          finalCash: cash.K_DUAL_VOL.cash,
-          netPnl: Money.from(cash.K_DUAL_VOL.cash)
-            .minus(Money.from(DEFAULT_KJ_PAPER_ENGINE_CONFIG.initialCash)).toCanonical(),
-        },
-      },
-      engineState: state,
-      artifacts: {
-        runDirectory: plan.runDirectory,
-        journal: plan.journalPath,
-        summary: plan.summaryPath,
-        runtimeLog: plan.runtimeStdoutPath,
-        runtimeErrorLog: plan.runtimeStderrPath,
-      },
+      journalRunPlan: journal.runPlanEvidence,
+      unsettledMarkets: journal.unsettledMarkets(),
+      snapshot: journal.engine.snapshot(),
     });
   } finally {
     await journal.close();

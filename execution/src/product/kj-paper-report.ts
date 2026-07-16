@@ -70,6 +70,7 @@ export interface KJPaperReport {
     journalPath: string;
     journalRecordCount: string;
     journalLastRecordHash: string;
+    resultKind: "INITIAL" | "RECOVERED_FINAL" | "LEGACY";
   }>;
   readonly checks: Readonly<Record<string, true>>;
   readonly strategies: Readonly<Record<KJPaperStrategy, Readonly<{
@@ -152,6 +153,7 @@ export interface KJPaperReportArtifactCore {
     result: string;
     runtimeSummary: string;
   }>;
+  readonly resultFileName: "result.json" | "final-result.json";
   readonly marketsCsvSha256: string;
 }
 
@@ -340,6 +342,9 @@ export function buildKJPaperReport(input: BuildKJPaperReportInput): KJPaperRepor
     throw new Error("paper report refuses unsettled markets or pending intents");
   }
   const result = requireAcceptedResult(input.result, runPlan, input);
+  const resultKind = result.resultKind === "INITIAL" || result.resultKind === "RECOVERED_FINAL"
+    ? result.resultKind
+    : "LEGACY";
   requireSafeRuntime(input.runtimeSummary, runPlan);
   let planBinding: KJPaperReport["planBinding"] = "LEGACY_UNBOUND";
   if (input.journalRunPlan !== null) {
@@ -417,6 +422,7 @@ export function buildKJPaperReport(input: BuildKJPaperReportInput): KJPaperRepor
       journalPath: input.journalPath,
       journalRecordCount: String(input.journalRecordCount),
       journalLastRecordHash: input.journalLastRecordHash,
+      resultKind,
     }),
     checks: Object.freeze({
       acceptedMvpResult: true,

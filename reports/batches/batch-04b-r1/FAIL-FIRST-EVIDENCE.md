@@ -102,3 +102,19 @@ tests/unit/runtime-wiring-r1.test.ts(45,5): error TS2353: 'receiveClock' does no
 tests/unit/runtime-wiring-r1.test.ts(75,25): error TS2339: Property 'receiveStamp' does not exist on type 'PublicHttpResponse'.
 tests/unit/runtime-wiring-r1.test.ts(95,25): error TS2345: Argument of type 'RawEventEnvelopeDraftV2' is not assignable to parameter of type 'RawEventEnvelopeDraftV1'.
 ```
+
+## Group 7 — Runtime contract integration and explicit error disposition
+
+Fail-first input: `tests/unit/runtime-integration-r1.test.ts`. It statically guards the active
+runtime boundary against regressions to the adjacent-spot 5bp observer, duplicate arithmetic,
+provider-time "receive latency" labels, and empty catch blocks. It also requires the actual runtime
+to reference the frozen lead-lag, exact fee, immutable observation and fail-closed incident
+contracts. The baseline runtime does not reference any of these R1 contracts.
+
+Observed test failures:
+
+```text
+not ok - live runtime is wired to the frozen R1 contracts (missing LeadLagEngine)
+not ok - legacy observers delegate exact money and fee calculations (missing FeeEdgeCalculator)
+not ok - active capture and runtime paths contain no empty catch disposition (scripts/live-runtime.ts)
+```

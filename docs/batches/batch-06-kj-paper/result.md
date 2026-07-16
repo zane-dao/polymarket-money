@@ -69,10 +69,16 @@ pending risk or private/live activity.  That run predates hash-chained
 `DESCRIPTIVE_PAPER_ONLY_LEGACY_UNBOUND_PLAN` rather than being promoted to a
 precommitted multi-market study.
 
-Current HEAD `ce1d819` adds `paper:mvp`, `paper:settle`, `paper:finalize`, and
-`paper:report`.  Future runs bind run ID, target count/window, and collector
-commit before the first context.  The exact current completion boundary is in
-`completion-audit.md`.
+Current code adds `paper:mvp`, `paper:settle`, `paper:finalize`, and
+`paper:report`.  The first plan-bound public multi-market run was completed at
+collector commit `76131eb4b09af4509266d6bb9db8e0f409631ad2`: three targets in
+the frozen 2026-07-16 23:00--23:15 UTC interval all reached official
+settlement, and the result was `accepted=true` with `planBinding=HASH_CHAINED`.
+The replay report is `DESCRIPTIVE_PAPER_ONLY`, explicitly sets
+`profitabilityClaimEligible=false`, and has artifact hash
+`6fb04978225a1680c5e747d8b8b2544111e650fafc197e4b163525608d38d775`.
+It validates the product loop, not K/J profitability or shadow/live readiness.
+The exact current completion boundary is in `completion-audit.md`.
 
 ## Remaining gaps
 
@@ -95,7 +101,9 @@ commit before the first context.  The exact current completion boundary is in
    cover crash-ahead healing, record modification, incomplete tail and valid-line
    truncation.  Exact Gamma responses are now revalidated into official
    settlement; delayed results can be settled and finalized without opening a
-   new market.  Current plan-bound multi-market public evidence is still pending.
+   new market.  One plan-bound three-market public run has passed this
+   runtime/replay/report path; it is still too small and too dependent on
+   theoretical fills to establish a stable trading edge.
 6. The TypeScript real-time probability uses a documented deterministic
    normal-CDF approximation.  A shared golden bounds probability error against
    Python `erf` to `0.0000002` on representative/clamped-tail z-scores.  A second

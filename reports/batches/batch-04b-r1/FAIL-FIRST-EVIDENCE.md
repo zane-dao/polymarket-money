@@ -170,3 +170,9 @@ ImportError: cannot import name 'RawEventEnvelopeV2' from 'research.polymarket_m
 Once collection reaches the fee test, the prior Python behavior also conflicts with the fixture:
 it returns `Decimal("0")` / `UNKNOWN_FEE` for missing evidence and accepts a price above one,
 whereas the frozen shared result is `None` / `MISSING_FEE_EVIDENCE` and fail-closed price bounds.
+
+The reviewer then strengthened the horizon fail-first contract one step further: trigger-time
+Polymarket lineage and horizon-state lineage are distinct named fields. A successful 50ms markout
+must name the 640ms state input rather than only the 590ms trigger snapshot; a censor caused by a
+rejected frame must name that rejected raw input. This prevents one ambiguous `polymarket_parent`
+field from conflating two causal instants.

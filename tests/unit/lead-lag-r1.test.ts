@@ -184,8 +184,10 @@ test("fixed horizon uses only point-in-time state; later update is a separate me
   assert.equal(result.polymarket_connection_id, "poly-1");
   assert.equal(result.external_parent_input_reference, "raw-event-v2:event");
   assert.equal(result.external_input_hash, "a".repeat(64));
-  assert.equal(result.polymarket_parent_input_reference, "raw-event-v2:poly-3");
-  assert.equal(result.polymarket_input_hash, "b".repeat(64));
+  assert.equal(result.trigger_polymarket_parent_input_reference, "raw-event-v2:poly-3");
+  assert.equal(result.trigger_polymarket_input_hash, "b".repeat(64));
+  assert.equal(result.horizon_state_parent_input_reference, "raw-event-v2:poly-5");
+  assert.equal(result.horizon_state_input_hash, "b".repeat(64));
   assert.equal(result.config_hash, DEFAULT_LEAD_LAG_CONFIG.config_hash);
   assert.deepEqual(result.next_update_after_horizon, {
     next_update_delay_ms: 1,
@@ -200,12 +202,18 @@ test("a later rejected Polymarket frame invalidates prior good state", () => {
   engine.notePolymarketQualityFailure({
     market_id: "market-1",
     receive_stamp: stamp(640_000_000, 5),
+    polymarket_connection_id: polymarketConnectionId("poly-1"),
+    parent_input_reference: "raw-event-v2:quality-failure",
+    input_hash: "c".repeat(64),
   });
-  assert.equal(engine.evaluateHorizon({
+  const censored = engine.evaluateHorizon({
     triggerId,
     horizonMs: 50,
     targetWatermark: stamp(650_000_000, 5),
-  }).censor_reason, "HORIZON_QUALITY_REJECTED");
+  });
+  assert.equal(censored.censor_reason, "HORIZON_QUALITY_REJECTED");
+  assert.equal(censored.horizon_state_parent_input_reference, "raw-event-v2:quality-failure");
+  assert.equal(censored.horizon_state_input_hash, "c".repeat(64));
 
   engine.ingestExternal(external("later-event", 700_000_000, 6, "102"));
   const batch = engine.createTriggers({

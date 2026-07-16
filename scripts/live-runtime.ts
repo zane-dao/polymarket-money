@@ -743,6 +743,10 @@ async function dashboardLoop(config: RuntimeOptions, end: number, started: numbe
     if (config.mode === "paper") state.paperAudits.push(...audits);
     const storage = config.outputPath === null ? null : await statfs(config.outputPath);
     const elapsedHours = Math.max((Date.now() - started) / 3_600_000, 1 / 3_600_000);
+    const publicPayloadBytes = STREAMS.reduce((sum, name) => sum + stats[name].payloadBytes, 0);
+    const projectedBytesPerHour = config.record.mode === "raw"
+      ? recorder.usedRawBytes / elapsedHours
+      : publicPayloadBytes / elapsedHours;
     const view = {
       type: "runtime_snapshot",
       at: now,
@@ -761,6 +765,11 @@ async function dashboardLoop(config: RuntimeOptions, end: number, started: numbe
       opportunities: audits,
       diskFreeBytes: storage === null ? null : storage.bavail * storage.bsize,
       rawWriteBytesPerHour: recorder.usedRawBytes / elapsedHours,
+      projectedCaptureBytesPerHour: projectedBytesPerHour,
+      projectedCaptureGiBPerDay: projectedBytesPerHour * 24 / 1024 ** 3,
+      growthEstimateBasis: config.record.mode === "raw"
+        ? "PERSISTED_RAW_ENVELOPE"
+        : "PUBLIC_PAYLOAD_LOWER_BOUND",
     };
     recorder.metric(view);
     process.stdout.write(`${JSON.stringify(view)}\n`);

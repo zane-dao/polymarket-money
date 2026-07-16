@@ -163,6 +163,8 @@ def _run_live(args: argparse.Namespace) -> int:
             ("Opportunities", len(view.get("opportunities", []))),
             ("Disk free bytes", view.get("diskFreeBytes")),
             ("Raw bytes/hour", view.get("rawWriteBytesPerHour")),
+            ("Projected capture GiB/day", view.get("projectedCaptureGiBPerDay")),
+            ("Growth estimate basis", view.get("growthEstimateBasis")),
         )
         for label, value in rows:
             result.add_row(label, "-" if value is None else str(value))

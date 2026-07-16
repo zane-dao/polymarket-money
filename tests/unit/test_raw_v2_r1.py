@@ -103,6 +103,58 @@ def verified_v2_dataset(root: Path, mappings: list[dict[str, object]] | None = N
     return ManifestVerifier.verify(manifest_path, root)
 
 
+def verified_v2_multisegment(root: Path):
+    segment_specs = [
+        (0, v2_mapping(event_id="segment-0", monotonic_ns="100000000", ordinal="1")),
+        (1, v2_mapping(event_id="segment-1", monotonic_ns="200000000", ordinal="2")),
+    ]
+    segments = []
+    for segment_ordinal, mapping in segment_specs:
+        event = RawEventEnvelopeV2.from_mapping(mapping)
+        data = (json.dumps(event.to_mapping(), separators=(",", ":")) + "\n").encode()
+        relative = Path(
+            f"polymarket.gamma/2026-07-15/market-discovery/segment-{segment_ordinal}.jsonl"
+        )
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        segments.append({
+            "ordinal": segment_ordinal,
+            "relative_path": str(relative),
+            "sha256": sha256(data).hexdigest(),
+            "byte_count": len(data),
+            "event_count": 1,
+            "parse_error_count": 0,
+            "unknown_event_count": 0,
+            "first_receive_time": "2026-07-15T00:00:00.100Z",
+            "last_receive_time": "2026-07-15T00:00:00.100Z",
+        })
+    manifest = {
+        "dataset_id": "gamma-v2-multisegment",
+        "schema_version": "dataset-manifest-v1",
+        "source": "polymarket.gamma",
+        "stream": "market-discovery",
+        "subscription": {"endpoint": "gamma-market-by-slug", "slug": "btc-updown-5m-1775181000"},
+        "collector_git_commit": "a" * 40,
+        "collection_start": "2026-07-15T00:00:00.100Z",
+        "collection_end": "2026-07-15T00:00:00.120Z",
+        "segments": segments,
+        "event_count": 2,
+        "parse_error_count": 0,
+        "unknown_event_count": 0,
+        "first_receive_time": "2026-07-15T00:00:00.100Z",
+        "last_receive_time": "2026-07-15T00:00:00.100Z",
+        "market_ids": ["1822773"],
+        "asset_ids": [],
+        "continuity": "UNVERIFIED",
+        "sanitized_config": {"endpointClass": "public-read-only"},
+    }
+    manifest_path = root / "manifests/gamma-v2-multisegment.manifest.json"
+    manifest_path.parent.mkdir()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return ManifestVerifier.verify(manifest_path, root)
+
+
 def test_raw_v2_parses_and_exposes_full_receive_stamp() -> None:
     schema = json.loads((ROOT / "contracts/raw-event-v2.schema.json").read_text())
     assert schema["properties"]["schema_version"]["const"] == "raw-event-v2"
@@ -159,3 +211,9 @@ def test_manifest_verifier_enforces_v2_receive_stamp_segment_order(tmp_path: Pat
             v2_mapping(event_id="domain-1", ordinal="1", clock_domain="process-1"),
             v2_mapping(event_id="domain-2", ordinal="2", clock_domain="process-2"),
         ])
+
+
+def test_receive_ordinal_does_not_overwrite_manifest_segment_ordinal(tmp_path: Path) -> None:
+    verified = verified_v2_multisegment(tmp_path)
+    assert [segment.ordinal for segment in verified.segments] == [0, 1]
+    assert [event.event_id for event in RawReplay.iter_raw(verified)] == ["segment-0", "segment-1"]

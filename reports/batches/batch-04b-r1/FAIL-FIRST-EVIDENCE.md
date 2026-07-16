@@ -190,3 +190,10 @@ The CLOB integration test finally freezes that only a successfully applied `book
 `price_change` mutation can refresh the lead-lag book ReceiveStamp. Informational frames such as
 `last_trade_price` must be raw-preserved but ignored for book freshness; a failed attempted book
 mutation invalidates the previous state. The fail-first module did not exist before this guard.
+
+## Second Sol Critical follow-up C — segment ordinal shadowing
+
+The post-implementation read-only review found that the v2 ReceiveStamp loop reused the local name
+`ordinal`, overwriting the manifest segment ordinal before `VerifiedSegment` construction. The
+multi-segment fail-first test requires stored segment ordinals `[0, 1]` and replay order
+`segment-0`, `segment-1`; the buggy implementation instead stores receive ordinals `[1, 2]`.

@@ -185,3 +185,8 @@ throw during observation hashing.
 Offline raw-v2 verification is also required to reject cross-domain or non-increasing segment
 ReceiveStamp order. The accepted same-nanosecond case is ordinal 1 then 2; reversing those lines
 must fail before `RawReplay` can expose them.
+
+The CLOB integration test finally freezes that only a successfully applied `book` or
+`price_change` mutation can refresh the lead-lag book ReceiveStamp. Informational frames such as
+`last_trade_price` must be raw-preserved but ignored for book freshness; a failed attempted book
+mutation invalidates the previous state. The fail-first module did not exist before this guard.

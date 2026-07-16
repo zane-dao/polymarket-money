@@ -127,3 +127,11 @@ fields. The strengthened test is committed before the schema hardening; against 
 `OpportunityObservationV1` interface it fails TypeScript excess/missing-field checks and has no
 `observation_id` member. The implementation commit must make those fields schema-required rather
 than hiding them in the generic facts object.
+
+### Group 4 follow-up — legacy single-record route label
+
+The final unique-path audit also found that the compatibility `observeCompleteSet` export still
+returned `RESEARCH_CANDIDATE` from one quote. Although the R1 live runtime no longer imports that
+module, an exported single-record route conclusion violates the frozen contract. The strengthened
+legacy test requires `OBSERVED_NOT_EXECUTABLE`; it fails against the prior implementation until the
+route-level label is removed.

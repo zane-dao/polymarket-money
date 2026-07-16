@@ -13,7 +13,8 @@ test("complete-set record uses common visible size and never claims atomic risk-
   const result = observeCompleteSet(book, "0");
   assert.equal(result.family, "COMPLETE_SET_ARBITRAGE");
   assert.equal(result.executableVisibleSize, "1");
-  assert.equal(result.evidenceLevel, "RESEARCH_CANDIDATE");
+  assert.equal(result.evidenceLevel, "OBSERVED_NOT_EXECUTABLE");
+  assert.notEqual(result.evidenceLevel, "RESEARCH_CANDIDATE");
   assert.equal(result.feeRebateEvidence, "SCENARIO_ONLY");
 });
 

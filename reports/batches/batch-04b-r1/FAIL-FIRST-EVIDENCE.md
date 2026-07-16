@@ -118,3 +118,12 @@ not ok - live runtime is wired to the frozen R1 contracts (missing LeadLagEngine
 not ok - legacy observers delegate exact money and fee calculations (missing FeeEdgeCalculator)
 not ok - active capture and runtime paths contain no empty catch disposition (scripts/live-runtime.ts)
 ```
+
+### Group 4 follow-up — explicit provenance and eligibility fields
+
+The final frozen-contract audit found that the first Group 4 test proved generic provenance but did
+not require explicit `git_commit`, `session_id`, fee evidence, continuity, eligibility and rejection
+fields. The strengthened test is committed before the schema hardening; against the prior
+`OpportunityObservationV1` interface it fails TypeScript excess/missing-field checks and has no
+`observation_id` member. The implementation commit must make those fields schema-required rather
+than hiding them in the generic facts object.

@@ -29,16 +29,25 @@ const draft = {
   }],
   provenance: {
     producer: "batch-4b-r1",
-    codeVersion: "test-code-v1",
+    gitCommit: "d".repeat(64),
+    sessionId: "session-1",
     configHash: "b".repeat(64),
   },
   quality: { status: "PASS" as const, rejectionReasons: [] },
+  feeEvidenceReference: "fee-evidence-1",
+  continuity: "CONTINUOUS" as const,
+  grossEdge: "0.04",
+  scenarioNetEdge: "0.00507",
+  visibleSize: "1.5",
+  eligibility: "ELIGIBLE" as const,
+  rejectionReason: null,
   facts: { executable_visible_size: "1.5", nested: { up_ask: "0.48" } },
 };
 
 test("OpportunityObservationV1 is deeply immutable and round-trips canonically", () => {
   const observation = createOpportunityObservationV1(draft);
   assert.equal(observation.schema_version, "opportunity-observation-v1");
+  assert.equal(observation.observation_id, observation.observation_hash);
   assert.equal(Object.isFrozen(observation), true);
   assert.equal(Object.isFrozen(observation.facts), true);
   assert.equal(Object.isFrozen(observation.facts.nested), true);
@@ -74,6 +83,13 @@ test("missing provenance, invalid quality, and route conclusions on one observat
       provenance: { ...draft.provenance, configHash: "" },
     }),
     /config/i,
+  );
+  assert.throws(
+    () => createOpportunityObservationV1({
+      ...draft,
+      provenance: { ...draft.provenance, sessionId: "" },
+    }),
+    /session/i,
   );
   assert.throws(
     () => createOpportunityObservationV1({

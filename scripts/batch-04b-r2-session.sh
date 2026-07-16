@@ -56,6 +56,18 @@ active_session() {
   return 1
 }
 
+systemd_has_required_network_environment() {
+  systemctl --user show-environment >/dev/null 2>&1 || return 1
+  local manager_environment key
+  manager_environment="$(systemctl --user show-environment)"
+  for key in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy; do
+    if [[ -v $key ]] && ! grep -q "^${key}=" <<<"$manager_environment"; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 preflight() {
   require_data_root
   cd "$REPO_ROOT"
@@ -120,7 +132,9 @@ run_child() {
   set -e
   kill "$heartbeat_pid" 2>/dev/null || true
   wait "$heartbeat_pid" 2>/dev/null || true
-  if (( exit_code != 0 )); then stop_reason="RUNTIME_NONZERO_EXIT"; fi
+  if (( exit_code != 0 )) && [[ "$stop_reason" == "MAXIMUM_RUNTIME_150_MINUTES_REACHED" ]]; then
+    stop_reason="RUNTIME_NONZERO_EXIT"
+  fi
   printf '%s\n' "$exit_code" > "$EXIT_FILE"
   printf '%s\n' "$stop_reason" > "$STOP_REASON_FILE"
   date -u +%Y-%m-%dT%H:%M:%SZ > "$HEARTBEAT_FILE"
@@ -141,7 +155,7 @@ launch() {
     "$session_id" "$head" "$config_hash" "$started_at" "$SUMMARY_FILE" \
     "$REPO_ROOT/reports/batches/batch-04b-r2" > "$SESSION_META"
   npm run build
-  if systemctl --user show-environment >/dev/null 2>&1; then
+  if systemd_has_required_network_environment; then
     printf 'systemd-user\n' > "$RUNNER_FILE"
     systemd-run --user --unit="$UNIT" --collect \
       --property="WorkingDirectory=$REPO_ROOT" \

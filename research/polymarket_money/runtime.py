@@ -337,6 +337,27 @@ def _classification(format_name: str) -> str:
     return "UNKNOWN"
 
 
+_SENSITIVE_PATH_MARKERS = frozenset(
+    {
+        "browser-profile",
+        "cookies",
+        "credential",
+        "edge-prof",
+        "login data",
+        "mnemonic",
+        "private key",
+        "seed phrase",
+        "wallet",
+        "web data",
+    }
+)
+
+
+def _content_read_forbidden(path: Path) -> bool:
+    normalized_parts = {part.casefold() for part in path.parts}
+    return any(marker in normalized_parts for marker in _SENSITIVE_PATH_MARKERS)
+
+
 def _partial_fingerprint(path: Path, size: int) -> str:
     digest = sha256()
     digest.update(str(size).encode("ascii"))
@@ -386,9 +407,10 @@ def inventory_directory(root: Path) -> InventoryReport:
     for path in sorted(item for item in canonical.rglob("*") if item.is_file()):
         before = path.stat()
         format_name = _format(path)
-        classification = _classification(format_name)
-        fingerprint = _partial_fingerprint(path, before.st_size)
-        sample, error = _schema_sample(path, format_name)
+        sensitive = _content_read_forbidden(path.relative_to(canonical))
+        classification = "SENSITIVE_METADATA_ONLY" if sensitive else _classification(format_name)
+        fingerprint = "NOT_READ_SENSITIVE_PATH" if sensitive else _partial_fingerprint(path, before.st_size)
+        sample, error = ({}, "SKIPPED_SENSITIVE_PATH") if sensitive else _schema_sample(path, format_name)
         after = path.stat()
         if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
             raise RuntimeError("inventory source changed during read-only scan")
@@ -403,14 +425,15 @@ def inventory_directory(root: Path) -> InventoryReport:
                 format=format_name,
                 classification=classification,
                 partial_fingerprint=fingerprint,
-                hash_kind="PARTIAL_FINGERPRINT_NOT_SHA256",
+                hash_kind=("NOT_HASHED_SENSITIVE_PATH" if sensitive else "PARTIAL_FINGERPRINT_NOT_SHA256"),
                 schema_sample=sample,
                 sample_error=error,
             )
         )
         formats[format_name] = formats.get(format_name, 0) + 1
         classifications[classification] = classifications.get(classification, 0) + 1
-        duplicate_index.setdefault((before.st_size, fingerprint), []).append(relative_path)
+        if not sensitive:
+            duplicate_index.setdefault((before.st_size, fingerprint), []).append(relative_path)
     duplicates = tuple(
         tuple(sorted(group))
         for group in duplicate_index.values()

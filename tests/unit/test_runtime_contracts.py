@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from research.polymarket_money.runtime import (
     MAX_LOCAL_RAW_BYTES,
@@ -81,6 +82,22 @@ class RuntimeContractsTest(unittest.TestCase):
             self.assertEqual(before.st_mtime_ns, after.st_mtime_ns)
             self.assertEqual(before.st_size, after.st_size)
             self.assertEqual(report.files[0].hash_kind, "PARTIAL_FINGERPRINT_NOT_SHA256")
+
+    def test_inventory_never_reads_browser_or_credential_path_contents(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            sensitive = root / "tmp" / "edge-prof" / "Default" / "Network" / "Cookies"
+            sensitive.parent.mkdir(parents=True)
+            sensitive.write_text("must-not-be-read", encoding="utf-8")
+            with patch(
+                "research.polymarket_money.runtime._partial_fingerprint",
+                side_effect=AssertionError("sensitive content was read"),
+            ):
+                report = inventory_directory(root)
+            self.assertEqual(report.files[0].classification, "SENSITIVE_METADATA_ONLY")
+            self.assertEqual(report.files[0].hash_kind, "NOT_HASHED_SENSITIVE_PATH")
+            self.assertEqual(report.files[0].partial_fingerprint, "NOT_READ_SENSITIVE_PATH")
+            self.assertEqual(report.files[0].sample_error, "SKIPPED_SENSITIVE_PATH")
 
     def test_replay_pacer_is_controller_not_a_second_engine(self) -> None:
         sleeps: list[float] = []

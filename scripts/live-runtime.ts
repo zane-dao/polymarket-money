@@ -163,13 +163,20 @@ async function options(): Promise<RuntimeOptions> {
     }
     await mkdir(outputPath!, { recursive: true, mode: 0o700 });
     const storage = await statfs(outputPath!);
+    const linuxFreeBytes = storage.bavail * storage.bsize;
+    const windowsD = process.env.WSL_DISTRO_NAME === undefined
+      ? null
+      : await statfs("/mnt/d").catch(() => null);
+    const bindingFreeBytes = windowsD === null
+      ? linuxFreeBytes
+      : Math.min(linuxFreeBytes, windowsD.bavail * windowsD.bsize);
     record = validateRecordingOptions({
       mode: "raw",
       durationMilliseconds: durationSeconds * 1_000,
       maxBytes: positiveInteger(argument("--max-bytes"), "max-bytes"),
       outputPath: outputPath!,
       filesystemType: await filesystemType(outputPath!),
-      freeBytes: storage.bavail * storage.bsize,
+      freeBytes: bindingFreeBytes,
     });
   } else {
     record = validateRecordingOptions({ mode: recordMode });

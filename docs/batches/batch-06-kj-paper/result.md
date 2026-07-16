@@ -47,8 +47,8 @@ gross-minus-fee identity, and zero position after settlement.
 ## Verification
 
 ```text
-Python: 199 passed
-Node/TypeScript: 110 passed
+Python: 200 passed
+Node/TypeScript: 111 passed
 Ruff: All checks passed
 git diff --check: passed
 ```
@@ -80,6 +80,8 @@ cancellation, shadow, or live action occurred.
    paper service.
 6. The TypeScript real-time probability uses a documented deterministic
    normal-CDF approximation.  A shared golden bounds probability error against
-   Python `erf` to `0.0000002` on representative/clamped-tail z-scores, but full
-   EWMA-to-intent cross-language golden decision parity remains to be
-   established before either output can be treated as the other's exact replay.
+   Python `erf` to `0.0000002` on representative/clamped-tail z-scores.  A second
+   shared golden verifies one J fee-threshold rejection and one K
+   EWMA-to-intent-to-fill-to-official-settlement path, including fee, position
+   and PnL.  Coverage is representative, not proof of exhaustive equivalence
+   across every runtime branch.

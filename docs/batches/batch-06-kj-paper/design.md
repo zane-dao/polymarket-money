@@ -159,7 +159,11 @@ runner: TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
 approximation, while Python uses its platform `erf`.  More importantly, the
 runtime does not yet obtain an official resolution.  It therefore stops risk at
 interval end and waits for an explicit `OFFICIAL_RESOLUTION`; it cannot yet
-settle a continuous sequence of markets unattended.  A shared probability golden now bounds the
-TypeScript approximation to `0.0000002` absolute error against Python `erf` at
-representative and clamped-tail z-scores; full EWMA-to-intent cross-language
-decision parity remains unproven.
+settle a continuous sequence of markets unattended.  A shared probability
+golden bounds the TypeScript approximation to `0.0000002` absolute error against
+Python `erf` at representative and clamped-tail z-scores.  A second shared
+golden feeds both languages the same five-second price path, final book, fee,
+delayed fill and official Up settlement.  It verifies J's fee-threshold
+rejection and K's EWMA/probability/edge/intent quantity/fill/fee/position/PnL
+path within explicit tolerances.  This is a representative contract, not
+exhaustive parity over every book, timing, no-fill and lifecycle branch.

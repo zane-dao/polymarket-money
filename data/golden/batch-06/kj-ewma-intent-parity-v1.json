@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "kj-ewma-intent-parity-v1",
+  "market": {
+    "intervalStart": "2026-07-17T00:00:00.000Z",
+    "intervalEnd": "2026-07-17T00:05:00.000Z",
+    "decisionOffsetSeconds": 185,
+    "executionOffsetSeconds": 186,
+    "horizonSeconds": 115,
+    "startPrice": "60000"
+  },
+  "warmBook": {
+    "upBid": "0.79",
+    "upAsk": "0.8",
+    "downBid": "0.19",
+    "downAsk": "0.8",
+    "askSize": "1000"
+  },
+  "decisionBook": {
+    "upBid": "0.6",
+    "upAsk": "0.61",
+    "downBid": "0.38",
+    "downAsk": "0.39",
+    "askSize": "1000"
+  },
+  "feeRate": "0.07",
+  "prices": [
+    { "offsetSeconds": 0, "price": "60000" },
+    { "offsetSeconds": 5, "price": "59940" },
+    { "offsetSeconds": 10, "price": "60060" },
+    { "offsetSeconds": 15, "price": "59940" },
+    { "offsetSeconds": 20, "price": "60060" },
+    { "offsetSeconds": 25, "price": "59940" },
+    { "offsetSeconds": 30, "price": "60060" },
+    { "offsetSeconds": 35, "price": "59940" },
+    { "offsetSeconds": 40, "price": "60060" },
+    { "offsetSeconds": 45, "price": "59940" },
+    { "offsetSeconds": 50, "price": "60060" },
+    { "offsetSeconds": 55, "price": "59940" },
+    { "offsetSeconds": 60, "price": "60060" },
+    { "offsetSeconds": 65, "price": "59940" },
+    { "offsetSeconds": 70, "price": "60060" },
+    { "offsetSeconds": 75, "price": "59940" },
+    { "offsetSeconds": 80, "price": "60060" },
+    { "offsetSeconds": 85, "price": "59940" },
+    { "offsetSeconds": 90, "price": "60060" },
+    { "offsetSeconds": 95, "price": "59940" },
+    { "offsetSeconds": 100, "price": "60060" },
+    { "offsetSeconds": 105, "price": "59940" },
+    { "offsetSeconds": 110, "price": "60060" },
+    { "offsetSeconds": 115, "price": "59940" },
+    { "offsetSeconds": 120, "price": "60060" },
+    { "offsetSeconds": 125, "price": "59940" },
+    { "offsetSeconds": 130, "price": "60060" },
+    { "offsetSeconds": 135, "price": "59940" },
+    { "offsetSeconds": 140, "price": "60060" },
+    { "offsetSeconds": 145, "price": "59940" },
+    { "offsetSeconds": 150, "price": "60060" },
+    { "offsetSeconds": 155, "price": "59940" },
+    { "offsetSeconds": 160, "price": "60060" },
+    { "offsetSeconds": 165, "price": "59940" },
+    { "offsetSeconds": 170, "price": "60060" },
+    { "offsetSeconds": 175, "price": "59940" },
+    { "offsetSeconds": 185, "price": "60240" }
+  ],
+  "tolerances": {
+    "probabilityAbsolute": "0.0000002",
+    "numericAbsolute": "0.000000000001"
+  },
+  "expected": {
+    "J_FEE_AWARE": {
+      "sigma": "0.00086086965439937334",
+      "probabilityUp": "0.6672821806790765",
+      "outcome": "UP",
+      "edge": "0.0572821806790765",
+      "requiredEdge": "0.066653",
+      "action": "NO_TRADE",
+      "reason": "EDGE_BELOW_THRESHOLD",
+      "intendedQuantity": null,
+      "fill": null
+    },
+    "K_DUAL_VOL": {
+      "sigma": "0.00075102431497114767",
+      "probabilityUp": "0.6899352821634788",
+      "outcome": "UP",
+      "edge": "0.0799352821634788",
+      "requiredEdge": "0.066653",
+      "action": "INTENT",
+      "reason": "EDGE_ACCEPTED",
+      "intendedQuantity": "319.1558964849765340627109421",
+      "fill": {
+        "price": "0.61",
+        "quantity": "319.1558964849765340627109421",
+        "cost": "194.6850968558356857782536747",
+        "fee": "5.314903144164314221746325319",
+        "cashAfterFill": "9800",
+        "positionAfter": "319.1558964849765340627109421",
+        "payout": "319.1558964849765340627109421",
+        "grossPnl": "124.4707996291408482844572674",
+        "netPnl": "119.1558964849765340627109421",
+        "finalCash": "10119.15589648497653406271094"
+      }
+    }
+  }
+}

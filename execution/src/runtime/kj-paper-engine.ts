@@ -830,6 +830,7 @@ export class KJPaperEngine {
       this.#events.push(event("DECISION", strategy, session.marketId, context.decisionTime, {
         action: "NO_TRADE",
         reason: edge.comparedTo(required) <= 0 ? "EDGE_BELOW_THRESHOLD" : "EDGE_ABOVE_STALE_GUARD",
+        outcome,
         probabilityUp: probability.toCanonical(),
         sigma: sigma.toString(),
         edge: edge.toCanonical(),

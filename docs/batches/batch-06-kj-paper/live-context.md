@@ -69,8 +69,9 @@ This is not yet an unattended continuous paper service:
 3. TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
    approximation.  `data/golden/batch-06/kj-probability-v1.json` bounds it to
    `0.0000002` absolute error against Python `erf` for representative and
-   clamped-tail z-scores, but full EWMA-to-intent cross-language golden decision
-   parity has not been established.
+   clamped-tail z-scores.  `kj-ewma-intent-parity-v1.json` additionally verifies
+   a shared J rejection and K EWMA-to-intent-to-fill-to-settlement path.  This is
+   representative rather than exhaustive coverage of all runtime branches.
 4. Book continuity remains explicitly `UNVERIFIED`, so fills are theoretical
    paper fills, never evidence that a live order would have executed.
 

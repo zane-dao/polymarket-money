@@ -17,6 +17,7 @@ from research.polymarket_money.kj_paper import (
     simulate_decision,
 )
 from research.polymarket_money.kj_ewma import SIGNAL_FIDELITY as EWMA_SIGNAL_FIDELITY
+from research.polymarket_money.kj_ewma import EwmaVolatility, KJDualVolatility
 
 
 def row(*, condition: str = "m1", winner: str = "Up", current: str = "111") -> dict:
@@ -51,6 +52,130 @@ def row(*, condition: str = "m1", winner: str = "Up", current: str = "111") -> d
 
 
 class KJPaperTest(unittest.TestCase):
+    def test_python_ewma_to_intent_is_the_shared_decision_golden_reference(self) -> None:
+        fixture_path = (
+            Path(__file__).parents[2]
+            / "data"
+            / "golden"
+            / "batch-06"
+            / "kj-ewma-intent-parity-v1.json"
+        )
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        single = EwmaVolatility(100, minimum_sigma=0.00002, sample_interval_seconds=5)
+        dual = KJDualVolatility.legacy_parameters()
+        for sample in fixture["prices"]:
+            single.update(float(sample["price"]), sample["offsetSeconds"])
+            dual.update(float(sample["price"]), sample["offsetSeconds"])
+        volatility = {
+            "j_single_sigma": format(single.sigma, ".17g"),
+            "k_effective_sigma": format(dual.effective_sigma, ".17g"),
+        }
+        book = fixture["decisionBook"]
+        decision_row = {
+            "condition_id": "golden-market",
+            "slug": "btc-updown-5m-1784246400",
+            "decision_time": "2026-07-17T00:03:05.000Z",
+            "market_start": fixture["market"]["intervalStart"],
+            "market_end": fixture["market"]["intervalEnd"],
+            "split": "GOLDEN",
+            "horizon_seconds": fixture["market"]["horizonSeconds"],
+            "winner": "Up",
+            "binance": {
+                "start_price": fixture["market"]["startPrice"],
+                "current_price": fixture["prices"][-1]["price"],
+                "log_return_from_start": str(math.log(60240 / 60000)),
+                "realized_vol_30s": "0.001",
+                "realized_vol_60s": "0.001",
+                "realized_vol_120s": "0.001",
+            },
+            "books": {
+                "decision_plus_1s_visibility": {
+                    "bu": book["upBid"], "au": book["upAsk"],
+                    "bd": book["downBid"], "ad": book["downAsk"],
+                    "su": "1000", "sd": "1000",
+                    "sau": book["askSize"], "sad": book["askSize"],
+                },
+                "execution_base_1s": {
+                    "bu": book["upBid"], "au": book["upAsk"],
+                    "bd": book["downBid"], "ad": book["downAsk"],
+                    "su": "1000", "sd": "1000",
+                    "sau": book["askSize"], "sad": book["askSize"],
+                },
+            },
+            "fee_evidence": {
+                "grade": "MARKET_STATIC_OFFICIAL",
+                "fee_rate": fixture["feeRate"],
+                "fetch_time": "2026-07-17T00:05:01Z",
+            },
+        }
+        numeric_tolerance = Decimal(fixture["tolerances"]["numericAbsolute"])
+        probability_tolerance = Decimal(fixture["tolerances"]["probabilityAbsolute"])
+        reason_mapping = {
+            "EDGE_BELOW_FEE_AWARE_THRESHOLD": "EDGE_BELOW_THRESHOLD",
+            None: "EDGE_ACCEPTED",
+        }
+        for strategy in KJStrategy:
+            event = simulate_decision(
+                decision_row,
+                strategy=strategy,
+                scenario=PaperScenario.BASE_1S,
+                bankroll=Decimal("10000"),
+                config=KJConfig(),
+                volatility_sample=volatility,
+            )
+            expected = fixture["expected"][strategy.value]
+            action = "INTENT" if event["status"] == "FILLED" else event["status"]
+            self.assertEqual(action, expected["action"])
+            self.assertEqual(reason_mapping[event["reason"]], expected["reason"])
+            self.assertEqual(event["side"], expected["outcome"])
+            self.assertLessEqual(
+                abs(Decimal(event["effective_sigma"]) - Decimal(expected["sigma"])),
+                numeric_tolerance,
+            )
+            for field, expected_field in (
+                ("probability_up", "probabilityUp"),
+                ("edge", "edge"),
+            ):
+                self.assertLessEqual(
+                    abs(Decimal(event[field]) - Decimal(expected[expected_field])),
+                    probability_tolerance,
+                )
+            self.assertLessEqual(
+                abs(Decimal(event["required_edge"]) - Decimal(expected["requiredEdge"])),
+                numeric_tolerance,
+            )
+            if expected["intendedQuantity"] is None:
+                self.assertNotIn("intended_quantity", event)
+            else:
+                self.assertLessEqual(
+                    abs(
+                        Decimal(event["intended_quantity"])
+                        - Decimal(expected["intendedQuantity"])
+                    ),
+                    numeric_tolerance,
+                )
+            if expected["fill"] is None:
+                self.assertEqual(event["status"], "NO_TRADE")
+                continue
+            fill = expected["fill"]
+            for field, expected_field in (
+                ("fill_price", "price"),
+                ("quantity", "quantity"),
+                ("stake", "cost"),
+                ("fee", "fee"),
+                ("cash_after_fill", "cashAfterFill"),
+                ("position_after_fill", "positionAfter"),
+                ("payout", "payout"),
+                ("gross_pnl", "grossPnl"),
+                ("net_pnl", "netPnl"),
+                ("bankroll_after", "finalCash"),
+            ):
+                self.assertLessEqual(
+                    abs(Decimal(event[field]) - Decimal(fill[expected_field])),
+                    numeric_tolerance,
+                    field,
+                )
+
     def test_python_erf_is_the_shared_probability_golden_reference(self) -> None:
         fixture_path = (
             Path(__file__).parents[2]

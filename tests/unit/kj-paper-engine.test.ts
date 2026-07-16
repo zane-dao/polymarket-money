@@ -53,8 +53,10 @@ function context(
   ordinal: number,
   selectedMarket = market(1),
   book: Readonly<{
+    upBid?: string;
     upAsk?: string;
     upAskSize?: string;
+    downBid?: string;
     downAsk?: string;
     downAskSize?: string;
   }> = {},
@@ -67,13 +69,13 @@ function context(
       state: "ACTIVE_UNVERIFIED",
       continuity: "UNVERIFIED",
       up: {
-        bid: "0.79",
+        bid: book.upBid ?? "0.79",
         ask: book.upAsk ?? "0.8",
         bidSize: "1000",
         askSize: book.upAskSize ?? "1000",
       },
       down: {
-        bid: "0.19",
+        bid: book.downBid ?? "0.19",
         ask: book.downAsk ?? "0.2",
         bidSize: "1000",
         askSize: book.downAskSize ?? "1000",
@@ -276,6 +278,134 @@ test("TypeScript probability stays inside the shared Python erf golden tolerance
     );
   }
   assert.throws(() => kjPaperProbabilityFromZ(Number.NaN), /must be finite/u);
+});
+
+test("TypeScript EWMA-to-intent matches the shared Python decision golden", async () => {
+  const fixture = JSON.parse(await readFile(
+    new URL("data/golden/batch-06/kj-ewma-intent-parity-v1.json", root),
+    "utf8",
+  )) as {
+    warmBook: {
+      upBid: string; upAsk: string; downBid: string; downAsk: string; askSize: string;
+    };
+    decisionBook: {
+      upBid: string; upAsk: string; downBid: string; downAsk: string; askSize: string;
+    };
+    prices: readonly { offsetSeconds: number; price: string }[];
+    tolerances: { probabilityAbsolute: string; numericAbsolute: string };
+    expected: Record<"J_FEE_AWARE" | "K_DUAL_VOL", {
+      sigma: string;
+      probabilityUp: string;
+      outcome: string;
+      edge: string;
+      requiredEdge: string;
+      action: string;
+      reason: string;
+      intendedQuantity: string | null;
+      fill: null | {
+        price: string; quantity: string; cost: string; fee: string;
+        cashAfterFill: string; positionAfter: string; payout: string;
+        grossPnl: string; netPnl: string; finalCash: string;
+      };
+    }>;
+  };
+  const engine = new KJPaperEngine();
+  for (const [index, sample] of fixture.prices.entries()) {
+    const source = index === fixture.prices.length - 1 ? fixture.decisionBook : fixture.warmBook;
+    engine.ingest(context(sample.offsetSeconds, sample.price, index + 1, market(1), {
+      upBid: source.upBid,
+      upAsk: source.upAsk,
+      upAskSize: source.askSize,
+      downBid: source.downBid,
+      downAsk: source.downAsk,
+      downAskSize: source.askSize,
+    }));
+  }
+  const at = iso(185);
+  const close = (actual: unknown, expected: string, tolerance: string, field: string): void => {
+    assert.ok(
+      Math.abs(Number(actual) - Number(expected)) <= Number(tolerance),
+      `${field}: ${String(actual)} vs ${expected}`,
+    );
+  };
+  for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) {
+    const expected = fixture.expected[strategy];
+    const decision = engine.events().find((item) =>
+      item.eventType === "DECISION" && item.strategy === strategy && item.eventTime === at);
+    assert.ok(decision, strategy);
+    assert.equal(decision.details.action, expected.action);
+    assert.equal(decision.details.reason, expected.reason);
+    assert.equal(decision.details.outcome, expected.outcome);
+    close(decision.details.sigma, expected.sigma, fixture.tolerances.numericAbsolute, `${strategy}.sigma`);
+    close(
+      decision.details.probabilityUp,
+      expected.probabilityUp,
+      fixture.tolerances.probabilityAbsolute,
+      `${strategy}.probabilityUp`,
+    );
+    close(decision.details.edge, expected.edge, fixture.tolerances.probabilityAbsolute, `${strategy}.edge`);
+    close(
+      decision.details.requiredEdge,
+      expected.requiredEdge,
+      fixture.tolerances.numericAbsolute,
+      `${strategy}.requiredEdge`,
+    );
+    const intent = engine.events().find((item) =>
+      item.eventType === "INTENT" && item.strategy === strategy && item.eventTime === at);
+    if (expected.intendedQuantity === null) {
+      assert.equal(intent, undefined);
+    } else {
+      assert.ok(intent);
+      close(
+        intent.details.intendedQuantity,
+        expected.intendedQuantity,
+        fixture.tolerances.numericAbsolute,
+        `${strategy}.intendedQuantity`,
+      );
+    }
+  }
+  engine.ingest(context(186, "60240", fixture.prices.length + 1, market(1), {
+    upBid: fixture.decisionBook.upBid,
+    upAsk: fixture.decisionBook.upAsk,
+    upAskSize: fixture.decisionBook.askSize,
+    downBid: fixture.decisionBook.downBid,
+    downAsk: fixture.decisionBook.downAsk,
+    downAskSize: fixture.decisionBook.askSize,
+  }));
+  engine.settle({
+    settlementId: "golden-official-settlement",
+    marketId: "market-1",
+    winner: "UP",
+    settlementTime: iso(360),
+    evidenceStatus: "OFFICIAL_RESOLUTION",
+    evidenceReference: "golden:official-resolution",
+  });
+  for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) {
+    const expected = fixture.expected[strategy];
+    const fill = engine.events().find((item) => item.eventType === "FILL" && item.strategy === strategy);
+    const settled = engine.events().find((item) =>
+      item.eventType === "SETTLEMENT" && item.strategy === strategy);
+    assert.ok(settled);
+    if (expected.fill === null) {
+      assert.equal(fill, undefined);
+      assert.equal(settled.details.netPnl, "0");
+      continue;
+    }
+    assert.ok(fill);
+    for (const [actual, expectedValue, field] of [
+      [fill.details.price, expected.fill.price, "price"],
+      [fill.details.quantity, expected.fill.quantity, "quantity"],
+      [fill.details.cost, expected.fill.cost, "cost"],
+      [fill.details.fee, expected.fill.fee, "fee"],
+      [fill.details.cashAfter, expected.fill.cashAfterFill, "cashAfterFill"],
+      [fill.details.positionAfter, expected.fill.positionAfter, "positionAfter"],
+      [settled.details.payout, expected.fill.payout, "payout"],
+      [settled.details.grossPnl, expected.fill.grossPnl, "grossPnl"],
+      [settled.details.netPnl, expected.fill.netPnl, "netPnl"],
+      [settled.details.cashAfter, expected.fill.finalCash, "finalCash"],
+    ] as const) close(actual, expectedValue, fixture.tolerances.numericAbsolute, `${strategy}.${field}`);
+  }
+  assert.equal(engine.snapshot().markets[0]?.state, "DONE");
 });
 
 test("late first context fails closed instead of inventing a market open anchor", () => {

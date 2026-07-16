@@ -103,6 +103,11 @@ tail checkpoint, and strictly replays contexts, fills, reservations, wallets,
 positions, and settlements after restart.  Inspect it offline with
 `npm run paper:inspect -- /absolute/path/to/kj-inputs.ndjson`.
 
+`data/golden/batch-06/kj-ewma-intent-parity-v1.json` feeds the same five-second
+price path, book, fee, delayed fill, and official settlement to Python and
+TypeScript.  It verifies a representative J no-trade and K
+intent-to-settlement path within explicit numeric tolerances.
+
 The real-time engine is still intentionally not an unattended closed loop:
 `scripts/live-runtime.ts` does not currently supply official resolution events.
 An ended market therefore remains `STOPPING` until separately verified

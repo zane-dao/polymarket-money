@@ -57,3 +57,17 @@ tests/unit/fee-edge-r1.test.ts(10,64): error TS2307: Cannot find module '../../e
 
 ImportError: cannot import name 'FeeEvidenceStatus' from 'research.polymarket_money.backtest'
 ```
+
+## Group 4 — Opportunity observation and route evaluation separation
+
+Fail-first input: `tests/unit/opportunity-observation-r1.test.ts`. It requires the immutable,
+versioned and canonically hashed `OpportunityObservationV1` fact contract plus a separate
+`RouteEvaluationV1` aggregate whose only current decision is `DATA_INSUFFICIENT`. The reviewed
+baseline has only mutable-shallow ad-hoc opportunity records and no such module, so TypeScript
+compilation must fail before implementation.
+
+Observed failure:
+
+```text
+tests/unit/opportunity-observation-r1.test.ts(9,8): error TS2307: Cannot find module '../../execution/src/domain/opportunity-observation.js' or its corresponding type declarations.
+```

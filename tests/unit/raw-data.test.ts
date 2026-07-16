@@ -139,6 +139,11 @@ test("Gamma identity uses eventStartTime, maps labels, and ignores creation star
   assert.equal(market.intervalStart, "2026-04-03T01:50:00Z");
   assert.equal(market.intervalEnd, "2026-04-03T01:55:00Z");
   assert.match(market.upTokenId, /^433276/);
+  assert.equal(market.takerFeeRate, null);
+  const feeMarket = JSON.parse(raw) as Record<string, unknown>;
+  feeMarket.feesEnabled = true;
+  feeMarket.feeSchedule = { rate: 0.07, exponent: 1, takerOnly: true };
+  assert.equal(validatePublicBtcFiveMinuteMarket(JSON.stringify(feeMarket)).takerFeeRate, "0.07");
 });
 
 test("public subscriptions contain no auth, wallet, or user-channel fields", () => {

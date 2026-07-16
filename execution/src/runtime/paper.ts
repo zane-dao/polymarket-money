@@ -129,13 +129,29 @@ export function noTradeObserver(snapshot: PaperSnapshot): PaperAudit {
 
 export function completeSetArbitrageObserver(
   snapshot: PaperSnapshot,
-  options: { readonly feeRate: string; readonly latencyMilliseconds: number },
+  options: { readonly feeRate: string | null; readonly latencyMilliseconds: number },
 ): PaperAudit {
   if (!Number.isSafeInteger(options.latencyMilliseconds) || options.latencyMilliseconds < 0) {
     throw new Error("latencyMilliseconds must be a non-negative safe integer");
   }
   const upAsk = decimal(snapshot.up.ask);
   const downAsk = decimal(snapshot.down.ask);
+  if (options.feeRate === null) {
+    return {
+      ...base(snapshot, "COMPLETE_SET_ARBITRAGE_OBSERVER"),
+      fills: [],
+      executableQuantity: "0",
+      edgeAfterFees: null,
+      leggingRisk: "NOT_APPLICABLE",
+      fillLowerBound: null,
+      fillUpperBound: null,
+      details: {
+        feeRate: null,
+        configuredLatencyMilliseconds: String(options.latencyMilliseconds),
+        warning: "UNKNOWN_FEE_RATE_NO_EXECUTABLE_EDGE",
+      },
+    };
+  }
   const feeRate = decimal(options.feeRate);
   const upFee = multiply(multiply(feeRate, upAsk), subtract(ONE, upAsk));
   const downFee = multiply(multiply(feeRate, downAsk), subtract(ONE, downAsk));

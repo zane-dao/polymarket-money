@@ -687,7 +687,10 @@ function snapshot(state: RuntimeState): PaperSnapshot | null {
 }
 
 function opportunityAudits(value: PaperSnapshot, state: RuntimeState): readonly PaperAudit[] {
-  const complete = completeSetArbitrageObserver(value, { feeRate: "0.07", latencyMilliseconds: 1_000 });
+  const complete = completeSetArbitrageObserver(value, {
+    feeRate: state.currentMarket?.takerFeeRate ?? null,
+    latencyMilliseconds: 1_000,
+  });
   let change = "0";
   if (state.spot !== null && state.previousSpot !== null) {
     change = String(((Number(state.spot.value) / Number(state.previousSpot.value)) - 1) * 10_000);

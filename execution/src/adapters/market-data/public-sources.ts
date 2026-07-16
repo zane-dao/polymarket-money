@@ -19,6 +19,7 @@ export interface PublicBtcFiveMinuteMarket {
   readonly closed: boolean | null;
   readonly acceptingOrders: boolean | null;
   readonly collectible: boolean;
+  readonly takerFeeRate: string | null;
   readonly rawPayload: string;
 }
 
@@ -249,6 +250,21 @@ export function validatePublicBtcFiveMinuteMarket(rawPayload: string): PublicBtc
   const active = nullableBoolean(market.active, "active");
   const closed = nullableBoolean(market.closed, "closed");
   const acceptingOrders = nullableBoolean(market.acceptingOrders, "acceptingOrders");
+  const takerFeeRate = (() => {
+    if (market.feesEnabled === false) return "0";
+    if (market.feeSchedule === undefined || market.feeSchedule === null) return null;
+    const schedule = object(market.feeSchedule, "feeSchedule");
+    const rawRate = schedule.rate;
+    if (typeof rawRate !== "number" && typeof rawRate !== "string") {
+      throw new Error("feeSchedule.rate must be a decimal");
+    }
+    const parsed = String(rawRate);
+    const numeric = Number(parsed);
+    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/u.test(parsed) || !Number.isFinite(numeric) || numeric < 0 || numeric > 1) {
+      throw new Error("feeSchedule.rate must be between 0 and 1");
+    }
+    return parsed;
+  })();
   return Object.freeze({
     marketId: text(market.id, "id"),
     conditionId,
@@ -261,6 +277,7 @@ export function validatePublicBtcFiveMinuteMarket(rawPayload: string): PublicBtc
     closed,
     acceptingOrders,
     collectible: active === true && closed === false && acceptingOrders === true,
+    takerFeeRate,
     rawPayload,
   });
 }

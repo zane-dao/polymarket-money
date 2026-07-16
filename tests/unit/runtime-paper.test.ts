@@ -29,6 +29,14 @@ test("complete-set observer reports executable edge and theoretical fills only",
   assert.equal(audit.claimsRealProfit, false);
 });
 
+test("complete-set observer fails closed when the public market fee is unknown", () => {
+  const audit = completeSetArbitrageObserver(snapshot, { feeRate: null, latencyMilliseconds: 1_000 });
+  assert.equal(audit.edgeAfterFees, null);
+  assert.equal(audit.executableQuantity, "0");
+  assert.deepEqual(audit.fills, []);
+  assert.equal(audit.details.warning, "UNKNOWN_FEE_RATE_NO_EXECUTABLE_EDGE");
+});
+
 test("maker observer never fabricates a fill or queue position", () => {
   const audit = makerEnvelopeObserver(snapshot, { markoutPrice: "0.46" });
   assert.equal(audit.observer, "MAKER_ENVELOPE_OBSERVER");

@@ -496,6 +496,8 @@ class FeeModel:
             require_non_empty(condition_id, "condition_id")
         require_utc(executable_time, "executable_time")
         require_decimal(price, "price", non_negative=True)
+        if price > Decimal("1"):
+            raise ValueError("price must be between 0 and 1")
         require_decimal(quantity, "quantity", positive=True)
         matches = [
             rate
@@ -515,10 +517,10 @@ class FeeModel:
             raise ValueError("multiple fee rates match one fill")
         if not matches:
             return FeeCharge(
-                amount=Decimal("0"),
+                amount=None,
                 verified=False,
                 schedule_version=self.schedule.version,
-                reason_code="UNKNOWN_FEE",
+                reason_code="MISSING_FEE_EVIDENCE",
                 evidence_reference=None,
                 evidence_status=FeeEvidenceStatus.MISSING,
             )

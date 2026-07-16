@@ -9,7 +9,14 @@ from pathlib import Path
 import re
 from typing import Any, Iterator
 
-from .raw_events import RawEventEnvelopeV1, RawContractViolation, parse_utc_iso, utc_iso
+from .raw_events import (
+    AnyRawEventEnvelope,
+    RawContractViolation,
+    RawEventEnvelopeV2,
+    parse_raw_event,
+    parse_utc_iso,
+    utc_iso,
+)
 
 
 class ManifestVerificationError(ValueError):
@@ -362,6 +369,10 @@ class ManifestVerifier:
         market_ids: set[str] = set()
         asset_ids: set[str] = set()
         event_fingerprints: dict[str, str] = {}
+        dataset_schema_version: str | None = None
+        v2_clock_domain: str | None = None
+        v2_previous_stamp: tuple[int, int] | None = None
+        v2_previous_ordinal: int | None = None
         for expected_ordinal, segment in enumerate(segments_value):
             if not isinstance(segment, dict):
                 raise ManifestVerificationError("segment entry must be an object")
@@ -416,9 +427,42 @@ class ManifestVerifier:
             if len(lines) != expected_count:
                 raise ManifestVerificationError("segment event count mismatch")
             try:
-                envelopes = [RawEventEnvelopeV1.from_json_line(line) for line in lines]
+                envelopes = [parse_raw_event(line) for line in lines]
             except RawContractViolation as exc:
                 raise ManifestVerificationError("segment contains an invalid envelope") from exc
+            v2_envelopes = [
+                event for event in envelopes if isinstance(event, RawEventEnvelopeV2)
+            ]
+            if v2_envelopes and len(v2_envelopes) != len(envelopes):
+                raise ManifestVerificationError("segment mixes raw-event schema versions")
+            segment_schema_version = envelopes[0].schema_version
+            if dataset_schema_version is None:
+                dataset_schema_version = segment_schema_version
+            elif dataset_schema_version != segment_schema_version:
+                raise ManifestVerificationError("dataset mixes raw-event schema versions")
+            if v2_envelopes:
+                for event in v2_envelopes:
+                    if v2_clock_domain is None:
+                        v2_clock_domain = event.clock_domain
+                    elif event.clock_domain != v2_clock_domain:
+                        raise ManifestVerificationError(
+                            "raw-event-v2 dataset crosses clock_domain"
+                        )
+                    current = (
+                        int(event.local_monotonic_receive_ns),
+                        int(event.local_receive_ordinal),
+                    )
+                    ordinal = current[1]
+                    if v2_previous_stamp is not None and current <= v2_previous_stamp:
+                        raise ManifestVerificationError(
+                            "raw-event-v2 segment ReceiveStamp order is not strictly increasing"
+                        )
+                    if v2_previous_ordinal is not None and ordinal <= v2_previous_ordinal:
+                        raise ManifestVerificationError(
+                            "raw-event-v2 local_receive_ordinal is not strictly increasing"
+                        )
+                    v2_previous_stamp = current
+                    v2_previous_ordinal = ordinal
             if any(event.source != source or event.stream != stream for event in envelopes):
                 raise ManifestVerificationError("segment envelope source/stream mismatch")
             if any(event.receive_time.date().isoformat() != partition_date for event in envelopes):
@@ -534,7 +578,7 @@ class RawReplay:
             raise ManifestVerificationError("replay requires a ManifestVerifier result")
 
     @staticmethod
-    def iter_raw(dataset: VerifiedDataset) -> Iterator[RawEventEnvelopeV1]:
+    def iter_raw(dataset: VerifiedDataset) -> Iterator[AnyRawEventEnvelope]:
         RawReplay._assert_verified(dataset)
         for segment in sorted(dataset.segments, key=lambda item: item.ordinal):
             if sha256(segment.raw_bytes).hexdigest() != segment.sha256:
@@ -544,10 +588,10 @@ class RawReplay:
             if len(lines) != segment.event_count:
                 raise ManifestVerificationError("verified in-memory segment count changed")
             for line in lines:
-                yield RawEventEnvelopeV1.from_json_line(line)
+                yield parse_raw_event(line)
 
     @staticmethod
-    def iter_effective(dataset: VerifiedDataset) -> Iterator[RawEventEnvelopeV1]:
+    def iter_effective(dataset: VerifiedDataset) -> Iterator[AnyRawEventEnvelope]:
         seen: set[str] = set()
         for event in RawReplay.iter_raw(dataset):
             if event.parser_status != "parsed" or event.event_id in seen:
@@ -556,7 +600,7 @@ class RawReplay:
             yield event
 
     @staticmethod
-    def iter_quarantine(dataset: VerifiedDataset) -> Iterator[RawEventEnvelopeV1]:
+    def iter_quarantine(dataset: VerifiedDataset) -> Iterator[AnyRawEventEnvelope]:
         for event in RawReplay.iter_raw(dataset):
             if event.parser_status in {"error", "quarantined"}:
                 yield event

@@ -104,6 +104,9 @@ def verified_v2_dataset(root: Path, mappings: list[dict[str, object]] | None = N
 
 
 def test_raw_v2_parses_and_exposes_full_receive_stamp() -> None:
+    schema = json.loads((ROOT / "contracts/raw-event-v2.schema.json").read_text())
+    assert schema["properties"]["schema_version"]["const"] == "raw-event-v2"
+    assert "clock_domain" in schema["required"]
     event = parse_raw_event(json.dumps(v2_mapping()))
     assert isinstance(event, RawEventEnvelopeV2)
     stamp = require_subsecond_receive_stamp(event)
@@ -132,7 +135,11 @@ def test_manifest_replay_and_normalizer_consume_raw_v2(tmp_path: Path) -> None:
     build = NormalizedDatasetBuilder.normalize_verified(
         [verified], "raw-v2-normalized", commit, NormalizerConfig()
     )
-    assert any(item.raw_lineage.event_id == "gamma-v2-1" for item in build.records)
+    assert any(
+        lineage.event_id == "gamma-v2-1"
+        for item in build.records
+        for lineage in item.lineage
+    )
 
 
 def test_manifest_verifier_enforces_v2_receive_stamp_segment_order(tmp_path: Path) -> None:

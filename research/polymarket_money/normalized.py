@@ -24,7 +24,14 @@ import tempfile
 from typing import Any, Iterable, Mapping, Sequence
 
 from .market_identity import discover_btc_five_minute_market
-from .raw_events import RawContractViolation, RawEventEnvelopeV1, parse_rtds_price, parse_utc_iso, utc_iso
+from .raw_events import (
+    AnyRawEventEnvelope,
+    RawContractViolation,
+    parse_raw_event,
+    parse_rtds_price,
+    parse_utc_iso,
+    utc_iso,
+)
 from .replay import ManifestVerificationError, RawReplay, VerifiedDataset
 
 
@@ -63,6 +70,7 @@ _UNSET = object()
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 _NORMALIZER_CONTRACT_PATHS = (
     _REPOSITORY_ROOT / "contracts" / "raw-event-v1.schema.json",
+    _REPOSITORY_ROOT / "contracts" / "raw-event-v2.schema.json",
     _REPOSITORY_ROOT / "contracts" / "normalized-record-v1.schema.json",
     _REPOSITORY_ROOT / "contracts" / "normalized-dataset-manifest-v1.schema.json",
 )
@@ -268,6 +276,7 @@ def _normalizer_repository_state() -> tuple[str, str, str]:
                 "--",
                 "research/polymarket_money",
                 "contracts/raw-event-v1.schema.json",
+                "contracts/raw-event-v2.schema.json",
                 "contracts/normalized-record-v1.schema.json",
                 "contracts/normalized-dataset-manifest-v1.schema.json",
             ],
@@ -1594,7 +1603,7 @@ class _RawObservation:
     segment_ordinal: int
     line_ordinal: int
     segment_sha256: str
-    event: RawEventEnvelopeV1
+    event: AnyRawEventEnvelope
     message_ordinal: int = 0
 
     @property
@@ -1641,7 +1650,7 @@ def _raw_observations(dataset: VerifiedDataset) -> list[_RawObservation]:
                     segment_ordinal=segment.ordinal,
                     line_ordinal=line_ordinal,
                     segment_sha256=segment.sha256,
-                    event=RawEventEnvelopeV1.from_json_line(line),
+                    event=parse_raw_event(line),
                 )
             )
     return result
@@ -2046,7 +2055,7 @@ class NormalizedDatasetBuilder:
         books: dict[tuple[str, str, str], _MutableBook] = {}
 
         def market_for_event(
-            event: RawEventEnvelopeV1,
+            event: AnyRawEventEnvelope,
             payload: Mapping[str, Any] | None = None,
         ) -> str | None:
             claims: set[str] = set()

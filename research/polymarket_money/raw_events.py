@@ -12,6 +12,7 @@ from typing import Any, Mapping
 
 
 SCHEMA_VERSION = "raw-event-v1"
+SCHEMA_VERSION_V2 = "raw-event-v2"
 PARSER_STATUSES = frozenset({"parsed", "unparsed", "error", "quarantined"})
 _CANONICAL_UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 _WIRE_FIELDS = frozenset(
@@ -39,10 +40,40 @@ _WIRE_FIELDS = frozenset(
         "parser_error",
     }
 )
+_WIRE_FIELDS_V2 = frozenset(
+    {
+        "schema_version",
+        "event_id",
+        "source",
+        "stream",
+        "event_type",
+        "transport_connection_id",
+        "subscription_id",
+        "market_id",
+        "condition_id",
+        "asset_id",
+        "provider_source_time",
+        "provider_server_time",
+        "local_wall_receive_time",
+        "local_monotonic_receive_ns",
+        "local_receive_ordinal",
+        "clock_domain",
+        "process_time",
+        "persist_time",
+        "source_sequence",
+        "source_hash",
+        "raw_payload",
+        "raw_sha256",
+        "parser_status",
+        "parser_error",
+    }
+)
+_UNSIGNED_INTEGER = re.compile(r"^(?:0|[1-9]\d*)$")
+_POSITIVE_INTEGER = re.compile(r"^[1-9]\d*$")
 
 
 class RawContractViolation(ValueError):
-    """A persisted record does not satisfy RawEventEnvelope v1."""
+    """A persisted record does not satisfy a supported RawEventEnvelope."""
 
 
 def _non_empty_string(value: Any, field: str) -> str:
@@ -80,6 +111,35 @@ def utc_iso(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _integer_string(value: Any, field: str, *, positive: bool) -> str:
+    text = _non_empty_string(value, field)
+    pattern = _POSITIVE_INTEGER if positive else _UNSIGNED_INTEGER
+    if pattern.fullmatch(text) is None:
+        qualifier = "positive" if positive else "non-negative"
+        raise RawContractViolation(f"{field} must be a canonical {qualifier} integer string")
+    return text
+
+
+def _parser_and_payload(value: Mapping[str, Any]) -> tuple[str, str | None, str, str]:
+    parser_status = _non_empty_string(value["parser_status"], "parser_status")
+    if parser_status not in PARSER_STATUSES:
+        raise RawContractViolation("invalid parser_status")
+    parser_error = _nullable_string(value["parser_error"], "parser_error")
+    if parser_status == "error" and parser_error is None:
+        raise RawContractViolation("parser_error is required when parser_status=error")
+    if parser_status != "error" and parser_error is not None:
+        raise RawContractViolation("parser_error is only valid when parser_status=error")
+    raw_payload = value["raw_payload"]
+    if not isinstance(raw_payload, str):
+        raise RawContractViolation("raw_payload must be the exact received string")
+    raw_digest = _non_empty_string(value["raw_sha256"], "raw_sha256")
+    if len(raw_digest) != 64 or any(ch not in "0123456789abcdef" for ch in raw_digest):
+        raise RawContractViolation("raw_sha256 must be a lowercase SHA-256 hex digest")
+    if raw_digest != sha256(raw_payload.encode("utf-8")).hexdigest():
+        raise RawContractViolation("raw_sha256 does not match raw_payload bytes")
+    return parser_status, parser_error, raw_payload, raw_digest
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +266,192 @@ class RawEventEnvelopeV1:
             "parser_status": self.parser_status,
             "parser_error": self.parser_error,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class RawReceiveStamp:
+    clock_domain: str
+    local_monotonic_receive_ns: str
+    local_receive_ordinal: str
+
+
+@dataclass(frozen=True, slots=True)
+class RawEventEnvelopeV2:
+    schema_version: str
+    event_id: str
+    source: str
+    stream: str
+    event_type: str
+    transport_connection_id: str
+    subscription_id: str
+    market_id: str | None
+    condition_id: str | None
+    asset_id: str | None
+    provider_source_time: datetime | None
+    provider_server_time: datetime | None
+    local_wall_receive_time: datetime
+    local_monotonic_receive_ns: str
+    local_receive_ordinal: str
+    clock_domain: str
+    process_time: datetime
+    persist_time: datetime
+    source_sequence: str | None
+    source_hash: str | None
+    raw_payload: str
+    raw_sha256: str
+    parser_status: str
+    parser_error: str | None
+
+    @classmethod
+    def from_json_line(cls, line: str) -> "RawEventEnvelopeV2":
+        if not isinstance(line, str) or not line:
+            raise RawContractViolation("JSONL record must not be empty")
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise RawContractViolation("JSONL record is not valid JSON") from exc
+        if not isinstance(value, dict):
+            raise RawContractViolation("JSONL record must be an object")
+        return cls.from_mapping(value)
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "RawEventEnvelopeV2":
+        fields = frozenset(value)
+        missing = _WIRE_FIELDS_V2 - fields
+        unknown = fields - _WIRE_FIELDS_V2
+        if missing:
+            raise RawContractViolation(f"missing envelope fields: {sorted(missing)}")
+        if unknown:
+            raise RawContractViolation(f"unknown envelope fields: {sorted(unknown)}")
+        schema_version = _non_empty_string(value["schema_version"], "schema_version")
+        if schema_version != SCHEMA_VERSION_V2:
+            raise RawContractViolation(f"unsupported schema_version: {schema_version}")
+        parser_status, parser_error, raw_payload, raw_digest = _parser_and_payload(value)
+        local_wall_receive_time = parse_utc_iso(
+            value["local_wall_receive_time"], "local_wall_receive_time"
+        )
+        process_time = parse_utc_iso(value["process_time"], "process_time")
+        persist_time = parse_utc_iso(value["persist_time"], "persist_time")
+        if process_time < local_wall_receive_time:
+            raise RawContractViolation(
+                "process_time must not precede local_wall_receive_time"
+            )
+        if persist_time < process_time:
+            raise RawContractViolation("persist_time must not precede process_time")
+        return cls(
+            schema_version=schema_version,
+            event_id=_non_empty_string(value["event_id"], "event_id"),
+            source=_non_empty_string(value["source"], "source"),
+            stream=_non_empty_string(value["stream"], "stream"),
+            event_type=_non_empty_string(value["event_type"], "event_type"),
+            transport_connection_id=_non_empty_string(
+                value["transport_connection_id"], "transport_connection_id"
+            ),
+            subscription_id=_non_empty_string(
+                value["subscription_id"], "subscription_id"
+            ),
+            market_id=_nullable_string(value["market_id"], "market_id"),
+            condition_id=_nullable_string(value["condition_id"], "condition_id"),
+            asset_id=_nullable_string(value["asset_id"], "asset_id"),
+            provider_source_time=_nullable_utc_iso(
+                value["provider_source_time"], "provider_source_time"
+            ),
+            provider_server_time=_nullable_utc_iso(
+                value["provider_server_time"], "provider_server_time"
+            ),
+            local_wall_receive_time=local_wall_receive_time,
+            local_monotonic_receive_ns=_integer_string(
+                value["local_monotonic_receive_ns"],
+                "local_monotonic_receive_ns",
+                positive=False,
+            ),
+            local_receive_ordinal=_integer_string(
+                value["local_receive_ordinal"], "local_receive_ordinal", positive=True
+            ),
+            clock_domain=_non_empty_string(value["clock_domain"], "clock_domain"),
+            process_time=process_time,
+            persist_time=persist_time,
+            source_sequence=_nullable_string(value["source_sequence"], "source_sequence"),
+            source_hash=_nullable_string(value["source_hash"], "source_hash"),
+            raw_payload=raw_payload,
+            raw_sha256=raw_digest,
+            parser_status=parser_status,
+            parser_error=parser_error,
+        )
+
+    @property
+    def connection_id(self) -> str:
+        return self.transport_connection_id
+
+    @property
+    def source_time(self) -> datetime | None:
+        return self.provider_source_time
+
+    @property
+    def server_time(self) -> datetime | None:
+        return self.provider_server_time
+
+    @property
+    def receive_time(self) -> datetime:
+        return self.local_wall_receive_time
+
+    def to_mapping(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "event_id": self.event_id,
+            "source": self.source,
+            "stream": self.stream,
+            "event_type": self.event_type,
+            "transport_connection_id": self.transport_connection_id,
+            "subscription_id": self.subscription_id,
+            "market_id": self.market_id,
+            "condition_id": self.condition_id,
+            "asset_id": self.asset_id,
+            "provider_source_time": utc_iso(self.provider_source_time),
+            "provider_server_time": utc_iso(self.provider_server_time),
+            "local_wall_receive_time": utc_iso(self.local_wall_receive_time),
+            "local_monotonic_receive_ns": self.local_monotonic_receive_ns,
+            "local_receive_ordinal": self.local_receive_ordinal,
+            "clock_domain": self.clock_domain,
+            "process_time": utc_iso(self.process_time),
+            "persist_time": utc_iso(self.persist_time),
+            "source_sequence": self.source_sequence,
+            "source_hash": self.source_hash,
+            "raw_payload": self.raw_payload,
+            "raw_sha256": self.raw_sha256,
+            "parser_status": self.parser_status,
+            "parser_error": self.parser_error,
+        }
+
+
+AnyRawEventEnvelope = RawEventEnvelopeV1 | RawEventEnvelopeV2
+
+
+def parse_raw_event(line: str) -> AnyRawEventEnvelope:
+    if not isinstance(line, str) or not line:
+        raise RawContractViolation("JSONL record must not be empty")
+    try:
+        value = json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise RawContractViolation("JSONL record is not valid JSON") from exc
+    if not isinstance(value, dict):
+        raise RawContractViolation("JSONL record must be an object")
+    version = value.get("schema_version")
+    if version == SCHEMA_VERSION:
+        return RawEventEnvelopeV1.from_mapping(value)
+    if version == SCHEMA_VERSION_V2:
+        return RawEventEnvelopeV2.from_mapping(value)
+    raise RawContractViolation(f"unsupported schema_version: {version}")
+
+
+def require_subsecond_receive_stamp(event: AnyRawEventEnvelope) -> RawReceiveStamp:
+    if isinstance(event, RawEventEnvelopeV1):
+        raise RawContractViolation("raw-event-v1 is ineligible for subsecond comparison")
+    return RawReceiveStamp(
+        clock_domain=event.clock_domain,
+        local_monotonic_receive_ns=event.local_monotonic_receive_ns,
+        local_receive_ordinal=event.local_receive_ordinal,
+    )
 
 
 @dataclass(frozen=True, slots=True)

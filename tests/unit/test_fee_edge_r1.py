@@ -5,6 +5,8 @@ from decimal import Decimal, ROUND_HALF_EVEN
 import json
 from pathlib import Path
 
+import pytest
+
 from research.polymarket_money.backtest import (
     FeeEvidenceStatus,
     FeeModel,
@@ -74,7 +76,7 @@ def test_python_fee_model_matches_missing_evidence_and_price_bound_contract() ->
     assert result.reason_code == missing["reason"]
 
     invalid = FIXTURE["contract_cases"]["invalid_price_above_one"]
-    with __import__("pytest").raises(ValueError, match="price.*between 0 and 1"):
+    with pytest.raises(ValueError, match="price.*between 0 and 1"):
         model.charge(
             market_id=schedule["market_id"],
             condition_id=schedule["condition_id"],

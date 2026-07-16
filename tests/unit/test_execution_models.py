@@ -254,9 +254,9 @@ class ExecutionModelsTest(unittest.TestCase):
             price=Decimal("0.5"),
             quantity=Decimal("1"),
         )
-        self.assertEqual(charge.amount, Decimal("0"))
+        self.assertIsNone(charge.amount)
         self.assertFalse(charge.verified)
-        self.assertEqual(charge.reason_code, "UNKNOWN_FEE")
+        self.assertEqual(charge.reason_code, "MISSING_FEE_EVIDENCE")
 
     def test_fee_rounding_is_per_fill_and_role_is_explicit(self) -> None:
         model = FeeModel(

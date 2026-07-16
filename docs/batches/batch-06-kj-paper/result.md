@@ -47,8 +47,8 @@ gross-minus-fee identity, and zero position after settlement.
 ## Verification
 
 ```text
-Python: 198 passed
-Node/TypeScript: 105 passed
+Python: 199 passed
+Node/TypeScript: 106 passed
 Ruff: All checks passed
 git diff --check: passed
 ```
@@ -76,6 +76,7 @@ cancellation, shadow, or live action occurred.
    adapter and no persisted recovery, so ended markets remain `STOPPING` and
    this is not yet an unattended continuous paper service.
 6. The TypeScript real-time probability uses a documented deterministic
-   normal-CDF approximation.  Cross-language golden decision parity with the
-   Python historical implementation remains to be established before either
-   output can be treated as the other's exact replay.
+   normal-CDF approximation.  A shared golden bounds probability error against
+   Python `erf` to `0.0000002` on representative/clamped-tail z-scores, but full
+   EWMA-to-intent cross-language golden decision parity remains to be
+   established before either output can be treated as the other's exact replay.

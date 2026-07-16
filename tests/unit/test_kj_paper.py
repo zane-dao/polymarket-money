@@ -4,6 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 import json
+import math
 import unittest
 
 from research.polymarket_money.kj_paper import (
@@ -50,6 +51,26 @@ def row(*, condition: str = "m1", winner: str = "Up", current: str = "111") -> d
 
 
 class KJPaperTest(unittest.TestCase):
+    def test_python_erf_is_the_shared_probability_golden_reference(self) -> None:
+        fixture_path = (
+            Path(__file__).parents[2]
+            / "data"
+            / "golden"
+            / "batch-06"
+            / "kj-probability-v1.json"
+        )
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        tolerance = Decimal(fixture["referenceAbsoluteError"])
+        for case in fixture["cases"]:
+            z = float(case["z"])
+            raw = Decimal(str(0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))))
+            actual = min(max(raw, Decimal("0.005")), Decimal("0.995"))
+            self.assertLessEqual(
+                abs(actual - Decimal(case["expectedProbability"])),
+                tolerance,
+                case["z"],
+            )
+
     def test_critical_band_fails_closed(self) -> None:
         event = simulate_decision(
             row(current="100.01"),

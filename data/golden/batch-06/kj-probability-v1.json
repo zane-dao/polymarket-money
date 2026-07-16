@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "kj-probability-golden-v1",
+  "reference": "Python math.erf zero-drift normal CDF clamped to [0.005, 0.995]",
+  "referenceAbsoluteError": "0.000000000000001",
+  "maximumAbsoluteError": "0.0000002",
+  "cases": [
+    { "z": "-10", "expectedProbability": "0.005" },
+    { "z": "-4", "expectedProbability": "0.005" },
+    { "z": "-2", "expectedProbability": "0.022750131948179209" },
+    { "z": "-1", "expectedProbability": "0.15865525393145707" },
+    { "z": "-0.5", "expectedProbability": "0.30853753872598688" },
+    { "z": "0", "expectedProbability": "0.5" },
+    { "z": "0.5", "expectedProbability": "0.69146246127401312" },
+    { "z": "1", "expectedProbability": "0.84134474606854293" },
+    { "z": "2", "expectedProbability": "0.97724986805182079" },
+    { "z": "4", "expectedProbability": "0.995" },
+    { "z": "10", "expectedProbability": "0.995" }
+  ]
+}

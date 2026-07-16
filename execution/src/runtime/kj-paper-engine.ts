@@ -310,6 +310,11 @@ function normalCdf(value: number): number {
   return 0.5 * (1 + erf);
 }
 
+export function kjPaperProbabilityFromZ(value: number): string {
+  if (!Number.isFinite(value)) throw new Error("K/J probability z-score must be finite");
+  return canonicalProbability(normalCdf(value)).toCanonical();
+}
+
 function event(
   eventType: KJPaperEvent["eventType"],
   strategy: KJPaperStrategy | null,
@@ -630,7 +635,7 @@ export class KJPaperEngine {
     const remainingSeconds = (milliseconds(session.intervalEnd, "intervalEnd") - now) / 1_000;
     const current = Number(context.signal.price);
     const opening = Number(session.anchorPrice.toCanonical());
-    const probability = canonicalProbability(normalCdf(
+    const probability = Money.from(kjPaperProbabilityFromZ(
       Math.log(current / opening) / (sigma * Math.sqrt(remainingSeconds)),
     ));
     const currentMoney = Money.from(context.signal.price);

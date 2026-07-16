@@ -148,4 +148,7 @@ approximation, while Python uses its platform `erf`.  More importantly, the
 runtime does not yet obtain an official resolution or persist/recover engine
 state.  It therefore stops risk at interval end and waits for an explicit
 `OFFICIAL_RESOLUTION`; it cannot yet run unattended across restarts or settle a
-continuous sequence of markets.
+continuous sequence of markets.  A shared probability golden now bounds the
+TypeScript approximation to `0.0000002` absolute error against Python `erf` at
+representative and clamped-tail z-scores; full EWMA-to-intent cross-language
+decision parity remains unproven.

@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import type { PublicBtcFiveMinuteMarket } from "../../execution/src/adapters/market-data/public-sources.js";
 import type { ReceiveStamp } from "../../execution/src/domain/receive-time.js";
 import {
   KJPaperEngine,
+  kjPaperProbabilityFromZ,
   type KJOfficialSettlement,
 } from "../../execution/src/runtime/kj-paper-engine.js";
 import { createKJStrategyContext, type KJStrategyContextV1 } from "../../execution/src/strategy/kj-context.js";
 
 const START = Date.parse("2026-07-17T00:00:00.000Z");
+const root = new URL("../../../", import.meta.url);
 
 function iso(offsetSeconds: number): string {
   return new Date(START + offsetSeconds * 1_000).toISOString();
@@ -242,6 +245,25 @@ test("paper engine validates configuration before accepting contexts", () => {
     () => new KJPaperEngine({ maxEdge: "0.05" }),
     /must exceed edgeThreshold/u,
   );
+});
+
+test("TypeScript probability stays inside the shared Python erf golden tolerance", async () => {
+  const fixture = JSON.parse(await readFile(
+    new URL("data/golden/batch-06/kj-probability-v1.json", root),
+    "utf8",
+  )) as {
+    maximumAbsoluteError: string;
+    cases: readonly { z: string; expectedProbability: string }[];
+  };
+  const tolerance = Number(fixture.maximumAbsoluteError);
+  for (const item of fixture.cases) {
+    const actual = kjPaperProbabilityFromZ(Number(item.z));
+    assert.ok(
+      Math.abs(Number(actual) - Number(item.expectedProbability)) <= tolerance,
+      `z=${item.z}: ${actual} vs ${item.expectedProbability}`,
+    );
+  }
+  assert.throws(() => kjPaperProbabilityFromZ(Number.NaN), /must be finite/u);
 });
 
 test("late first context fails closed instead of inventing a market open anchor", () => {

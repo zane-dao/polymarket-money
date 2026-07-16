@@ -141,4 +141,5 @@
   实现独立 J/K 内存钱包、最坏成交额预留、冻结 intent、1 秒延迟、滑点/no-fill/partial fill、
   仓位和 `INIT -> RUNNING -> STOPPING -> DONE`。`monitor` 不改钱包，只有显式
   `OFFICIAL_RESOLUTION` 才能结算；官方 resolution adapter 与持久化恢复仍缺失，不能称为
-  无人值守实时闭环。
+  无人值守实时闭环。共享 probability golden 已把 TypeScript 近似与 Python `erf` 的代表点
+  绝对误差限制为 `0.0000002`，完整 EWMA-to-intent 对拍仍未完成。

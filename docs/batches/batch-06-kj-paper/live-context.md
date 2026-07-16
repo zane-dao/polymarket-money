@@ -55,8 +55,10 @@ This is not yet an unattended continuous paper service:
 2. State and the audit event list are in memory.  Restart recovery and durable
    reconciliation are not implemented.
 3. TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
-   approximation.  The Python historical runner uses platform `erf`; exact
-   cross-language golden decision parity has not been established.
+   approximation.  `data/golden/batch-06/kj-probability-v1.json` bounds it to
+   `0.0000002` absolute error against Python `erf` for representative and
+   clamped-tail z-scores, but full EWMA-to-intent cross-language golden decision
+   parity has not been established.
 4. Book continuity remains explicitly `UNVERIFIED`, so fills are theoretical
    paper fills, never evidence that a live order would have executed.
 

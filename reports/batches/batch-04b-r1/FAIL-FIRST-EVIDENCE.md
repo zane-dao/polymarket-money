@@ -71,3 +71,19 @@ Observed failure:
 ```text
 tests/unit/opportunity-observation-r1.test.ts(9,8): error TS2307: Cannot find module '../../execution/src/domain/opportunity-observation.js' or its corresponding type declarations.
 ```
+
+## Group 5 — Cross-venue lead-lag causal contract
+
+Fail-first input: `tests/unit/lead-lag-r1.test.ts`. It requires the frozen four-source 252-cell grid,
+strict ReceiveStamp baseline and fixed-horizon as-of queries, explicit external and Polymarket
+connection identities, reconnect censoring, a separate next-update metric, quality gates,
+replay/runtime equivalence, and versioned 500ms episodes. The reviewed baseline has no common
+`LeadLagEngine` or `EpisodeTracker`; it only compares adjacent spot values in the display loop.
+
+Observed failure:
+
+```text
+tests/unit/lead-lag-r1.test.ts(12,8): error TS2307: Cannot find module '../../execution/src/runtime/lead-lag.js' or its corresponding type declarations.
+tests/unit/lead-lag-r1.test.ts(128,36): error TS7006: Parameter 'item' implicitly has an 'any' type.
+tests/unit/lead-lag-r1.test.ts(243,45): error TS7006: Parameter 'item' implicitly has an 'any' type.
+```

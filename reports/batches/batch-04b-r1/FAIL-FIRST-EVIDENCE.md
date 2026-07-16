@@ -197,3 +197,8 @@ The post-implementation read-only review found that the v2 ReceiveStamp loop reu
 `ordinal`, overwriting the manifest segment ordinal before `VerifiedSegment` construction. The
 multi-segment fail-first test requires stored segment ordinals `[0, 1]` and replay order
 `segment-0`, `segment-1`; the buggy implementation instead stores receive ordinals `[1, 2]`.
+
+The same review found the offline data-quality report still labeled provider-clock minus local-wall
+deltas as `receive_latency`. The v2 fail-first test requires explicit
+`provider_source_to_local_wall_delta_ms` / `provider_server_to_local_wall_delta_ms` fields and
+forbids the two legacy latency names; provider clocks cannot prove transport latency.

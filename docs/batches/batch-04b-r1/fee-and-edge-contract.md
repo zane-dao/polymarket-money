@@ -19,7 +19,8 @@ fee = quantity * fee_rate * price * (1 - price)
 
 每条腿独立舍入至五位小数；maker fee 为 0，rebate 只可作为 scenario。费用证据绑定
 market、condition、liquidity role、effective interval、rate、reference 和 status。缺证据或
-未验证证据不得产生 verified net edge。
+未验证证据不得产生 verified net edge。Python 与 TS 对缺证据统一返回 amount=null /
+`MISSING_FEE_EVIDENCE`，并共同拒绝 price > 1。
 
 官方材料没有证明精确半 quantum 的 tie-breaking。实现先用精确值识别 tie，再返回
 `ROUNDING_TIE_UNVERIFIED`、amount=null，并拒绝该笔 verified edge；不靠猜测选择 rounding。
@@ -29,5 +30,7 @@ market、condition、liquidity role、effective interval、rate、reference 和 
 
 ## 证据
 
-跨语言 `fee-edge-v1.json` 覆盖 0.01/0.50/0.99、分数数量、小额归零、五位小数、精确 tie 和
-complete-set 双腿。测试还会修改全局 Decimal 配置，结果必须保持不变。
+跨语言 `fee-edge-v1.json` 覆盖 0.01/0.50/0.99、分数数量、小额归零、五位小数、精确 tie、
+缺证据、price 上界和 complete-set 双腿。测试还会修改全局 Decimal 配置，结果必须保持不变。
+Gamma fee rate 入口只接受 canonical decimal string，并经同一 Money wrapper 验证；number 或
+指数形式失败关闭。Paper audit 显式保存 gross edge，runtime 不再硬编码为 null。

@@ -55,6 +55,10 @@ domain/Polymarket connection/market 合格 as-of 盘口。记录 state age；过
 censored。target 后首更新单独写 `next_update_after_horizon`，绝不冒充固定 horizon。
 runtime timer 与 replay 调用同一纯 as-of 实现。
 
+Horizon artifact 必须分别保存 trigger-time 与 horizon-state Polymarket lineage；坏帧使旧好状态
+失效，信息类 CLOB 帧不得刷新盘口 age。Route-bound fixed-horizon facts 不得混入 target 后的
+next update；分数毫秒以 canonical decimal string 落盘。
+
 ### Episode
 
 配置/hash 固定 `episode_rule_version=lead-lag-episode-v1`、`episode_gap_ms=500`、grouping
@@ -62,6 +66,12 @@ dimensions 为 source/direction/market/domain/external connection/Polymarket con
 连接重置行为为 `END_EPISODE_AND_CENSOR_PENDING`。同 external event 的多阈值/窗口共享
 overlap group；同向相邻合格事件可延伸 episode。episode summary 记录 start/end/duration/
 trigger count。它只是聚类键，不证明统计独立；后续统计仍须 market/time block。
+
+### 离线一致性补充验收
+
+Python 必须读取并 normalize raw-event-v2；manifest 在 dataset 内强制同 clock domain、schema
+一致、ReceiveStamp 与 ordinal 严格递增。manifest segment ordinal 与 receive ordinal 不得混用。
+离线质量报告只能把 provider/local wall 差值称为 clock delta，禁止称为 receive latency。
 
 ## 提交与验证纪律
 

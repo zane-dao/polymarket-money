@@ -39,9 +39,18 @@ horizon_target = trigger_monotonic_time + horizon
 stamp。runtime timer 与 replay 都调用同一纯 as-of engine，并由 ReceiveStamp watermark
 确定同 ns 顺序。
 
+每条 horizon 明确保存 external lineage、trigger-time Polymarket snapshot lineage 和实际
+horizon-state lineage；后两者不得混用一个含义模糊的 parent 字段。质量失败帧会使旧好状态
+失效，直到新的合格 snapshot 到达。只有成功应用的 `book` / `price_change` 能刷新盘口年龄；
+`last_trade_price` 等信息帧只保留 raw，不刷新 state age。
+
+Route-bound fixed-horizon Opportunity 不包含 target 之后的 next-update 事实。next-update 仍在
+独立 metric 中报告；非整数毫秒时长在 canonical facts 中写为非指数十进制字符串。
+
 ## Episode 与统计边界
 
 key 至少包含 source、direction、market、clock domain、external connection 和 Polymarket
 connection。反向、跨市场、跨 domain、连接 reset 或 inactivity gap >500ms 开新 episode。
+包括 A -> B -> A 在内的跨市场切换不会复活旧 episode。
 summary 保存 start/end/duration/trigger count。RouteEvaluation 同报 raw triggers、episodes 和
 markets，但本批不宣称 episode 统计独立，也不实现最终置信区间模型。

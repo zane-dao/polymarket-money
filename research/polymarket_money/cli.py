@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
 import os
@@ -155,11 +156,13 @@ def _run_live(args: argparse.Namespace) -> int:
             ("At", view.get("at")),
             ("Current / next", f"{view.get('currentMarket') or '-'} / {view.get('nextMarket') or '-'}"),
             ("Book", f"{view.get('bookState')} · continuity {view.get('continuity')}"),
+            ("Snapshot ready", view.get("snapshotReady")),
             ("UP bid / ask", _quote(view.get("up"))),
             ("DOWN bid / ask", _quote(view.get("down"))),
             ("Chainlink BTC/USD", view.get("chainlink")),
             ("Binance spot", view.get("binanceSpot")),
             ("Binance perpetual", view.get("binancePerpetual")),
+            ("Latency p50/p95 ms", _latency(view.get("latency"))),
             ("Opportunities", len(view.get("opportunities", []))),
             ("Disk free bytes", view.get("diskFreeBytes")),
             ("Raw bytes/hour", view.get("rawWriteBytesPerHour")),
@@ -173,7 +176,25 @@ def _run_live(args: argparse.Namespace) -> int:
     def _quote(value: object) -> str:
         if not isinstance(value, dict):
             return "-"
-        return f"{value.get('bid', '-')} / {value.get('ask', '-')}"
+        bid = value.get("bid", "-")
+        ask = value.get("ask", "-")
+        try:
+            spread = Decimal(str(ask)) - Decimal(str(bid))
+        except (InvalidOperation, ValueError):
+            spread = "-"
+        return (
+            f"{bid} x {value.get('bidSize', '-')} / "
+            f"{ask} x {value.get('askSize', '-')} · spread {spread}"
+        )
+
+    def _latency(value: object) -> str:
+        if not isinstance(value, dict):
+            return "-"
+        return " | ".join(
+            f"{name}:{stats.get('p50Ms', '-')}/{stats.get('p95Ms', '-')}"
+            for name, stats in value.items()
+            if isinstance(stats, dict)
+        )
 
     process = subprocess.Popen(
         command,

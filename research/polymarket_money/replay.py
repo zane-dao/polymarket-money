@@ -452,17 +452,20 @@ class ManifestVerifier:
                         int(event.local_monotonic_receive_ns),
                         int(event.local_receive_ordinal),
                     )
-                    ordinal = current[1]
+                    receive_ordinal = current[1]
                     if v2_previous_stamp is not None and current <= v2_previous_stamp:
                         raise ManifestVerificationError(
                             "raw-event-v2 segment ReceiveStamp order is not strictly increasing"
                         )
-                    if v2_previous_ordinal is not None and ordinal <= v2_previous_ordinal:
+                    if (
+                        v2_previous_ordinal is not None
+                        and receive_ordinal <= v2_previous_ordinal
+                    ):
                         raise ManifestVerificationError(
                             "raw-event-v2 local_receive_ordinal is not strictly increasing"
                         )
                     v2_previous_stamp = current
-                    v2_previous_ordinal = ordinal
+                    v2_previous_ordinal = receive_ordinal
             if any(event.source != source or event.stream != stream for event in envelopes):
                 raise ManifestVerificationError("segment envelope source/stream mismatch")
             if any(event.receive_time.date().isoformat() != partition_date for event in envelopes):

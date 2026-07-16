@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 import json
 from typing import Any, Iterable
 
-from .raw_events import RawEventEnvelopeV1
+from .raw_events import AnyRawEventEnvelope
 from .replay import RawReplay, VerifiedDataset
 
 
@@ -19,7 +19,7 @@ CONTINUITY_LIMITATION = (
 )
 
 
-def _latency_ms(later: datetime, earlier: datetime) -> int:
+def _wall_delta_ms(later: datetime, earlier: datetime) -> int:
     return round((later - earlier).total_seconds() * 1_000)
 
 
@@ -49,7 +49,7 @@ def _decimal(value: Any) -> Decimal:
 
 def _inspect_clob_payload(
     payload: dict[str, Any],
-    event: RawEventEnvelopeV1,
+    event: AnyRawEventEnvelope,
     known_asset_ids: frozenset[str],
     books: dict[tuple[str, str], dict[str, dict[Decimal, Decimal]]],
 ) -> tuple[int, int, int, int, int]:
@@ -137,8 +137,8 @@ class DataQualityReport:
     unknown_event_count: int
     duplicate_raw_hash_count: int
     duplicate_event_id_count: int
-    source_receive_latency_ms: dict[str, int] | None
-    server_receive_latency_ms: dict[str, int] | None
+    provider_source_to_local_wall_delta_ms: dict[str, int] | None
+    provider_server_to_local_wall_delta_ms: dict[str, int] | None
     source_time_reversal_count: int
     missing_source_time_count: int
     market_identity_failure_count: int
@@ -163,7 +163,7 @@ class DataQualityReport:
 
 
 def build_data_quality_report(
-    events: Iterable[RawEventEnvelopeV1],
+    events: Iterable[AnyRawEventEnvelope],
     *,
     known_asset_ids: frozenset[str] = frozenset(),
 ) -> DataQualityReport:
@@ -194,7 +194,7 @@ def build_verified_data_quality_report(
 
 
 def _build_data_quality_report(
-    events: Iterable[RawEventEnvelopeV1],
+    events: Iterable[AnyRawEventEnvelope],
     *,
     known_asset_ids: frozenset[str],
     segment_checksum_verified: bool,
@@ -206,8 +206,8 @@ def _build_data_quality_report(
     parser_statuses = Counter(event.parser_status for event in materialized)
     raw_hashes = Counter(event.raw_sha256 for event in materialized)
     event_ids = Counter(event.event_id for event in materialized)
-    source_latencies: list[int] = []
-    server_latencies: list[int] = []
+    provider_source_wall_deltas: list[int] = []
+    provider_server_wall_deltas: list[int] = []
     missing_source = 0
     reversals = 0
     last_source_time: dict[tuple[str, str, str | None], datetime] = {}
@@ -217,14 +217,18 @@ def _build_data_quality_report(
         if event.source_time is None:
             missing_source += 1
         else:
-            source_latencies.append(_latency_ms(event.receive_time, event.source_time))
+            provider_source_wall_deltas.append(
+                _wall_delta_ms(event.receive_time, event.source_time)
+            )
             key = (event.source, event.stream, event.asset_id)
             prior = last_source_time.get(key)
             if prior is not None and event.source_time < prior:
                 reversals += 1
             last_source_time[key] = event.source_time
         if event.server_time is not None:
-            server_latencies.append(_latency_ms(event.receive_time, event.server_time))
+            provider_server_wall_deltas.append(
+                _wall_delta_ms(event.receive_time, event.server_time)
+            )
         if (
             event.source != "polymarket.clob.market"
             and event.asset_id is not None
@@ -260,8 +264,12 @@ def _build_data_quality_report(
         unknown_event_count=parser_statuses.get("unparsed", 0),
         duplicate_raw_hash_count=sum(count - 1 for count in raw_hashes.values() if count > 1),
         duplicate_event_id_count=sum(count - 1 for count in event_ids.values() if count > 1),
-        source_receive_latency_ms=_distribution(source_latencies),
-        server_receive_latency_ms=_distribution(server_latencies),
+        provider_source_to_local_wall_delta_ms=_distribution(
+            provider_source_wall_deltas
+        ),
+        provider_server_to_local_wall_delta_ms=_distribution(
+            provider_server_wall_deltas
+        ),
         source_time_reversal_count=reversals,
         missing_source_time_count=missing_source,
         market_identity_failure_count=sum(

@@ -481,6 +481,8 @@ class EmergencyReceiptFileSink {
 }
 
 class RuntimeState {
+  readonly sessionId: string;
+  readonly gitCommit: string;
   currentMarket: PublicBtcFiveMinuteMarket | null = null;
   nextMarket: PublicBtcFiveMinuteMarket | null = null;
   orderBook: PublicOrderBook | null = null;
@@ -503,6 +505,11 @@ class RuntimeState {
   readonly opportunityDurations: number[] = [];
   readonly paperAudits: PaperAudit[] = [];
   completeSetCandidateSince: number | null = null;
+
+  constructor(sessionId: string, gitCommit: string) {
+    this.sessionId = sessionId;
+    this.gitCommit = gitCommit;
+  }
 }
 
 function newStats(): Record<StreamName, StreamStats> {
@@ -1079,10 +1086,18 @@ function recordOpportunityObservations(
       }],
       provenance: {
         producer: "live-runtime-batch-4b-r1",
-        codeVersion: "batch-4b-r1",
+        gitCommit: state.gitCommit,
+        sessionId: state.sessionId,
         configHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
       },
       quality: { status: "DEGRADED", rejectionReasons: ["CLOB_CONTINUITY_UNVERIFIED"] },
+      feeEvidenceReference: state.currentMarket === null ? null : `gamma:${state.currentMarket.slug}`,
+      continuity: "UNVERIFIED",
+      grossEdge: null,
+      scenarioNetEdge: audit.edgeAfterFees,
+      visibleSize: audit.executableQuantity,
+      eligibility: "INELIGIBLE",
+      rejectionReason: "CLOB_CONTINUITY_UNVERIFIED",
       facts: JSON.parse(JSON.stringify(audit)) as Record<string, unknown>,
     }));
   }
@@ -1193,7 +1208,7 @@ async function main(): Promise<void> {
     }));
     return;
   }
-  const state = new RuntimeState();
+  const state = new RuntimeState(runId, config.collectorGitCommit);
   const stats = newStats();
   const started = Date.now();
   const end = started + config.durationMilliseconds;

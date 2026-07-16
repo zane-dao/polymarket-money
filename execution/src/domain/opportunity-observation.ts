@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { requireUtcIso } from "./raw-event.js";
+import { canonicalMoney } from "./money.js";
 
 export const OPPORTUNITY_OBSERVATION_SCHEMA_VERSION = "opportunity-observation-v1" as const;
 export const ROUTE_EVALUATION_SCHEMA_VERSION = "route-evaluation-v1" as const;
@@ -24,7 +25,8 @@ export interface OpportunityInputLineage {
 
 export interface OpportunityProvenance {
   readonly producer: string;
-  readonly code_version: string;
+  readonly git_commit: string;
+  readonly session_id: string;
   readonly config_hash: string;
 }
 
@@ -35,6 +37,7 @@ export interface OpportunityQuality {
 
 export interface OpportunityObservationV1 {
   readonly schema_version: typeof OPPORTUNITY_OBSERVATION_SCHEMA_VERSION;
+  readonly observation_id: string;
   readonly observation_hash: string;
   readonly opportunity_family: string;
   readonly market_id: string;
@@ -43,6 +46,13 @@ export interface OpportunityObservationV1 {
   readonly input_lineage: readonly OpportunityInputLineage[];
   readonly provenance: OpportunityProvenance;
   readonly quality: OpportunityQuality;
+  readonly fee_evidence_reference: string | null;
+  readonly continuity: "UNVERIFIED" | "CONTINUOUS" | "DISCONNECTED" | "STALE";
+  readonly gross_edge: string | null;
+  readonly scenario_net_edge: string | null;
+  readonly visible_size: string;
+  readonly eligibility: "ELIGIBLE" | "INELIGIBLE";
+  readonly rejection_reason: string | null;
   readonly facts: CanonicalObject;
 }
 
@@ -59,13 +69,21 @@ export interface CreateOpportunityObservationInput {
   }[];
   readonly provenance: {
     readonly producer: string;
-    readonly codeVersion: string;
+    readonly gitCommit: string;
+    readonly sessionId: string;
     readonly configHash: string;
   };
   readonly quality: {
     readonly status: "PASS" | "DEGRADED" | "REJECTED";
     readonly rejectionReasons: readonly string[];
   };
+  readonly feeEvidenceReference: string | null;
+  readonly continuity: "UNVERIFIED" | "CONTINUOUS" | "DISCONNECTED" | "STALE";
+  readonly grossEdge: string | null;
+  readonly scenarioNetEdge: string | null;
+  readonly visibleSize: string;
+  readonly eligibility: "ELIGIBLE" | "INELIGIBLE";
+  readonly rejectionReason: string | null;
   readonly facts: Readonly<Record<string, unknown>>;
 }
 
@@ -91,6 +109,7 @@ export interface CreateRouteEvaluationInput {
 }
 
 const SHA256 = /^[0-9a-f]{64}$/u;
+const GIT_COMMIT = /^[0-9a-f]{7,64}$/u;
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/u;
 const POSITIVE_INTEGER = /^[1-9]\d*$/u;
 
@@ -117,6 +136,12 @@ function nonEmpty(value: unknown, field: string): string {
 function sha256(value: unknown, field: string): string {
   const text = nonEmpty(value, field);
   if (!SHA256.test(text)) throw new Error(`${field} must be a lowercase sha256`);
+  return text;
+}
+
+function gitCommit(value: unknown): string {
+  const text = nonEmpty(value, "provenance.gitCommit");
+  if (!GIT_COMMIT.test(text)) throw new Error("provenance.gitCommit must be a lowercase Git object ID");
   return text;
 }
 
@@ -191,8 +216,17 @@ function quality(value: CreateOpportunityObservationInput["quality"]): Opportuni
 
 const DRAFT_FIELDS = [
   "opportunityFamily", "marketId", "observedAtWall", "receiveStamp", "inputLineage",
-  "provenance", "quality", "facts",
+  "provenance", "quality", "feeEvidenceReference", "continuity", "grossEdge",
+  "scenarioNetEdge", "visibleSize", "eligibility", "rejectionReason", "facts",
 ] as const;
+
+function nullableText(value: unknown, field: string): string | null {
+  return value === null ? null : nonEmpty(value, field);
+}
+
+function nullableMoney(value: unknown, field: string): string | null {
+  return value === null ? null : canonicalMoney(value);
+}
 
 export function createOpportunityObservationV1(input: CreateOpportunityObservationInput): OpportunityObservationV1 {
   const inputRecord = object(input, "OpportunityObservation draft");
@@ -212,9 +246,26 @@ export function createOpportunityObservationV1(input: CreateOpportunityObservati
   }));
   const provenance = Object.freeze({
     producer: nonEmpty(input.provenance.producer, "provenance.producer"),
-    code_version: nonEmpty(input.provenance.codeVersion, "provenance.codeVersion"),
+    git_commit: gitCommit(input.provenance.gitCommit),
+    session_id: nonEmpty(input.provenance.sessionId, "provenance.sessionId"),
     config_hash: sha256(input.provenance.configHash, "provenance.configHash"),
   });
+  const validatedQuality = quality(input.quality);
+  if (!(["UNVERIFIED", "CONTINUOUS", "DISCONNECTED", "STALE"] as const).includes(input.continuity)) {
+    throw new Error("continuity is invalid");
+  }
+  const rejectionReason = nullableText(input.rejectionReason, "rejectionReason");
+  const visibleSize = canonicalMoney(input.visibleSize);
+  if (visibleSize.startsWith("-")) throw new Error("visibleSize must not be negative");
+  if (input.eligibility === "ELIGIBLE") {
+    if (validatedQuality.status !== "PASS" || rejectionReason !== null) {
+      throw new Error("eligible observation requires PASS quality and no rejection reason");
+    }
+  } else if (input.eligibility === "INELIGIBLE") {
+    if (rejectionReason === null) throw new Error("ineligible observation requires a rejection reason");
+  } else {
+    throw new Error("eligibility is invalid");
+  }
   const payload = Object.freeze({
     schema_version: OPPORTUNITY_OBSERVATION_SCHEMA_VERSION,
     opportunity_family: nonEmpty(input.opportunityFamily, "opportunityFamily"),
@@ -223,11 +274,18 @@ export function createOpportunityObservationV1(input: CreateOpportunityObservati
     receive_stamp: stamp(input.receiveStamp, "receiveStamp"),
     input_lineage: lineage,
     provenance,
-    quality: quality(input.quality),
+    quality: validatedQuality,
+    fee_evidence_reference: nullableText(input.feeEvidenceReference, "feeEvidenceReference"),
+    continuity: input.continuity,
+    gross_edge: nullableMoney(input.grossEdge, "grossEdge"),
+    scenario_net_edge: nullableMoney(input.scenarioNetEdge, "scenarioNetEdge"),
+    visible_size: visibleSize,
+    eligibility: input.eligibility,
+    rejection_reason: rejectionReason,
     facts: canonicalObject(input.facts, "facts"),
   });
   const observation_hash = digest(payload as unknown as CanonicalValue);
-  return Object.freeze({ ...payload, observation_hash });
+  return Object.freeze({ ...payload, observation_id: observation_hash, observation_hash });
 }
 
 export function canonicalOpportunityObservationJson(observation: OpportunityObservationV1): string {
@@ -243,8 +301,10 @@ export function parseOpportunityObservationV1(text: string): OpportunityObservat
   }
   const record = object(parsed, "OpportunityObservationV1");
   exactKeys(record, [
-    "schema_version", "observation_hash", "opportunity_family", "market_id", "observed_at_wall",
-    "receive_stamp", "input_lineage", "provenance", "quality", "facts",
+    "schema_version", "observation_id", "observation_hash", "opportunity_family", "market_id",
+    "observed_at_wall", "receive_stamp", "input_lineage", "provenance", "quality",
+    "fee_evidence_reference", "continuity", "gross_edge", "scenario_net_edge", "visible_size",
+    "eligibility", "rejection_reason", "facts",
   ], "OpportunityObservationV1");
   if (record.schema_version !== OPPORTUNITY_OBSERVATION_SCHEMA_VERSION) throw new Error("unsupported observation schema");
   const provenance = object(record.provenance, "provenance");
@@ -260,15 +320,26 @@ export function parseOpportunityObservationV1(text: string): OpportunityObservat
     inputLineage: record.input_lineage as CreateOpportunityObservationInput["inputLineage"],
     provenance: {
       producer: nonEmpty(provenance.producer, "provenance.producer"),
-      codeVersion: nonEmpty(provenance.code_version, "provenance.code_version"),
+      gitCommit: nonEmpty(provenance.git_commit, "provenance.git_commit"),
+      sessionId: nonEmpty(provenance.session_id, "provenance.session_id"),
       configHash: nonEmpty(provenance.config_hash, "provenance.config_hash"),
     },
     quality: {
       status: parsedQuality.status as OpportunityQuality["status"],
       rejectionReasons: parsedQuality.rejection_reasons as string[],
     },
+    feeEvidenceReference: record.fee_evidence_reference as string | null,
+    continuity: record.continuity as CreateOpportunityObservationInput["continuity"],
+    grossEdge: record.gross_edge as string | null,
+    scenarioNetEdge: record.scenario_net_edge as string | null,
+    visibleSize: nonEmpty(record.visible_size, "visible_size"),
+    eligibility: record.eligibility as CreateOpportunityObservationInput["eligibility"],
+    rejectionReason: record.rejection_reason as string | null,
     facts: object(record.facts, "facts"),
   });
+  if (sha256(record.observation_id, "observation_id") !== rebuilt.observation_id) {
+    throw new Error("observation_id does not match canonical content");
+  }
   if (sha256(record.observation_hash, "observation_hash") !== rebuilt.observation_hash) {
     throw new Error("observation_hash does not match canonical content");
   }

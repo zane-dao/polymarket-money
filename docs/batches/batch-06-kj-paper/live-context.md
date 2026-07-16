@@ -41,7 +41,9 @@ wallets.  The versioned engine currently models:
   settlement ID, and second settlement-per-market content.
 
 Before engine mutation, accepted contexts are fsynced to
-`kj-paper-input-journal-v2`.  After interval end, the runtime polls the public
+`kj-paper-input-journal-v2`.  New MVP runs first append a `RUN_PLAN` record that
+hash-binds run ID, target count/window, and committed code ID before any market
+context.  After interval end, the runtime polls the public
 Gamma market endpoint; a matching closed market with
 `umaResolutionStatus=resolved` and exactly one 1-valued outcome is converted to
 official evidence only after the exact raw response is fsynced.  Replay
@@ -68,6 +70,10 @@ wallets, enforces a half-open target interval cutoff, includes a finite
 ten-minute default resolution grace period, and emits `result.json` only after
 replay-based inspection.  It exits the grace window early once capture is over
 and every registered market is settled.  It accepts at most 12 markets per run.
+`paper:report` reopens the journal, checks the bound plan against result/runtime
+artifacts, rebuilds settlement events, verifies per-market and aggregate wallet
+PnL identities, and emits hashed JSON plus per-market CSV without overwrite.
+Legacy journals without `RUN_PLAN` are disclosed as `LEGACY_UNBOUND`.
 
 1. Journal replay restores accepted inputs and deterministic paper state, but it
    is not an exchange reconciliation mechanism and has no private account or

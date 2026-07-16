@@ -16,6 +16,7 @@ try {
     journalRecordCount: String(journal.recordCount),
     recoveredInputCount: String(journal.recoveredInputCount),
     lastRecordHash: journal.lastRecordHash,
+    runPlanEvidence: journal.runPlanEvidence,
     state: journal.engine.snapshot(),
   }, null, 2)}\n`);
 } finally {

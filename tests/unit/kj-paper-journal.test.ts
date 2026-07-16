@@ -120,6 +120,48 @@ function gammaResolution(): GammaResolutionInput {
   };
 }
 
+const RUN_PLAN = Object.freeze({
+  schemaVersion: "kj-paper-run-plan-v1" as const,
+  runId: "kj-paper-20260717000000-12345678",
+  targetMarketCount: 1,
+  firstFullMarketStart: iso(0),
+  captureEnd: iso(300),
+  collectorGitCommit: "a".repeat(40),
+});
+
+test("K/J journal hash-binds the MVP run plan before market contexts", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-plan-"));
+  const path = join(directory, "paper-inputs.ndjson");
+  try {
+    const journal = await KJPaperJournal.open(path);
+    assert.equal((await journal.appendRunPlan(RUN_PLAN)).appended, true);
+    assert.equal((await journal.appendRunPlan(RUN_PLAN)).appended, false);
+    await assert.rejects(
+      journal.appendRunPlan({ ...RUN_PLAN, targetMarketCount: 2 }),
+      /conflicts with its hash-chained plan/u,
+    );
+    await journal.appendContext(context(0, "100", 1));
+    assert.deepEqual(journal.runPlanEvidence, RUN_PLAN);
+    await journal.close();
+
+    const recovered = await KJPaperJournal.open(path);
+    assert.deepEqual(recovered.runPlanEvidence, RUN_PLAN);
+    assert.equal(recovered.recoveredInputCount, 2);
+    await recovered.close();
+
+    const legacyPath = join(directory, "legacy.ndjson");
+    const legacy = await KJPaperJournal.open(legacyPath);
+    await legacy.appendContext(context(0, "100", 1));
+    await assert.rejects(
+      legacy.appendRunPlan(RUN_PLAN),
+      /before every context/u,
+    );
+    await legacy.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("K/J journal durably replays contexts, fills, wallets, and official settlement", async () => {
   const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-replay-"));
   const path = join(directory, "paper-inputs.ndjson");

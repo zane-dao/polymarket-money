@@ -74,6 +74,13 @@ async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, comm
       .filter((market) => targetMarketIds.has(market.marketId))
       .map((market) => market.marketId);
     const safety = object(summary.safety);
+    const chainedPlan = journal.runPlanEvidence;
+    const planBound = chainedPlan !== null
+      && chainedPlan.runId === plan.runId
+      && chainedPlan.targetMarketCount === plan.targetMarketCount
+      && chainedPlan.firstFullMarketStart === plan.firstFullMarketStart
+      && chainedPlan.captureEnd === plan.captureEnd
+      && chainedPlan.collectorGitCommit === commit;
     const checks = Object.freeze({
       childExitedCleanly: exitCode === 0,
       noTerminalFailure: summary.terminalFailure === null,
@@ -87,6 +94,7 @@ async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, comm
       noPendingMarkets: unsettledMarkets.length === 0
         && state.pendingIntents.every((intent) => !targetMarketIds.has(intent.marketId)),
       durableInputsPresent: journal.recordCount > 1 && journal.lastRecordHash !== null,
+      hashChainedRunPlan: planBound,
     });
     const accepted = Object.values(checks).every(Boolean);
     const cash = state.wallets;
@@ -97,6 +105,7 @@ async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, comm
       runId: plan.runId,
       runtimeRunId: typeof summary.runId === "string" ? summary.runId : null,
       collectorGitCommit: commit,
+      planBinding: planBound ? "HASH_CHAINED" : "MISSING_OR_CONFLICTING",
       targetMarketCount: plan.targetMarketCount,
       completedMarketCount: completedMarkets,
       observedTargetMarketCount: targetMarkets.length,
@@ -174,6 +183,19 @@ async function main(): Promise<void> {
     `${JSON.stringify({ ...plan, collectorGitCommit: commit }, null, 2)}\n`,
     { flag: "wx", mode: 0o400 },
   );
+  const plannedJournal = await KJPaperJournal.open(plan.journalPath);
+  try {
+    await plannedJournal.appendRunPlan({
+      schemaVersion: "kj-paper-run-plan-v1",
+      runId: plan.runId,
+      targetMarketCount: plan.targetMarketCount,
+      firstFullMarketStart: plan.firstFullMarketStart,
+      captureEnd: plan.captureEnd,
+      collectorGitCommit: commit,
+    });
+  } finally {
+    await plannedJournal.close();
+  }
   const stdoutHandle = await open(plan.runtimeStdoutPath, "wx", 0o600);
   const stderrHandle = await open(plan.runtimeStderrPath, "wx", 0o600);
   const runtime = fileURLToPath(new URL("./live-runtime.js", import.meta.url));

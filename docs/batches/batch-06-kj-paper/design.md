@@ -146,6 +146,9 @@ recompute it from a future price.
 Every applied context or Gamma resolution response is first fsynced to a strict
 append-only NDJSON input journal.  Records carry contiguous sequence numbers and
 a SHA-256 chain; a separately atomically published checkpoint anchors the tail.
+New MVP journals place a `RUN_PLAN` record before all contexts so the selected
+target interval and collector commit cannot be silently changed during later
+reporting.
 Recovery validates exact fields, context reconstruction, engine version/config,
 market/signal/context identity, the exact public settlement body, per-clock
 watermarks, the hash chain, and the checkpoint before deterministic replay.
@@ -165,7 +168,9 @@ replayable settlement evidence.  The bounded `paper:mvp` wrapper aligns capture
 to the next complete interval, prevents the following market from entering the
 run, adds a finite settlement grace window, and emits a machine-readable
 acceptance result.  `paper:settle` can resume a frozen half-open target window
-when official resolution is delayed beyond that bound.  A shared probability
+when official resolution is delayed beyond that bound.  `paper:report` replays
+the journal, verifies source/snapshot/safety/settlement/PnL identities, and
+exports a hashed descriptive summary plus per-market CSV.  A shared probability
 golden bounds the TypeScript approximation to `0.0000002` absolute error against
 Python `erf` at representative and clamped-tail z-scores.  A second shared
 golden feeds both languages the same five-second price path, final book, fee,

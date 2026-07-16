@@ -37,7 +37,16 @@ import {
 export const KJ_PAPER_JOURNAL_VERSION = "kj-paper-input-journal-v2" as const;
 const KJ_PAPER_CHECKPOINT_VERSION = "kj-paper-input-checkpoint-v2" as const;
 
-type JournalPayloadType = "HEADER" | "CONTEXT" | "GAMMA_RESOLUTION";
+type JournalPayloadType = "HEADER" | "RUN_PLAN" | "CONTEXT" | "GAMMA_RESOLUTION";
+
+export interface KJPaperRunPlanEvidence {
+  readonly schemaVersion: "kj-paper-run-plan-v1";
+  readonly runId: string;
+  readonly targetMarketCount: number;
+  readonly firstFullMarketStart: string;
+  readonly captureEnd: string;
+  readonly collectorGitCommit: string;
+}
 
 interface JournalRecord {
   readonly schemaVersion: typeof KJ_PAPER_JOURNAL_VERSION;
@@ -368,6 +377,43 @@ function headerPayload(): Readonly<Record<string, unknown>> {
   });
 }
 
+function validateRunPlan(value: unknown): KJPaperRunPlanEvidence {
+  const candidate = object(value, "K/J run plan");
+  exactKeys(candidate, [
+    "schemaVersion",
+    "runId",
+    "targetMarketCount",
+    "firstFullMarketStart",
+    "captureEnd",
+    "collectorGitCommit",
+  ], "K/J run plan");
+  if (candidate.schemaVersion !== "kj-paper-run-plan-v1") {
+    throw new Error("K/J run plan schema is unsupported");
+  }
+  if (!Number.isSafeInteger(candidate.targetMarketCount)
+    || (candidate.targetMarketCount as number) <= 0
+    || (candidate.targetMarketCount as number) > 12) {
+    throw new Error("K/J run plan targetMarketCount must be from 1 through 12");
+  }
+  const firstFullMarketStart = utc(candidate.firstFullMarketStart, "firstFullMarketStart");
+  const captureEnd = utc(candidate.captureEnd, "captureEnd");
+  if (Date.parse(firstFullMarketStart) >= Date.parse(captureEnd)) {
+    throw new Error("K/J run plan target window must be non-empty");
+  }
+  const collectorGitCommit = nonEmpty(candidate.collectorGitCommit, "collectorGitCommit");
+  if (!/^[0-9a-f]{40,64}$/u.test(collectorGitCommit)) {
+    throw new Error("K/J run plan collectorGitCommit is invalid");
+  }
+  return Object.freeze({
+    schemaVersion: "kj-paper-run-plan-v1",
+    runId: nonEmpty(candidate.runId, "runId"),
+    targetMarketCount: candidate.targetMarketCount as number,
+    firstFullMarketStart,
+    captureEnd,
+    collectorGitCommit,
+  });
+}
+
 function parseRecord(line: string, ordinal: number, previous: string | null): JournalRecord {
   let parsed: unknown;
   try {
@@ -390,6 +436,7 @@ function parseRecord(line: string, ordinal: number, previous: string | null): Jo
   }
   if (record.previousRecordHash !== previous) throw new Error("K/J journal hash chain is broken");
   if (record.payloadType !== "HEADER"
+    && record.payloadType !== "RUN_PLAN"
     && record.payloadType !== "CONTEXT"
     && record.payloadType !== "GAMMA_RESOLUTION") {
     throw new Error("K/J journal payload type is unsupported");
@@ -421,6 +468,7 @@ export class KJPaperJournal {
   readonly #settlementIds = new Map<string, string>();
   readonly #settlementMarkets = new Map<string, string>();
   readonly #recordHashes: string[] = [];
+  #runPlanEvidence: KJPaperRunPlanEvidence | null = null;
   #lastNewSignalReceiveMilliseconds: number | null = null;
   #recordCount = 0;
   #recoveredInputCount = 0;
@@ -477,6 +525,7 @@ export class KJPaperJournal {
   get recordCount(): number { return this.#recordCount; }
   get recoveredInputCount(): number { return this.#recoveredInputCount; }
   get lastRecordHash(): string | null { return this.#lastHash; }
+  get runPlanEvidence(): KJPaperRunPlanEvidence | null { return this.#runPlanEvidence; }
 
   unsettledMarkets(): readonly PublicBtcFiveMinuteMarket[] {
     return Object.freeze([...this.#markets.values()]
@@ -486,6 +535,10 @@ export class KJPaperJournal {
 
   appendContext(context: KJStrategyContextV1): Promise<KJPaperJournalAppendReceipt> {
     return this.#serialize(() => this.#appendContext(context));
+  }
+
+  appendRunPlan(value: KJPaperRunPlanEvidence): Promise<KJPaperJournalAppendReceipt> {
+    return this.#serialize(() => this.#appendRunPlan(value));
   }
 
   appendGammaResolution(input: GammaResolutionInput): Promise<KJPaperJournalAppendReceipt> {
@@ -525,6 +578,12 @@ export class KJPaperJournal {
         this.#checkContextRelations(context);
         if (!this.engine.ingest(context)) throw new Error("K/J journal contains a duplicate context record");
         this.#rememberContext(context);
+        this.#recoveredInputCount += 1;
+      } else if (record.payloadType === "RUN_PLAN") {
+        if (ordinal !== 1 || this.#runPlanEvidence !== null) {
+          throw new Error("K/J journal run plan must appear once immediately after the header");
+        }
+        this.#runPlanEvidence = validateRunPlan(record.payload);
         this.#recoveredInputCount += 1;
       } else if (record.payloadType === "GAMMA_RESOLUTION") {
         const evidence = object(record.payload, "K/J Gamma resolution record");
@@ -577,6 +636,23 @@ export class KJPaperJournal {
       this.#state = "FAILED";
       throw error;
     }
+  }
+
+  async #appendRunPlan(value: KJPaperRunPlanEvidence): Promise<KJPaperJournalAppendReceipt> {
+    this.#requireOpen();
+    const candidate = validateRunPlan(value);
+    if (this.#runPlanEvidence !== null) {
+      if (stableJson(this.#runPlanEvidence) !== stableJson(candidate)) {
+        throw new Error("K/J journal run plan conflicts with its hash-chained plan");
+      }
+      return this.#duplicateReceipt();
+    }
+    if (this.#recordCount !== 1) {
+      throw new Error("K/J journal run plan must be appended before every context");
+    }
+    const receipt = await this.#appendRaw("RUN_PLAN", candidate);
+    this.#runPlanEvidence = candidate;
+    return receipt;
   }
 
   async #appendGammaResolution(input: GammaResolutionInput): Promise<KJPaperJournalAppendReceipt> {

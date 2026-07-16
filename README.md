@@ -119,6 +119,8 @@ terminal failure, credential access, live client, user channel, or real order.
 The default settlement grace is ten minutes and the target interval cutoff
 prevents the next market from leaking into the run.  The process exits early
 when capture has ended and every registered market has official settlement.
+Before any market context, the MVP also hash-binds its run ID, target count,
+half-open time window, and committed code ID into the journal.
 
 If an official result arrives after the finite run or the process was
 interrupted, resume only the frozen target window without collecting another
@@ -134,6 +136,22 @@ npm run paper:settle -- /absolute/path/to/kj-inputs.ndjson \
 Recovery reopens and validates the hash-chained journal, polls only ended
 markets in that half-open interval, and appends the exact official response.  A
 still-open result remains pending rather than being inferred from price.
+
+After an accepted run, generate a replay-verified research report:
+
+```bash
+npm run paper:report -- /absolute/path/to/mvp-run \
+  --output /absolute/path/to/new-report-directory
+```
+
+The report refuses failed runs, pending risk, snapshot drift, target-window
+drift, non-paper safety counters, missing settlement pairs, or broken per-market
+and aggregate PnL identities.  It writes a no-overwrite `summary.json` and
+`markets.csv`, with source-file hashes, CSV hash, and an artifact hash.  Reports
+from runs created before journal plan binding are explicitly labeled
+`LEGACY_UNBOUND` and remain descriptive only.  All reports set
+`profitabilityClaimEligible=false`; multiple paper markets are still not live
+fill evidence.
 
 `data/golden/batch-06/kj-ewma-intent-parity-v1.json` feeds the same five-second
 price path, book, fee, delayed fill, and official settlement to Python and

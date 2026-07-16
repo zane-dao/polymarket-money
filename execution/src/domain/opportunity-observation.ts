@@ -163,6 +163,18 @@ function stamp(value: unknown, field: string): StoredReceiveStamp {
   });
 }
 
+function compareStamp(left: StoredReceiveStamp, right: StoredReceiveStamp): -1 | 0 | 1 {
+  if (left.clock_domain !== right.clock_domain) {
+    throw new Error("input lineage and observation clock domains must match");
+  }
+  const leftNs = BigInt(left.local_monotonic_receive_ns);
+  const rightNs = BigInt(right.local_monotonic_receive_ns);
+  if (leftNs !== rightNs) return leftNs < rightNs ? -1 : 1;
+  const leftOrdinal = BigInt(left.local_receive_ordinal);
+  const rightOrdinal = BigInt(right.local_receive_ordinal);
+  return leftOrdinal === rightOrdinal ? 0 : leftOrdinal < rightOrdinal ? -1 : 1;
+}
+
 function canonicalClone(value: unknown, field: string): CanonicalValue {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") {
@@ -189,6 +201,27 @@ function canonicalObject(value: unknown, field: string): CanonicalObject {
     throw new Error(`${field} must be an object`);
   }
   return cloned as CanonicalObject;
+}
+
+function runtimeFactInput(value: unknown, field: string): unknown {
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    if (!Number.isFinite(value)) throw new Error(`${field} number must be finite`);
+    return canonicalMoney(String(value));
+  }
+  if (Array.isArray(value)) return value.map((item, index) => runtimeFactInput(item, `${field}[${index}]`));
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(record).sort().map((key) => [
+      key,
+      runtimeFactInput(record[key], `${field}.${key}`),
+    ]));
+  }
+  return value;
+}
+
+/** Converts exact runtime durations to string form before canonical observation hashing. */
+export function canonicalOpportunityFacts(value: Readonly<Record<string, unknown>>): CanonicalObject {
+  return canonicalObject(runtimeFactInput(value, "facts"), "facts");
 }
 
 function stableJson(value: CanonicalValue): string {
@@ -234,14 +267,19 @@ export function createOpportunityObservationV1(input: CreateOpportunityObservati
   if (!Array.isArray(input.inputLineage) || input.inputLineage.length === 0) {
     throw new Error("inputLineage must contain at least one parent input");
   }
+  const observationStamp = stamp(input.receiveStamp, "receiveStamp");
   const lineage = Object.freeze(input.inputLineage.map((item, index) => {
     const itemRecord = object(item, `inputLineage[${index}]`);
     exactKeys(itemRecord, ["source", "parent_input_reference", "input_hash", "receive_stamp"], `inputLineage[${index}]`);
+    const receiveStamp = stamp(item.receive_stamp, `inputLineage[${index}].receive_stamp`);
+    if (compareStamp(receiveStamp, observationStamp) > 0) {
+      throw new Error(`inputLineage[${index}] is in the future of the observation watermark`);
+    }
     return Object.freeze({
       source: nonEmpty(item.source, `inputLineage[${index}].source`),
       parent_input_reference: nonEmpty(item.parent_input_reference, `inputLineage[${index}].parent_input_reference`),
       input_hash: sha256(item.input_hash, `inputLineage[${index}].input_hash`),
-      receive_stamp: stamp(item.receive_stamp, `inputLineage[${index}].receive_stamp`),
+      receive_stamp: receiveStamp,
     });
   }));
   const provenance = Object.freeze({
@@ -271,7 +309,7 @@ export function createOpportunityObservationV1(input: CreateOpportunityObservati
     opportunity_family: nonEmpty(input.opportunityFamily, "opportunityFamily"),
     market_id: nonEmpty(input.marketId, "marketId"),
     observed_at_wall: requireUtcIso(input.observedAtWall, "observedAtWall"),
-    receive_stamp: stamp(input.receiveStamp, "receiveStamp"),
+    receive_stamp: observationStamp,
     input_lineage: lineage,
     provenance,
     quality: validatedQuality,

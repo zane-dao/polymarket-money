@@ -26,12 +26,18 @@ import { createEnvelopeDraftV2, rawSha256, type ParserStatus } from "../executio
 import type { ReceiveStamp } from "../execution/src/domain/receive-time.js";
 import { Money } from "../execution/src/domain/money.js";
 import {
+  canonicalOpportunityFacts,
   createOpportunityObservationV1,
   createRouteEvaluationV1,
   type OpportunityObservationV1,
   type RouteEvaluationV1,
 } from "../execution/src/domain/opportunity-observation.js";
 import { FeeEdgeCalculator } from "../execution/src/runtime/fee-edge.js";
+import { classifyClobBookObservation } from "../execution/src/runtime/clob-book-observation.js";
+import {
+  createOpportunityRuntimeConfig,
+  type OpportunityRuntimeConfig,
+} from "../execution/src/runtime/opportunity-config.js";
 import {
   createRuntimeIncident,
   FailClosedRuntime,
@@ -100,6 +106,7 @@ interface PriceState {
   connectionId: string;
   externalEventId: string;
   parentInputReference: string;
+  inputHash: string;
 }
 
 interface BookTickerState extends PriceState {
@@ -492,23 +499,28 @@ class RuntimeState {
   perpetual: BookTickerState | null = null;
   readonly leadLagEngine = new LeadLagEngine(DEFAULT_LEAD_LAG_CONFIG);
   readonly horizonObservations: HorizonObservation[] = [];
+  readonly leadLagObservations: OpportunityObservationV1[] = [];
   readonly observations: OpportunityObservationV1[] = [];
   readonly routeEvaluations: RouteEvaluationV1[] = [];
   readonly horizonTimers = new Set<ReturnType<typeof setTimeout>>();
   readonly leadLagMarketIds = new Set<string>();
   rawTriggerCount = 0;
-  latestPolymarketParentInputReference: string | null = null;
-  latestPolymarketInputHash: string | null = null;
-  latestPolymarketReceiveStamp: ReceiveStamp | null = null;
+  latestPolymarketInput: {
+    readonly parentInputReference: string;
+    readonly inputHash: string;
+    readonly receiveStamp: ReceiveStamp;
+  } | null = null;
   staleCount = 0;
   readonly opportunities = new Map<ObserverName, number>();
   readonly opportunityDurations: number[] = [];
   readonly paperAudits: PaperAudit[] = [];
+  readonly opportunityConfig: OpportunityRuntimeConfig;
   completeSetCandidateSince: number | null = null;
 
-  constructor(sessionId: string, gitCommit: string) {
+  constructor(sessionId: string, gitCommit: string, opportunityConfig: OpportunityRuntimeConfig) {
     this.sessionId = sessionId;
     this.gitCommit = gitCommit;
+    this.opportunityConfig = opportunityConfig;
   }
 }
 
@@ -667,6 +679,7 @@ function directTicker(
     connectionId,
     externalEventId,
     parentInputReference: `raw-event-v2:${externalEventId}`,
+    inputHash: rawSha256(raw),
   };
 }
 
@@ -679,6 +692,62 @@ function baselineWatermarks(receiveStamp: ReceiveStamp): Readonly<Record<"100" |
     local_receive_ordinal: receiveStamp.localReceiveOrdinal,
   });
   return Object.freeze({ "100": target(100), "250": target(250), "500": target(500) });
+}
+
+function recordLeadLagHorizonObservation(
+  state: RuntimeState,
+  trigger: LeadLagTrigger,
+  horizon: HorizonObservation,
+  observedAtWall: string,
+  failureRuntime: FailClosedRuntime,
+): void {
+  const { next_update_after_horizon: _nextUpdate, ...fixedHorizon } = horizon;
+  const polymarketParent = horizon.horizon_state_parent_input_reference
+    ?? horizon.trigger_polymarket_parent_input_reference;
+  const polymarketHash = horizon.horizon_state_input_hash ?? horizon.trigger_polymarket_input_hash;
+  const polymarketStamp = horizon.state_observation_time ?? trigger.polymarket_snapshot_time;
+  const rejectionReason = horizon.censor_reason ?? "CLOB_CONTINUITY_UNVERIFIED";
+  const rejectionReasons = horizon.censor_reason === null
+    ? ["CLOB_CONTINUITY_UNVERIFIED"]
+    : [horizon.censor_reason, "CLOB_CONTINUITY_UNVERIFIED"];
+  const opportunity = createOpportunityObservationV1({
+    opportunityFamily: "CROSS_VENUE_LEAD_LAG",
+    marketId: horizon.market_id,
+    observedAtWall,
+    receiveStamp: horizon.target_time,
+    inputLineage: [{
+      source: horizon.source,
+      parent_input_reference: horizon.external_parent_input_reference,
+      input_hash: horizon.external_input_hash,
+      receive_stamp: trigger.trigger_receive_stamp,
+    }, {
+      source: "POLYMARKET_CLOB",
+      parent_input_reference: polymarketParent,
+      input_hash: polymarketHash,
+      receive_stamp: polymarketStamp,
+    }],
+    provenance: {
+      producer: "live-runtime-batch-4b-r1",
+      gitCommit: state.gitCommit,
+      sessionId: state.sessionId,
+      configHash: state.opportunityConfig.config_hash,
+    },
+    quality: { status: "DEGRADED", rejectionReasons },
+    feeEvidenceReference: null,
+    continuity: "UNVERIFIED",
+    grossEdge: null,
+    scenarioNetEdge: null,
+    visibleSize: "0",
+    eligibility: "INELIGIBLE",
+    rejectionReason,
+    facts: canonicalOpportunityFacts({
+      fixed_horizon: fixedHorizon as unknown as Record<string, unknown>,
+      next_update_excluded_from_route_evidence: true,
+    }),
+  });
+  failureRuntime.noteObservation();
+  state.leadLagObservations.push(opportunity);
+  state.observations.push(opportunity);
 }
 
 function scheduleHorizons(
@@ -704,7 +773,16 @@ function scheduleHorizons(
               local_receive_ordinal: timerStamp.localReceiveOrdinal,
             },
           });
-          if (!failureRuntime.terminated) state.horizonObservations.push(observation);
+          if (!failureRuntime.terminated) {
+            state.horizonObservations.push(observation);
+            recordLeadLagHorizonObservation(
+              state,
+              trigger,
+              observation,
+              timerStamp.localWallReceiveTime,
+              failureRuntime,
+            );
+          }
         } catch (error) {
           await failureRuntime.terminate(createRuntimeIncident({
             errorClass: error instanceof Error ? error.name : "UnknownError",
@@ -741,6 +819,7 @@ function ingestExternalPrice(
     receive_stamp: leadLagStamp(price.receiveStamp),
     external_connection_id: externalConnectionId(price.connectionId),
     parent_input_reference: price.parentInputReference,
+    input_hash: price.inputHash,
     quality: { stale: false, disconnected: false, quarantined: false },
   });
   const market = state.currentMarket;
@@ -773,13 +852,28 @@ function ingestPolymarketBook(
   receiveStamp: ReceiveStamp,
   connectionId: string,
   eventId: string,
+  inputHash: string,
   quarantined: boolean,
 ): void {
   const book = state.orderBook;
-  if (book === null) return;
+  const parentInputReference = `raw-event-v2:${eventId}`;
+  const reject = (): void => state.leadLagEngine.notePolymarketQualityFailure({
+    market_id: market.marketId,
+    receive_stamp: leadLagStamp(receiveStamp),
+    polymarket_connection_id: polymarketConnectionId(connectionId),
+    parent_input_reference: parentInputReference,
+    input_hash: inputHash,
+  });
+  if (book === null || quarantined || book.state !== BookState.ACTIVE_UNVERIFIED) {
+    reject();
+    return;
+  }
   const bid = book.bestBid(market.upTokenId);
   const ask = book.bestAsk(market.upTokenId);
-  if (bid === null || ask === null) return;
+  if (bid === null || ask === null) {
+    reject();
+    return;
+  }
   state.leadLagEngine.ingestPolymarket({
     market_id: market.marketId,
     bid,
@@ -787,18 +881,22 @@ function ingestPolymarketBook(
     mid_price: Money.from(bid).plus(Money.from(ask)).dividedBy(Money.from("2")).toCanonical(),
     receive_stamp: leadLagStamp(receiveStamp),
     polymarket_connection_id: polymarketConnectionId(connectionId),
-    parent_input_reference: `raw-event-v2:${eventId}`,
+    parent_input_reference: parentInputReference,
+    input_hash: inputHash,
     quality: {
-      snapshot: book.state === BookState.ACTIVE_UNVERIFIED,
-      stale: book.state === BookState.STALE,
-      disconnected: book.state === BookState.DISCONNECTED || book.state === BookState.RESET_REQUIRED,
+      snapshot: true,
+      stale: false,
+      disconnected: false,
       crossed: false,
       empty_side: false,
-      quarantined,
+      quarantined: false,
     },
   });
-  state.latestPolymarketParentInputReference = `raw-event-v2:${eventId}`;
-  state.latestPolymarketReceiveStamp = receiveStamp;
+  state.latestPolymarketInput = Object.freeze({
+    parentInputReference,
+    inputHash,
+    receiveStamp,
+  });
 }
 
 function clobHandler(
@@ -814,6 +912,7 @@ function clobHandler(
     const parsed = parseClobMarketFrame(raw);
     let status: ParserStatus = parsed.shape === "error" ? "error" : "parsed";
     let error = parsed.parserError;
+    let bookMutationApplied = false;
     for (const message of parsed.messages) {
       if (message.parserStatus === "error") {
         status = "error";
@@ -821,9 +920,13 @@ function clobHandler(
         continue;
       }
       try {
-        if (message.eventType === "book") state.orderBook?.applySnapshot(message, connectionId, receiveTime);
+        if (message.eventType === "book") {
+          state.orderBook?.applySnapshot(message, connectionId, receiveTime);
+          bookMutationApplied = state.orderBook !== null;
+        }
         else if (message.eventType === "price_change" && state.orderBook?.allExpectedAssetsReady) {
           state.orderBook.applyPriceChange(message, connectionId, receiveTime);
+          bookMutationApplied = true;
         }
       } catch (reason) {
         status = "quarantined";
@@ -844,8 +947,23 @@ function clobHandler(
       connectionId,
     });
     if (!failureRuntime.terminated) {
-      ingestPolymarketBook(state, market, receiveStamp, connectionId, eventId, status === "quarantined" || status === "error");
-      state.latestPolymarketInputHash = rawSha256(raw);
+      const inputHash = rawSha256(raw);
+      const disposition = classifyClobBookObservation({
+        eventTypes: parsed.messages.map((message) => message.eventType),
+        parserStatus: status,
+        bookMutationApplied,
+      });
+      if (disposition !== "IGNORE") {
+        ingestPolymarketBook(
+          state,
+          market,
+          receiveStamp,
+          connectionId,
+          eventId,
+          inputHash,
+          disposition === "INVALIDATE",
+        );
+      }
     }
   };
 }
@@ -887,6 +1005,7 @@ function rtdsHandler(
         connectionId,
         externalEventId: eventId,
         parentInputReference: `raw-event-v2:${eventId}`,
+        inputHash: rawSha256(raw),
       };
       if (source === "chainlink") state.chainlink = price;
       else state.polymarketBinance = price;
@@ -1017,7 +1136,7 @@ function opportunityAudits(value: PaperSnapshot, state: RuntimeState, now: numbe
   const feeRate = market?.takerFeeRate ?? null;
   const candidate = completeSetArbitrageObserver(value, {
     feeRate,
-    latencyMilliseconds: 1_000,
+    latencyMilliseconds: state.opportunityConfig.complete_set_latency_ms,
     latencySatisfied: false,
   });
   const candidateDetected = feeRate !== null && market !== null && (() => {
@@ -1044,11 +1163,11 @@ function opportunityAudits(value: PaperSnapshot, state: RuntimeState, now: numbe
   if (!candidateDetected) state.completeSetCandidateSince = null;
   else state.completeSetCandidateSince ??= now;
   const latencySatisfied = state.completeSetCandidateSince !== null
-    && now - state.completeSetCandidateSince >= 1_000;
+    && now - state.completeSetCandidateSince >= state.opportunityConfig.complete_set_latency_ms;
   const complete = latencySatisfied
     ? completeSetArbitrageObserver(value, {
         feeRate,
-        latencyMilliseconds: 1_000,
+        latencyMilliseconds: state.opportunityConfig.complete_set_latency_ms,
         latencySatisfied: true,
       })
     : candidate;
@@ -1061,10 +1180,8 @@ function recordOpportunityObservations(
   state: RuntimeState,
   failureRuntime: FailClosedRuntime,
 ): void {
-  const parent = state.latestPolymarketParentInputReference;
-  const inputHash = state.latestPolymarketInputHash;
-  const received = state.latestPolymarketReceiveStamp;
-  if (parent === null || inputHash === null || received === null || failureRuntime.terminated) return;
+  const latestInput = state.latestPolymarketInput;
+  if (latestInput === null || failureRuntime.terminated) return;
   const family: Readonly<Record<ObserverName, string>> = {
     NO_TRADE: "NO_TRADE",
     COMPLETE_SET_ARBITRAGE_OBSERVER: "COMPLETE_SET_ARBITRAGE",
@@ -1077,23 +1194,23 @@ function recordOpportunityObservations(
       opportunityFamily: family[audit.observer],
       marketId: audit.marketId,
       observedAtWall: audit.observedAt,
-      receiveStamp: leadLagStamp(received),
+      receiveStamp: leadLagStamp(latestInput.receiveStamp),
       inputLineage: [{
         source: "POLYMARKET_CLOB",
-        parent_input_reference: parent,
-        input_hash: inputHash,
-        receive_stamp: leadLagStamp(received),
+        parent_input_reference: latestInput.parentInputReference,
+        input_hash: latestInput.inputHash,
+        receive_stamp: leadLagStamp(latestInput.receiveStamp),
       }],
       provenance: {
         producer: "live-runtime-batch-4b-r1",
         gitCommit: state.gitCommit,
         sessionId: state.sessionId,
-        configHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
+        configHash: state.opportunityConfig.config_hash,
       },
       quality: { status: "DEGRADED", rejectionReasons: ["CLOB_CONTINUITY_UNVERIFIED"] },
       feeEvidenceReference: state.currentMarket === null ? null : `gamma:${state.currentMarket.slug}`,
       continuity: "UNVERIFIED",
-      grossEdge: null,
+      grossEdge: audit.grossEdge,
       scenarioNetEdge: audit.edgeAfterFees,
       visibleSize: audit.executableQuantity,
       eligibility: "INELIGIBLE",
@@ -1208,7 +1325,15 @@ async function main(): Promise<void> {
     }));
     return;
   }
-  const state = new RuntimeState(runId, config.collectorGitCommit);
+  const opportunityConfig = createOpportunityRuntimeConfig({
+    mode: config.mode,
+    recordMode: config.record.mode,
+    completeSetLatencyMs: 1_000,
+    feeEvidencePolicy: "GAMMA_SCHEDULE_OR_INELIGIBLE",
+    clobContinuity: "UNVERIFIED",
+    leadLagConfigHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
+  });
+  const state = new RuntimeState(runId, config.collectorGitCommit, opportunityConfig);
   const stats = newStats();
   const started = Date.now();
   const end = started + config.durationMilliseconds;
@@ -1282,12 +1407,12 @@ async function main(): Promise<void> {
       process.stderr.write(`runtime recorder close failed after terminal transition: ${String(closeError)}\n`);
     }
   }
-  if (state.rawTriggerCount > 0 && state.observations.length > 0) {
-    const leadLagEvidence = state.observations.filter((item) => state.leadLagMarketIds.has(item.market_id));
+  if (state.rawTriggerCount > 0 && state.leadLagObservations.length > 0) {
+    const leadLagEvidence = state.leadLagObservations;
     if (leadLagEvidence.length > 0) {
     state.routeEvaluations.push(createRouteEvaluationV1({
       route: "CROSS_VENUE_LEAD_LAG",
-      configHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
+      configHash: state.opportunityConfig.config_hash,
       observationHashes: leadLagEvidence.map((item) => item.observation_hash),
       rawTriggerCount: state.rawTriggerCount,
       uniqueEpisodeCount: state.leadLagEngine.episodes().length,
@@ -1325,10 +1450,14 @@ async function main(): Promise<void> {
     opportunityDurationMilliseconds: state.opportunityDurations,
     paperAuditCount: state.paperAudits.length,
     opportunityObservationCount: state.observations.length,
+    leadLagOpportunityObservationCount: state.leadLagObservations.length,
+    opportunityConfig: state.opportunityConfig,
     routeEvaluations: state.routeEvaluations,
     leadLagGrid: state.leadLagEngine.grid(),
     leadLagEpisodes: state.leadLagEngine.episodes(),
+    leadLagTriggers: state.leadLagEngine.triggers(),
     leadLagHorizons: state.horizonObservations,
+    leadLagObservations: state.leadLagObservations,
     theoreticalFillCount: state.paperAudits.flatMap((audit) => audit.fills).length,
     realOrderCount: 0,
     raw: {

@@ -48,6 +48,7 @@ export interface ExternalPriceState {
   readonly receive_stamp: LeadLagStamp;
   readonly external_connection_id: ExternalConnectionId;
   readonly parent_input_reference: string;
+  readonly input_hash: string;
   readonly quality: {
     readonly stale: boolean;
     readonly disconnected: boolean;
@@ -63,6 +64,7 @@ export interface PolymarketBookState {
   readonly receive_stamp: LeadLagStamp;
   readonly polymarket_connection_id: PolymarketConnectionId;
   readonly parent_input_reference: string;
+  readonly input_hash: string;
   readonly quality: {
     readonly snapshot: boolean;
     readonly stale: boolean;
@@ -96,6 +98,8 @@ export interface LeadLagTrigger {
   readonly external_event_id: string;
   readonly trigger_episode_id: string;
   readonly parent_input_reference: string;
+  readonly external_parent_input_reference: string;
+  readonly external_input_hash: string;
   readonly overlapping_trigger_group: string;
   readonly source: LeadLagSource;
   readonly threshold: LeadLagThresholdBps;
@@ -116,6 +120,7 @@ export interface LeadLagTrigger {
   readonly polymarket_snapshot_time: LeadLagStamp;
   readonly polymarket_snapshot_mid_price: string;
   readonly polymarket_parent_input_reference: string;
+  readonly polymarket_input_hash: string;
   readonly config_hash: string;
 }
 
@@ -160,6 +165,24 @@ export interface NextUpdateAfterHorizon {
 
 export interface HorizonObservation {
   readonly trigger_id: string;
+  readonly external_event_id: string;
+  readonly trigger_episode_id: string;
+  readonly external_parent_input_reference: string;
+  readonly external_input_hash: string;
+  readonly trigger_polymarket_parent_input_reference: string;
+  readonly trigger_polymarket_input_hash: string;
+  readonly horizon_state_parent_input_reference: string | null;
+  readonly horizon_state_input_hash: string | null;
+  readonly source: LeadLagSource;
+  readonly market_id: string;
+  readonly threshold: LeadLagThresholdBps;
+  readonly window: LeadLagTriggerWindowMs;
+  readonly direction: LeadLagDirection;
+  readonly clock_domain: string;
+  readonly external_connection_id: ExternalConnectionId;
+  readonly polymarket_connection_id: PolymarketConnectionId;
+  readonly trigger_receive_stamp: LeadLagStamp;
+  readonly config_hash: string;
   readonly horizon_ms: LeadLagHorizonMs;
   readonly target_time: LeadLagStamp;
   readonly censored: boolean;
@@ -215,12 +238,27 @@ interface PolymarketConnectionReset {
   readonly receive_stamp: LeadLagStamp;
 }
 
+interface PolymarketQualityFailure {
+  readonly market_id: string;
+  readonly receive_stamp: LeadLagStamp;
+  readonly polymarket_connection_id: PolymarketConnectionId;
+  readonly parent_input_reference: string;
+  readonly input_hash: string;
+}
+
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/u;
 const POSITIVE_INTEGER = /^[1-9]\d*$/u;
+const SHA256 = /^[0-9a-f]{64}$/u;
 
 function nonEmpty(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim() === "") throw new Error(`${field} must be non-empty`);
   return value;
+}
+
+function inputHash(value: unknown, field: string): string {
+  const result = nonEmpty(value, field);
+  if (!SHA256.test(result)) throw new Error(`${field} must be a lowercase sha256`);
+  return result;
 }
 
 function stamp(value: LeadLagStamp, field: string): LeadLagStamp {
@@ -348,13 +386,13 @@ export class EpisodeTracker {
     nonEmpty(input.external_event_id, "episode.external_event_id");
     const key = episodeKey(identity);
     for (const [activeKey, active] of this.#active) {
-      const sameMotionScope = active.identity.source === identity.source
-        && active.identity.market_id === identity.market_id;
+      const sameSource = active.identity.source === identity.source;
+      const marketChanged = active.identity.market_id !== identity.market_id;
       const groupingReset = active.identity.direction !== identity.direction
         || active.identity.clock_domain !== identity.clock_domain
         || active.identity.external_connection_id !== identity.external_connection_id
         || active.identity.polymarket_connection_id !== identity.polymarket_connection_id;
-      if (sameMotionScope && groupingReset) this.#active.delete(activeKey);
+      if (sameSource && (marketChanged || groupingReset)) this.#active.delete(activeKey);
     }
     let episode = this.#active.get(key);
     if (episode !== undefined && millisecondsBetween(receive, episode.end) > EPISODE_GAP_MS) {
@@ -371,6 +409,19 @@ export class EpisodeTracker {
     episode.end = receive;
     episode.triggerCount += 1;
     return episode.id;
+  }
+
+  endSource(source: LeadLagSource): void {
+    for (const [key, active] of this.#active) {
+      if (active.identity.source === source) this.#active.delete(key);
+    }
+  }
+
+  endMarket(marketId: string): void {
+    const target = nonEmpty(marketId, "market_id");
+    for (const [key, active] of this.#active) {
+      if (active.identity.market_id === target) this.#active.delete(key);
+    }
   }
 
   summaries(): readonly EpisodeSummary[] {
@@ -433,6 +484,7 @@ export class LeadLagEngine {
   readonly #triggers = new Map<string, LeadLagTrigger>();
   readonly #externalResets: ExternalConnectionReset[] = [];
   readonly #polymarketResets: PolymarketConnectionReset[] = [];
+  readonly #polymarketQualityFailures: PolymarketQualityFailure[] = [];
   readonly #episodes = new EpisodeTracker();
   readonly #seenOrdinals = new Map<string, string>();
   readonly #horizons: HorizonObservation[] = [];
@@ -482,6 +534,7 @@ export class LeadLagEngine {
       receive_stamp: received,
       external_connection_id: externalConnectionId(value.external_connection_id),
       parent_input_reference: nonEmpty(value.parent_input_reference, "parent_input_reference"),
+      input_hash: inputHash(value.input_hash, "input_hash"),
       quality: Object.freeze({ ...value.quality }),
     });
     if (!this.#config.sources.includes(normalized.source)) throw new Error("source is not pre-registered");
@@ -501,6 +554,7 @@ export class LeadLagEngine {
       receive_stamp: received,
       polymarket_connection_id: polymarketConnectionId(value.polymarket_connection_id),
       parent_input_reference: nonEmpty(value.parent_input_reference, "parent_input_reference"),
+      input_hash: inputHash(value.input_hash, "input_hash"),
       quality: Object.freeze({ ...value.quality }),
     });
     if (!normalized.quality.crossed && bid.comparedTo(ask) > 0) throw new Error("uncrossed book has bid above ask");
@@ -516,6 +570,7 @@ export class LeadLagEngine {
       source: input.source,
       receive_stamp: this.#registerReceiveStamp(input.receive_stamp),
     }));
+    this.#episodes.endSource(input.source);
   }
 
   notePolymarketConnectionReset(input: {
@@ -525,6 +580,23 @@ export class LeadLagEngine {
     this.#polymarketResets.push(Object.freeze({
       market_id: nonEmpty(input.market_id, "market_id"),
       receive_stamp: this.#registerReceiveStamp(input.receive_stamp),
+    }));
+    this.#episodes.endMarket(input.market_id);
+  }
+
+  notePolymarketQualityFailure(input: {
+    readonly market_id: string;
+    readonly receive_stamp: LeadLagStamp;
+    readonly polymarket_connection_id: PolymarketConnectionId;
+    readonly parent_input_reference: string;
+    readonly input_hash: string;
+  }): void {
+    this.#polymarketQualityFailures.push(Object.freeze({
+      market_id: nonEmpty(input.market_id, "market_id"),
+      receive_stamp: this.#registerReceiveStamp(input.receive_stamp),
+      polymarket_connection_id: polymarketConnectionId(input.polymarket_connection_id),
+      parent_input_reference: nonEmpty(input.parent_input_reference, "parent_input_reference"),
+      input_hash: inputHash(input.input_hash, "input_hash"),
     }));
   }
 
@@ -550,6 +622,10 @@ export class LeadLagEngine {
       this.#polymarketResets.filter((item) => item.market_id === marketId),
       event.receive_stamp,
     );
+    const latestPolymarketQualityFailure = latestAtOrBefore(
+      this.#polymarketQualityFailures.filter((item) => item.market_id === marketId),
+      event.receive_stamp,
+    );
     const triggers: LeadLagTrigger[] = [];
     const rejections: TriggerRejection[] = [];
     for (const window of this.#config.trigger_windows_ms) {
@@ -566,6 +642,10 @@ export class LeadLagEngine {
       else if (latestPolymarketReset !== null
         && compare(latestPolymarketReset.receive_stamp, snapshot.receive_stamp) > 0) {
         rejection = "TRIGGER_SNAPSHOT_CONNECTION_RESET";
+      }
+      else if (latestPolymarketQualityFailure !== null
+        && compare(latestPolymarketQualityFailure.receive_stamp, snapshot.receive_stamp) > 0) {
+        rejection = "TRIGGER_SNAPSHOT_QUALITY_REJECTED";
       }
       else if (!bookQualityPass(snapshot)) rejection = "TRIGGER_SNAPSHOT_QUALITY_REJECTED";
       if (rejection !== null || baseline === null || snapshot === null) {
@@ -594,6 +674,8 @@ export class LeadLagEngine {
         const triggerPayload = {
           external_event_id: event.external_event_id,
           parent_input_reference: event.parent_input_reference,
+          external_parent_input_reference: event.parent_input_reference,
+          external_input_hash: event.input_hash,
           overlapping_trigger_group: event.external_event_id,
           ...identity,
           threshold,
@@ -609,6 +691,7 @@ export class LeadLagEngine {
           polymarket_snapshot_time: snapshot.receive_stamp,
           polymarket_snapshot_mid_price: snapshot.mid_price,
           polymarket_parent_input_reference: snapshot.parent_input_reference,
+          polymarket_input_hash: snapshot.input_hash,
           config_hash: this.#config.config_hash,
         };
         const trigger_id = digest(triggerPayload);
@@ -636,10 +719,28 @@ export class LeadLagEngine {
     horizon: LeadLagHorizonMs,
     target: LeadLagStamp,
     reason: HorizonCensorReason,
-    state: PolymarketBookState | null = null,
+    state: Pick<PolymarketBookState, "receive_stamp" | "parent_input_reference" | "input_hash"> | null = null,
   ): HorizonObservation {
     const result = Object.freeze({
       trigger_id: trigger.trigger_id,
+      external_event_id: trigger.external_event_id,
+      trigger_episode_id: trigger.trigger_episode_id,
+      external_parent_input_reference: trigger.external_parent_input_reference,
+      external_input_hash: trigger.external_input_hash,
+      trigger_polymarket_parent_input_reference: trigger.polymarket_parent_input_reference,
+      trigger_polymarket_input_hash: trigger.polymarket_input_hash,
+      horizon_state_parent_input_reference: state?.parent_input_reference ?? null,
+      horizon_state_input_hash: state?.input_hash ?? null,
+      source: trigger.source,
+      market_id: trigger.market_id,
+      threshold: trigger.threshold,
+      window: trigger.window,
+      direction: trigger.direction,
+      clock_domain: trigger.clock_domain,
+      external_connection_id: trigger.external_connection_id,
+      polymarket_connection_id: trigger.polymarket_connection_id,
+      trigger_receive_stamp: trigger.trigger_receive_stamp,
+      config_hash: trigger.config_hash,
       horizon_ms: horizon,
       target_time: target,
       censored: true,
@@ -689,6 +790,18 @@ export class LeadLagEngine {
     }
     const marketBooks = this.#books.filter((item) => item.market_id === trigger.market_id);
     const state = latestAtOrBefore(marketBooks, target);
+    const qualityFailure = latestAtOrBefore(
+      this.#polymarketQualityFailures.filter((item) => item.market_id === trigger.market_id),
+      target,
+    );
+    if (qualityFailure !== null
+      && compare(qualityFailure.receive_stamp, trigger.trigger_receive_stamp) > 0
+      && (state === null || compare(qualityFailure.receive_stamp, state.receive_stamp) > 0)) {
+      if (qualityFailure.polymarket_connection_id !== trigger.polymarket_connection_id) {
+        return this.#censored(trigger, input.horizonMs, target, "POLYMARKET_CONNECTION_CHANGED", qualityFailure);
+      }
+      return this.#censored(trigger, input.horizonMs, target, "HORIZON_QUALITY_REJECTED", qualityFailure);
+    }
     if (state === null) return this.#censored(trigger, input.horizonMs, target, "HORIZON_STATE_NOT_FOUND");
     if (state.polymarket_connection_id !== trigger.polymarket_connection_id) {
       return this.#censored(trigger, input.horizonMs, target, "POLYMARKET_CONNECTION_CHANGED", state);
@@ -714,6 +827,24 @@ export class LeadLagEngine {
     });
     const result = Object.freeze({
       trigger_id: trigger.trigger_id,
+      external_event_id: trigger.external_event_id,
+      trigger_episode_id: trigger.trigger_episode_id,
+      external_parent_input_reference: trigger.external_parent_input_reference,
+      external_input_hash: trigger.external_input_hash,
+      trigger_polymarket_parent_input_reference: trigger.polymarket_parent_input_reference,
+      trigger_polymarket_input_hash: trigger.polymarket_input_hash,
+      horizon_state_parent_input_reference: state.parent_input_reference,
+      horizon_state_input_hash: state.input_hash,
+      source: trigger.source,
+      market_id: trigger.market_id,
+      threshold: trigger.threshold,
+      window: trigger.window,
+      direction: trigger.direction,
+      clock_domain: trigger.clock_domain,
+      external_connection_id: trigger.external_connection_id,
+      polymarket_connection_id: trigger.polymarket_connection_id,
+      trigger_receive_stamp: trigger.trigger_receive_stamp,
+      config_hash: trigger.config_hash,
       horizon_ms: input.horizonMs,
       target_time: target,
       censored: false,
@@ -731,6 +862,10 @@ export class LeadLagEngine {
 
   episodes(): readonly EpisodeSummary[] {
     return this.#episodes.summaries();
+  }
+
+  triggers(): readonly LeadLagTrigger[] {
+    return Object.freeze([...this.#triggers.values()]);
   }
 
   grid(): readonly LeadLagGridCell[] {

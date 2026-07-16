@@ -43,6 +43,7 @@ export interface PaperAudit {
   readonly claimsRealProfit: false;
   readonly fills: readonly TheoreticalFill[];
   readonly executableQuantity: string;
+  readonly grossEdge: string | null;
   readonly edgeAfterFees: string | null;
   readonly leggingRisk: "NONE_NO_TRADE" | "TWO_LEG_ATOMICITY_UNAVAILABLE" | "NOT_APPLICABLE";
   readonly queuePosition: null;
@@ -65,7 +66,7 @@ function scenarioEvidence(snapshot: PaperSnapshot, feeRate: string): FeeSchedule
   });
 }
 
-function base(snapshot: PaperSnapshot, observer: ObserverName): Omit<PaperAudit, "fills" | "executableQuantity" | "edgeAfterFees" | "leggingRisk" | "fillLowerBound" | "fillUpperBound" | "details"> {
+function base(snapshot: PaperSnapshot, observer: ObserverName): Omit<PaperAudit, "fills" | "executableQuantity" | "grossEdge" | "edgeAfterFees" | "leggingRisk" | "fillLowerBound" | "fillUpperBound" | "details"> {
   return {
     observer,
     observedAt: snapshot.observedAt,
@@ -76,11 +77,23 @@ function base(snapshot: PaperSnapshot, observer: ObserverName): Omit<PaperAudit,
   };
 }
 
+function completeSetGrossEdge(snapshot: PaperSnapshot): string {
+  const upSize = Money.from(canonicalDecimalString(snapshot.up.askSize));
+  const downSize = Money.from(canonicalDecimalString(snapshot.down.askSize));
+  const visible = upSize.comparedTo(downSize) <= 0 ? upSize : downSize;
+  return visible.times(
+    Money.from("1")
+      .minus(Money.from(canonicalDecimalString(snapshot.up.ask)))
+      .minus(Money.from(canonicalDecimalString(snapshot.down.ask))),
+  ).toCanonical();
+}
+
 export function noTradeObserver(snapshot: PaperSnapshot): PaperAudit {
   return {
     ...base(snapshot, "NO_TRADE"),
     fills: [],
     executableQuantity: "0",
+    grossEdge: null,
     edgeAfterFees: null,
     leggingRisk: "NONE_NO_TRADE",
     fillLowerBound: null,
@@ -105,6 +118,7 @@ export function completeSetArbitrageObserver(
       ...base(snapshot, "COMPLETE_SET_ARBITRAGE_OBSERVER"),
       fills: [],
       executableQuantity: "0",
+      grossEdge: completeSetGrossEdge(snapshot),
       edgeAfterFees: null,
       leggingRisk: "NOT_APPLICABLE",
       fillLowerBound: null,
@@ -139,6 +153,7 @@ export function completeSetArbitrageObserver(
         ]
       : [],
     executableQuantity: executable ? result.visibleSize : "0",
+    grossEdge: result.grossEdgeAmount,
     edgeAfterFees: result.scenarioNetEdgeAmount,
     leggingRisk: executable ? "TWO_LEG_ATOMICITY_UNAVAILABLE" : "NOT_APPLICABLE",
     fillLowerBound: null,
@@ -163,6 +178,7 @@ export function leadLagObserver(
     ...base(snapshot, "LEAD_LAG_OBSERVER"),
     fills: [],
     executableQuantity: "0",
+    grossEdge: null,
     edgeAfterFees: null,
     leggingRisk: "NOT_APPLICABLE",
     fillLowerBound: null,
@@ -188,6 +204,7 @@ export function makerEnvelopeObserver(
     ...base(snapshot, "MAKER_ENVELOPE_OBSERVER"),
     fills: [],
     executableQuantity: "0",
+    grossEdge: spread.toCanonical(),
     edgeAfterFees: null,
     leggingRisk: "NOT_APPLICABLE",
     fillLowerBound: ZERO.toCanonical(),

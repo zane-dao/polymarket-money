@@ -144,7 +144,7 @@ test("Gamma identity uses eventStartTime, maps labels, and ignores creation star
   assert.equal(market.takerFeeRate, null);
   const feeMarket = JSON.parse(raw) as Record<string, unknown>;
   feeMarket.feesEnabled = true;
-  feeMarket.feeSchedule = { rate: 0.07, exponent: 1, takerOnly: true };
+  feeMarket.feeSchedule = { rate: "0.07", exponent: 1, takerOnly: true };
   assert.equal(validatePublicBtcFiveMinuteMarket(JSON.stringify(feeMarket)).takerFeeRate, "0.07");
 });
 

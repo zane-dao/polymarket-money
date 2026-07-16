@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { ReceiveClock, type ReceiveStamp } from "../../domain/receive-time.js";
+import { Money } from "../../domain/money.js";
 
 export const PUBLIC_ENDPOINTS = Object.freeze({
   gammaMarketBySlug: "https://gamma-api.polymarket.com/markets/slug/",
@@ -289,15 +290,17 @@ export function validatePublicBtcFiveMinuteMarket(rawPayload: string): PublicBtc
     if (market.feeSchedule === undefined || market.feeSchedule === null) return null;
     const schedule = object(market.feeSchedule, "feeSchedule");
     const rawRate = schedule.rate;
-    if (typeof rawRate !== "number" && typeof rawRate !== "string") {
-      throw new Error("feeSchedule.rate must be a decimal");
+    if (typeof rawRate !== "string") throw new Error("feeSchedule.rate must be a canonical decimal string");
+    let parsed: Money;
+    try {
+      parsed = Money.from(rawRate);
+    } catch (error) {
+      throw new Error("feeSchedule.rate must be a canonical decimal string", { cause: error });
     }
-    const parsed = String(rawRate);
-    const numeric = Number(parsed);
-    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/u.test(parsed) || !Number.isFinite(numeric) || numeric < 0 || numeric > 1) {
+    if (parsed.comparedTo(Money.from("0")) < 0 || parsed.comparedTo(Money.from("1")) > 0) {
       throw new Error("feeSchedule.rate must be between 0 and 1");
     }
-    return parsed;
+    return parsed.toCanonical();
   })();
   return Object.freeze({
     marketId: text(market.id, "id"),

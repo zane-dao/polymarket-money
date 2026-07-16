@@ -11,7 +11,6 @@ export type OpportunityFamily =
 export type EvidenceLevel =
   | "NOT_OBSERVED"
   | "OBSERVED_NOT_EXECUTABLE"
-  | "RESEARCH_CANDIDATE"
   | "REQUIRES_PRIVATE_FILL_EVIDENCE";
 
 export interface OpportunityRecord {
@@ -125,7 +124,8 @@ export function observeCompleteSet(book: OpportunityBook, feeRate: string | null
     executableVisibleSize: candidate ? result!.visibleSize : "0", latencyAssumptionMs: null,
     dataQuality: "PASS", continuity: book.continuity,
     rejectionReason: candidate ? null : (result === null ? "UNKNOWN_FEE" : "NO_POSITIVE_NET_EDGE"),
-    evidenceLevel: candidate ? "RESEARCH_CANDIDATE" : "OBSERVED_NOT_EXECUTABLE",
+    // A single quote is an observation, never an aggregate route verdict.
+    evidenceLevel: "OBSERVED_NOT_EXECUTABLE",
   };
 }
 

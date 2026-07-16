@@ -1,0 +1,125 @@
+{
+  "experiment_id": "batch-04b-r2-24-market-observation",
+  "schema_version": "batch-04b-r2-observation-preregistration-v1",
+  "git_commit": "6f46b79e168f5da185f7e0e0bb0e8cd0f2ef47cb",
+  "config_created_at_utc": "2026-07-16T12:05:53Z",
+  "record_mode": "metrics",
+  "raw_recording": false,
+  "target_completed_markets": 24,
+  "maximum_runtime_minutes": 150,
+  "minimum_free_disk_gib": 10,
+  "continuity_required": "UNVERIFIED",
+  "fair_value_enabled": false,
+  "output_path": "$POLY_DATA_ROOT/experiments/batch-04b-r2-24-market-observation/",
+  "opportunity_families": [
+    "COMPLETE_SET_ARBITRAGE",
+    "CROSS_VENUE_LEAD_LAG",
+    "MAKER_SPREAD_REBATE"
+  ],
+  "fee_evidence_policy": {
+    "policy": "GAMMA_SCHEDULE_OR_INELIGIBLE",
+    "rounding_tie_behavior": "ROUNDING_TIE_UNVERIFIED",
+    "missing_or_unverified_fee_behavior": "INELIGIBLE",
+    "maker_rebate_treatment": "SCENARIO_ONLY_NOT_REALIZED"
+  },
+  "lead_lag": {
+    "sources": [
+      "BINANCE_SPOT",
+      "BINANCE_PERPETUAL",
+      "CHAINLINK",
+      "POLYMARKET_BINANCE_RELAY"
+    ],
+    "runtime_source_mapping": {
+      "CHAINLINK": "POLYMARKET_RTDS_CHAINLINK",
+      "POLYMARKET_BINANCE_RELAY": "POLYMARKET_RTDS_BINANCE"
+    },
+    "thresholds_bps": ["1", "2", "5"],
+    "trigger_windows_ms": [100, 250, 500],
+    "horizons_ms": [50, 100, 250, 500, 1000, 2000, 3000],
+    "max_baseline_age_ms_by_trigger_window": {
+      "100": 100,
+      "250": 100,
+      "500": 100
+    },
+    "max_horizon_state_age_ms_by_horizon": {
+      "50": 1000,
+      "100": 1000,
+      "250": 1000,
+      "500": 1000,
+      "1000": 1000,
+      "2000": 1000,
+      "3000": 1000
+    },
+    "episode_rule_version": "lead-lag-episode-v1",
+    "episode_gap_ms": 500,
+    "grouping_dimensions": [
+      "source",
+      "direction",
+      "market_id",
+      "clock_domain",
+      "external_connection_id",
+      "polymarket_connection_id"
+    ],
+    "connection_reset_behavior": "END_EPISODE_AND_CENSOR_PENDING",
+    "fixed_horizon_as_of": true,
+    "next_update_after_horizon_is_separate": true
+  },
+  "quality_gates": {
+    "market_minimum_coverage_ms": 285000,
+    "market_maximum_start_delay_ms": 15000,
+    "market_maximum_end_shortfall_ms": 1000,
+    "snapshot_required": true,
+    "both_book_sides_required": true,
+    "crossed_book_eligible": false,
+    "stale_eligible": false,
+    "disconnected_eligible": false,
+    "reset_eligible": false,
+    "quarantine_eligible": false,
+    "silent_drop_allowed": false,
+    "receive_stamp_required": true,
+    "same_external_connection_for_baseline_and_trigger": true,
+    "same_polymarket_connection_for_trigger_and_horizon": true
+  },
+  "stale_thresholds_ms": {
+    "polymarket_clob": 5000,
+    "lead_lag_baseline": 100,
+    "lead_lag_horizon_state": 1000
+  },
+  "route_gates": {
+    "complete_set_research_candidate": {
+      "minimum_positive_net_edge_markets": 2,
+      "common_visible_size_required": true,
+      "quality_pass_required": true,
+      "legging_risk_disclosure_required": true
+    },
+    "lead_lag_research_candidate": {
+      "minimum_valid_triggers": 200,
+      "minimum_completed_markets": 20,
+      "directional_consistency_required": true,
+      "extreme_value_dependence_allowed": false,
+      "adjacent_horizon_immediate_reversal_allowed": false,
+      "duration_must_exceed_local_latency_and_execution_buffer": true,
+      "market_time_block_statistics_required": true
+    },
+    "maker_maximum_classification": "REQUIRES_PRIVATE_FILL_EVIDENCE"
+  },
+  "stop_conditions": [
+    "TARGET_24_COMPLETED_MARKETS_REACHED",
+    "MAXIMUM_RUNTIME_150_MINUTES_REACHED",
+    "FREE_DISK_BELOW_10_GIB",
+    "CRITICAL_RUNTIME_INCIDENT",
+    "CONFIG_HASH_MISMATCH",
+    "SILENT_DROP_DETECTED",
+    "MANUAL_GRACEFUL_STOP"
+  ],
+  "safety": {
+    "live_trading_enabled": false,
+    "credentials_allowed": false,
+    "user_channel_allowed": false,
+    "signing_allowed": false,
+    "orders_allowed": false,
+    "order_intents_allowed": false,
+    "fills_allowed": false,
+    "server_deployment_allowed": false
+  }
+}

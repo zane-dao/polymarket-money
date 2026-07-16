@@ -53,6 +53,7 @@ import {
   type LeadLagSource,
   type LeadLagStamp,
   type LeadLagTrigger,
+  type TriggerRejection,
 } from "../execution/src/runtime/lead-lag.js";
 import {
   completeSetArbitrageObserver,
@@ -69,6 +70,7 @@ import {
   type RecordMode,
   type RecordingOptions,
 } from "../execution/src/runtime/recording.js";
+import { loadR2Preregistration, type R2Preregistration } from "../execution/src/runtime/r2-preregistration.js";
 import {
   RawByteLimitReached,
   DatasetManifestWriter,
@@ -87,6 +89,7 @@ interface RuntimeOptions {
   readonly summaryPath: string | null;
   readonly json: boolean;
   readonly collectorGitCommit: string;
+  readonly preregistration: R2Preregistration | null;
 }
 
 interface StreamStats {
@@ -251,6 +254,19 @@ async function options(): Promise<RuntimeOptions> {
   if (commit === undefined || !/^[0-9a-f]{40,64}$/u.test(commit)) {
     throw new Error("--git-commit must be the committed collector object ID");
   }
+  const experimentConfigPath = argument("--experiment-config");
+  const preregistration = experimentConfigPath === undefined
+    ? null
+    : await loadR2Preregistration(resolve(experimentConfigPath));
+  if (preregistration !== null) {
+    if (recordMode !== "metrics") throw new Error("R2 preregistration requires record=metrics");
+    if (mode !== "paper") throw new Error("R2 preregistration requires observer-only paper mode");
+    if (durationSeconds !== preregistration.maximum_runtime_minutes * 60) throw new Error("R2 duration differs from frozen maximum_runtime_minutes");
+    const dataRoot = process.env.POLY_DATA_ROOT;
+    if (dataRoot === undefined || dataRoot.length === 0) throw new Error("POLY_DATA_ROOT is required for R2");
+    const expectedOutput = resolve(dataRoot, "experiments", preregistration.experiment_id);
+    if (outputPath !== expectedOutput) throw new Error("R2 output differs from the frozen output_path");
+  }
   return {
     mode,
     durationMilliseconds: durationSeconds * 1_000,
@@ -259,6 +275,7 @@ async function options(): Promise<RuntimeOptions> {
     summaryPath: argument("--summary") === undefined ? null : resolve(argument("--summary")!),
     json: process.argv.includes("--json"),
     collectorGitCommit: commit,
+    preregistration,
   };
 }
 
@@ -504,6 +521,7 @@ class RuntimeState {
   readonly routeEvaluations: RouteEvaluationV1[] = [];
   readonly horizonTimers = new Set<ReturnType<typeof setTimeout>>();
   readonly leadLagMarketIds = new Set<string>();
+  readonly triggerRejections: TriggerRejection[] = [];
   rawTriggerCount = 0;
   latestPolymarketInput: {
     readonly parentInputReference: string;
@@ -831,6 +849,7 @@ function ingestExternalPrice(
     baselineWatermarks: watermarks,
   });
   state.rawTriggerCount += batch.triggers.length;
+  state.triggerRejections.push(...batch.rejections);
   if (batch.triggers.length > 0) state.leadLagMarketIds.add(market.marketId);
   for (const trigger of batch.triggers) scheduleHorizons(state, trigger, failureRuntime);
 }
@@ -1271,6 +1290,13 @@ async function dashboardLoop(
       mode: config.mode,
       currentMarket: state.currentMarket?.slug ?? null,
       nextMarket: state.nextMarket?.slug ?? null,
+      marketIdentity: state.currentMarket === null ? null : {
+        marketId: state.currentMarket.marketId,
+        conditionId: state.currentMarket.conditionId,
+        slug: state.currentMarket.slug,
+        intervalStart: state.currentMarket.intervalStart,
+        intervalEnd: state.currentMarket.intervalEnd,
+      },
       bookState: state.orderBook?.state ?? "DISCONNECTED",
       snapshotReady: paperSnapshot !== null,
       continuity: "UNVERIFIED",
@@ -1285,6 +1311,13 @@ async function dashboardLoop(
       }])),
       opportunities: audits,
       leadLagGrid: state.leadLagEngine.grid(),
+      streamCounters: Object.fromEntries(STREAMS.map((name) => [name, {
+        events: stats[name].events,
+        reconnects: stats[name].reconnects,
+        quarantines: stats[name].quarantines,
+      }])),
+      orderBookQualityEvents: state.orderBook?.qualityEvents ?? [],
+      latestPolymarketReceiveStamp: state.latestPolymarketInput?.receiveStamp ?? null,
       diskFreeBytes: storage === null ? null : storage.bavail * storage.bsize,
       rawWriteBytesPerHour: recorder.usedRawBytes / elapsedHours,
       projectedCaptureBytesPerHour: projectedBytesPerHour,
@@ -1332,6 +1365,7 @@ async function main(): Promise<void> {
     feeEvidencePolicy: "GAMMA_SCHEDULE_OR_INELIGIBLE",
     clobContinuity: "UNVERIFIED",
     leadLagConfigHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
+    preregistrationConfigHash: config.preregistration?.config_sha256 ?? null,
   });
   const state = new RuntimeState(runId, config.collectorGitCommit, opportunityConfig);
   const stats = newStats();
@@ -1456,6 +1490,7 @@ async function main(): Promise<void> {
     leadLagGrid: state.leadLagEngine.grid(),
     leadLagEpisodes: state.leadLagEngine.episodes(),
     leadLagTriggers: state.leadLagEngine.triggers(),
+    leadLagTriggerRejections: state.triggerRejections,
     leadLagHorizons: state.horizonObservations,
     leadLagObservations: state.leadLagObservations,
     theoreticalFillCount: state.paperAudits.flatMap((audit) => audit.fills).length,
@@ -1478,6 +1513,15 @@ async function main(): Promise<void> {
       minimumFreeBytes: MIN_FREE_BYTES,
     },
     collectorGitCommit: config.collectorGitCommit,
+    experiment: config.preregistration === null ? null : {
+      experimentId: config.preregistration.experiment_id,
+      preregistrationConfigHash: config.preregistration.config_sha256,
+      targetCompletedMarkets: config.preregistration.target_completed_markets,
+      maximumRuntimeMinutes: config.preregistration.maximum_runtime_minutes,
+      continuity: config.preregistration.continuity_required,
+      rawRecording: config.preregistration.raw_recording,
+      fairValueEnabled: config.preregistration.fair_value_enabled,
+    },
   };
   if (config.summaryPath !== null) await writeFile(config.summaryPath, `${JSON.stringify(summary, null, 2)}\n`, { flag: "wx", mode: 0o400 });
   process.stdout.write(`${JSON.stringify(summary)}\n`);

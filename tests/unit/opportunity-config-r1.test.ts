@@ -14,6 +14,7 @@ const base = {
   feeEvidencePolicy: "GAMMA_SCHEDULE_OR_INELIGIBLE" as const,
   clobContinuity: "UNVERIFIED" as const,
   leadLagConfigHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
+  preregistrationConfigHash: null,
 };
 
 test("runtime opportunity config is versioned and hashes every result-affecting setting", () => {
@@ -26,4 +27,5 @@ test("runtime opportunity config is versioned and hashes every result-affecting 
   assert.notEqual(createOpportunityRuntimeConfig({ ...base, feeEvidencePolicy: "MISSING_FEE_INELIGIBLE" }).config_hash, config.config_hash);
   assert.notEqual(createOpportunityRuntimeConfig({ ...base, clobContinuity: "CONTINUOUS" }).config_hash, config.config_hash);
   assert.notEqual(createOpportunityRuntimeConfig({ ...base, leadLagConfigHash: "f".repeat(64) }).config_hash, config.config_hash);
+  assert.notEqual(createOpportunityRuntimeConfig({ ...base, preregistrationConfigHash: "e".repeat(64) }).config_hash, config.config_hash);
 });

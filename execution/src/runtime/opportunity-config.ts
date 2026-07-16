@@ -10,6 +10,7 @@ export interface OpportunityRuntimeConfig {
   readonly fee_evidence_policy: "GAMMA_SCHEDULE_OR_INELIGIBLE" | "MISSING_FEE_INELIGIBLE";
   readonly clob_continuity: "UNVERIFIED" | "CONTINUOUS";
   readonly lead_lag_config_hash: string;
+  readonly preregistration_config_hash: string | null;
   readonly config_hash: string;
 }
 
@@ -20,6 +21,7 @@ export interface CreateOpportunityRuntimeConfigInput {
   readonly feeEvidencePolicy: OpportunityRuntimeConfig["fee_evidence_policy"];
   readonly clobContinuity: OpportunityRuntimeConfig["clob_continuity"];
   readonly leadLagConfigHash: string;
+  readonly preregistrationConfigHash?: string | null;
 }
 
 const SHA256 = /^[0-9a-f]{64}$/u;
@@ -46,6 +48,10 @@ export function createOpportunityRuntimeConfig(
     throw new Error("clobContinuity is invalid");
   }
   if (!SHA256.test(input.leadLagConfigHash)) throw new Error("leadLagConfigHash must be a lowercase sha256");
+  const preregistrationConfigHash = input.preregistrationConfigHash ?? null;
+  if (preregistrationConfigHash !== null && !SHA256.test(preregistrationConfigHash)) {
+    throw new Error("preregistrationConfigHash must be a lowercase sha256");
+  }
   const payload = Object.freeze({
     schema_version: OPPORTUNITY_RUNTIME_CONFIG_VERSION,
     mode: input.mode,
@@ -54,6 +60,7 @@ export function createOpportunityRuntimeConfig(
     fee_evidence_policy: input.feeEvidencePolicy,
     clob_continuity: input.clobContinuity,
     lead_lag_config_hash: input.leadLagConfigHash,
+    preregistration_config_hash: preregistrationConfigHash,
   });
   const config_hash = createHash("sha256").update(stableJson(payload), "utf8").digest("hex");
   return Object.freeze({ ...payload, config_hash });

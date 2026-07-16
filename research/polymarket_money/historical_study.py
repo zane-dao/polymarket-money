@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from hashlib import sha256
 import math
@@ -284,10 +285,14 @@ def _aggregate(trades: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]]) ->
     actual = [trade for _, trade in trades if trade["action"] != "NO_TRADE"]
     filled = [trade for trade in actual if trade["filled_quantity"] > 0]
     daily: dict[str, Decimal] = {}
+    weekly: dict[str, Decimal] = {}
     pnl_sequence: list[Decimal] = []
     for row, trade in trades:
         day = row["market_start"][:10]
         daily[day] = daily.get(day, Decimal("0")) + trade["net_pnl"]
+        iso = datetime.fromisoformat(row["market_start"].replace("Z", "+00:00")).isocalendar()
+        week = f"{iso.year}-W{iso.week:02d}"
+        weekly[week] = weekly.get(week, Decimal("0")) + trade["net_pnl"]
         if trade["filled_quantity"] > 0:
             pnl_sequence.append(trade["net_pnl"])
     gross = sum((trade["gross_pnl"] for trade in filled), Decimal("0"))
@@ -332,11 +337,107 @@ def _aggregate(trades: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]]) ->
         "max_drawdown": format(max_drawdown, "f"),
         "longest_consecutive_loss": longest_loss,
         "daily_pnl": {key: format(value, "f") for key, value in sorted(daily.items())},
+        "weekly_pnl": {key: format(value, "f") for key, value in sorted(weekly.items())},
         "best_3_days_pnl": format(best_three, "f"),
         "best_3_days_share_of_total": format(concentration, "f") if concentration is not None else None,
         "net_without_best_3_days": format(without_best, "f"),
         "daily_block_bootstrap_95pct": [format(lower, "f"), format(upper, "f")],
         "bootstrap_repetitions": 2_000,
+    }
+
+
+def _quantile_boundaries(values: Sequence[float]) -> tuple[float, float]:
+    ordered = sorted(values)
+    if not ordered:
+        raise ValueError("volatility segmentation requires Train values")
+    return ordered[len(ordered) // 3], ordered[(2 * len(ordered)) // 3]
+
+
+def _segment_summary(
+    trades: Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]],
+    *,
+    volatility_boundaries: tuple[float, float],
+) -> dict[str, Any]:
+    by_time: dict[str, list[tuple[Mapping[str, Any], Mapping[str, Any]]]] = {}
+    by_volatility: dict[str, list[tuple[Mapping[str, Any], Mapping[str, Any]]]] = {}
+    low, high = volatility_boundaries
+    for item in trades:
+        row, _ = item
+        hour = int(row["market_start"][11:13])
+        time_bucket = f"UTC_{(hour // 6) * 6:02d}_{(hour // 6) * 6 + 5:02d}"
+        by_time.setdefault(time_bucket, []).append(item)
+        volatility = float(row["binance"]["realized_vol_120s"])
+        volatility_bucket = "LOW" if volatility <= low else "MID" if volatility <= high else "HIGH"
+        by_volatility.setdefault(volatility_bucket, []).append(item)
+
+    def summarize(groups: Mapping[str, Sequence[tuple[Mapping[str, Any], Mapping[str, Any]]]]) -> dict[str, Any]:
+        output: dict[str, Any] = {}
+        for key, values in sorted(groups.items()):
+            aggregate = _aggregate(values)
+            output[key] = {
+                "decision_count": aggregate["decision_count"],
+                "trade_count": aggregate["trade_count"],
+                "scenario_net_pnl": aggregate["scenario_net_pnl"],
+            }
+        return output
+
+    return {"utc_time_buckets": summarize(by_time), "volatility_buckets": summarize(by_volatility)}
+
+
+def run_frozen_diagnostics(
+    result: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """Recompute fixed-config descriptive slices without tuning or changing the primary result."""
+    if not result.get("models_trained") or "frozen_config" not in result:
+        raise ValueError("frozen diagnostics require a completed primary study")
+    frozen = result["frozen_config"]
+    configs = frozen["configs"]
+    by_split_horizon: dict[tuple[str, int], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        by_split_horizon.setdefault((row["split"], int(row["horizon_seconds"])), []).append(row)
+
+    output: dict[str, Any] = {}
+    for horizon in HORIZONS:
+        train_volatility = [
+            float(row["binance"]["realized_vol_120s"])
+            for row in by_split_horizon[("TRAIN", horizon)]
+        ]
+        boundaries = _quantile_boundaries(train_volatility)
+        for split in ("TRAIN", "VALIDATION", "FINAL_TEST"):
+            split_rows = by_split_horizon[(split, horizon)]
+            for model in MODELS:
+                key = f"{model}:{horizon}"
+                config: Mapping[str, Any] = (
+                    {"threshold": "0.00"} if model == "B0_NO_TRADE" else configs[key]
+                )
+                probabilities = [_prediction(model, row, config) for row in split_rows]
+                for scenario in ("BASE_1S", "STRESS_1S_PLUS_TICK"):
+                    trades = [
+                        (
+                            row,
+                            simulate_trade(
+                                row,
+                                probability=probability,
+                                threshold=Decimal(str(config.get("threshold", "0"))),
+                                execution_scenario=scenario,
+                                fee_scenario="OFFICIAL_MARKET_STATIC",
+                            ),
+                        )
+                        for row, probability in zip(split_rows, probabilities)
+                    ]
+                    aggregate = _aggregate(trades)
+                    output[f"{split}:{key}:{scenario}"] = {
+                        "aggregate": aggregate,
+                        "segments": _segment_summary(
+                            trades, volatility_boundaries=boundaries
+                        ),
+                    }
+    return {
+        "dataset_hash": result["dataset_hash"],
+        "frozen_config_hash": result["frozen_config_hash"],
+        "purpose": "POST_RUN_FIXED_CONFIG_DIAGNOSTICS_NO_TUNING",
+        "volatility_bucket_definition": "Train-only realized_vol_120s tertiles per horizon",
+        "results": output,
     }
 
 

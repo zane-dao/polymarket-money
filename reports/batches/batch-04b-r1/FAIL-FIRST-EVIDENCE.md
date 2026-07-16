@@ -40,3 +40,20 @@ tests/unit/runtime-incidents-r1.test.ts(45,19): error TS7006: Parameter 'code' i
 tests/unit/runtime-incidents-r1.test.ts(65,19): error TS7006: Parameter 'line' implicitly has an 'any' type.
 tests/unit/runtime-incidents-r1.test.ts(66,19): error TS7006: Parameter 'code' implicitly has an 'any' type.
 ```
+
+## Group 3 — Decimal reuse and unified fee/edge
+
+Fail-first inputs are the shared `fee-edge-v1.json` fixture plus TypeScript and Python contract
+tests. The reviewed baseline has no `decimal.js` dependency, no private MoneyDecimal wrapper, no
+single FeeEdgeCalculator, and no Python fee evidence/status fields. Both language suites must fail
+before implementation.
+
+Observed failures:
+
+```text
+tests/unit/fee-edge-r1.test.ts(5,21): error TS2307: Cannot find module 'decimal.js' or its corresponding type declarations.
+tests/unit/fee-edge-r1.test.ts(9,8): error TS2307: Cannot find module '../../execution/src/runtime/fee-edge.js' or its corresponding type declarations.
+tests/unit/fee-edge-r1.test.ts(10,64): error TS2307: Cannot find module '../../execution/src/domain/money.js' or its corresponding type declarations.
+
+ImportError: cannot import name 'FeeEvidenceStatus' from 'research.polymarket_money.backtest'
+```

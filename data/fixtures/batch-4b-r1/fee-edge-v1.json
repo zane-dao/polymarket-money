@@ -1,0 +1,32 @@
+{
+  "schema_version": "fee-edge-fixture-v1",
+  "schedule": {
+    "market_id": "market-btc-5m",
+    "condition_id": "condition-btc-5m",
+    "effective_from": "2026-07-16T00:00:00.000Z",
+    "effective_to": "2026-07-17T00:00:00.000Z",
+    "fee_rate": "0.07",
+    "evidence_reference": "official-fee-table-fixture",
+    "evidence_status": "VERIFIED"
+  },
+  "fee_cases": [
+    { "name": "price-001", "role": "TAKER", "price": "0.01", "quantity": "100", "amount": "0.0693", "reason": null },
+    { "name": "price-050", "role": "TAKER", "price": "0.5", "quantity": "100", "amount": "1.75", "reason": null },
+    { "name": "price-099", "role": "TAKER", "price": "0.99", "quantity": "100", "amount": "0.0693", "reason": null },
+    { "name": "fractional-quantity", "role": "TAKER", "price": "0.5", "quantity": "1.5", "amount": "0.02625", "reason": null },
+    { "name": "below-minimum", "role": "TAKER", "price": "0.01", "quantity": "0.0001", "amount": "0", "reason": null },
+    { "name": "exact-tie", "role": "TAKER", "price": "0.5", "quantity": "0.001", "fee_rate": "0.02", "amount": null, "reason": "ROUNDING_TIE_UNVERIFIED" },
+    { "name": "maker-zero", "role": "MAKER", "price": "0.5", "quantity": "100", "amount": "0", "reason": null }
+  ],
+  "complete_set": {
+    "up_ask": "0.47",
+    "down_ask": "0.49",
+    "up_size": "2",
+    "down_size": "1",
+    "visible_size": "1",
+    "up_fee": "0.01744",
+    "down_fee": "0.01749",
+    "gross_edge_amount": "0.04",
+    "scenario_net_edge_amount": "0.00507"
+  }
+}

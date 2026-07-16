@@ -54,15 +54,15 @@ export interface PaperAudit {
 
 const ZERO = Money.from("0");
 
-function scenarioEvidence(snapshot: PaperSnapshot, feeRate: string): FeeScheduleEvidence {
+function scenarioEvidence(snapshot: PaperSnapshot, feeRate: string | null): FeeScheduleEvidence {
   return Object.freeze({
     market_id: snapshot.marketId,
     condition_id: `scenario:${snapshot.marketId}`,
     effective_from: "1970-01-01T00:00:00.000Z",
     effective_to: "9999-12-31T23:59:59.999Z",
-    fee_rate: feeRate,
-    evidence_reference: "paper-scenario-input",
-    evidence_status: "UNVERIFIED",
+    fee_rate: feeRate ?? "0",
+    evidence_reference: feeRate === null ? "missing-paper-fee-evidence" : "paper-scenario-input",
+    evidence_status: feeRate === null ? "MISSING" : "UNVERIFIED",
   });
 }
 
@@ -75,17 +75,6 @@ function base(snapshot: PaperSnapshot, observer: ObserverName): Omit<PaperAudit,
     claimsRealProfit: false,
     queuePosition: null,
   };
-}
-
-function completeSetGrossEdge(snapshot: PaperSnapshot): string {
-  const upSize = Money.from(canonicalDecimalString(snapshot.up.askSize));
-  const downSize = Money.from(canonicalDecimalString(snapshot.down.askSize));
-  const visible = upSize.comparedTo(downSize) <= 0 ? upSize : downSize;
-  return visible.times(
-    Money.from("1")
-      .minus(Money.from(canonicalDecimalString(snapshot.up.ask)))
-      .minus(Money.from(canonicalDecimalString(snapshot.down.ask))),
-  ).toCanonical();
 }
 
 export function noTradeObserver(snapshot: PaperSnapshot): PaperAudit {
@@ -113,13 +102,23 @@ export function completeSetArbitrageObserver(
   if (!Number.isSafeInteger(options.latencyMilliseconds) || options.latencyMilliseconds < 0) {
     throw new Error("latencyMilliseconds must be a non-negative safe integer");
   }
+  const result = new FeeEdgeCalculator().completeSet({
+    marketId: snapshot.marketId,
+    conditionId: `scenario:${snapshot.marketId}`,
+    executableTime: snapshot.observedAt,
+    upAsk: canonicalDecimalString(snapshot.up.ask),
+    downAsk: canonicalDecimalString(snapshot.down.ask),
+    upAskSize: canonicalDecimalString(snapshot.up.askSize),
+    downAskSize: canonicalDecimalString(snapshot.down.askSize),
+    evidence: scenarioEvidence(snapshot, options.feeRate),
+  });
   if (options.feeRate === null) {
     return {
       ...base(snapshot, "COMPLETE_SET_ARBITRAGE_OBSERVER"),
       fills: [],
       executableQuantity: "0",
-      grossEdge: completeSetGrossEdge(snapshot),
-      edgeAfterFees: null,
+      grossEdge: result.grossEdgeAmount,
+      edgeAfterFees: result.scenarioNetEdgeAmount,
       leggingRisk: "NOT_APPLICABLE",
       fillLowerBound: null,
       fillUpperBound: null,
@@ -131,16 +130,6 @@ export function completeSetArbitrageObserver(
       },
     };
   }
-  const result = new FeeEdgeCalculator().completeSet({
-    marketId: snapshot.marketId,
-    conditionId: `scenario:${snapshot.marketId}`,
-    executableTime: snapshot.observedAt,
-    upAsk: canonicalDecimalString(snapshot.up.ask),
-    downAsk: canonicalDecimalString(snapshot.down.ask),
-    upAskSize: canonicalDecimalString(snapshot.up.askSize),
-    downAskSize: canonicalDecimalString(snapshot.down.askSize),
-    evidence: scenarioEvidence(snapshot, options.feeRate),
-  });
   const executable = result.scenarioNetEdgeAmount !== null
     && Money.from(result.scenarioNetEdgeAmount).isPositive()
     && options.latencySatisfied;

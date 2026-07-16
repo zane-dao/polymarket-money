@@ -59,15 +59,15 @@ const nonNegative = (value: string | null): Money | null => {
   }
 };
 
-function scenarioEvidence(book: OpportunityBook, feeRate: string): FeeScheduleEvidence {
+function scenarioEvidence(book: OpportunityBook, feeRate: string | null): FeeScheduleEvidence {
   return Object.freeze({
     market_id: book.marketId,
     condition_id: `scenario:${book.marketId}`,
     effective_from: "1970-01-01T00:00:00.000Z",
     effective_to: "9999-12-31T23:59:59.999Z",
-    fee_rate: feeRate,
-    evidence_reference: "opportunity-scenario-input",
-    evidence_status: "UNVERIFIED",
+    fee_rate: feeRate ?? "0",
+    evidence_reference: feeRate === null ? "missing-opportunity-fee-evidence" : "opportunity-scenario-input",
+    evidence_status: feeRate === null ? "MISSING" : "UNVERIFIED",
   });
 }
 
@@ -100,7 +100,7 @@ export function observeCompleteSet(book: OpportunityBook, feeRate: string | null
   if (upAsk === null || downAsk === null || upAskSize === null || downAskSize === null || upAskSize.isZero() || downAskSize.isZero()) {
     return rejected(family, book, "MISSING_OR_EMPTY_ASK_SIDE");
   }
-  const result = feeRate === null ? null : new FeeEdgeCalculator().completeSet({
+  const result = new FeeEdgeCalculator().completeSet({
     marketId: book.marketId,
     conditionId: `scenario:${book.marketId}`,
     executableTime: book.observedAt,
@@ -118,12 +118,12 @@ export function observeCompleteSet(book: OpportunityBook, feeRate: string | null
     startTime: book.observedAt, endTime: null, durationMs: null,
     marketState: { stale: false, sellQuoteAvailable: upBid !== null && downBid !== null },
     quotes: { upAsk: book.upAsk, downAsk: book.downAsk, upAskSize: book.upAskSize, downAskSize: book.downAskSize },
-    feeRebateEvidence: result === null ? "UNKNOWN_FEE" : "SCENARIO_ONLY",
-    grossEdge: result?.grossEdgeAmount ?? Money.from("1").minus(upAsk).minus(downAsk).toCanonical(),
-    scenarioNetEdge: result?.scenarioNetEdgeAmount ?? null,
-    executableVisibleSize: candidate ? result!.visibleSize : "0", latencyAssumptionMs: null,
+    feeRebateEvidence: feeRate === null ? "UNKNOWN_FEE" : "SCENARIO_ONLY",
+    grossEdge: result.grossEdgeAmount,
+    scenarioNetEdge: result.scenarioNetEdgeAmount,
+    executableVisibleSize: candidate ? result.visibleSize : "0", latencyAssumptionMs: null,
     dataQuality: "PASS", continuity: book.continuity,
-    rejectionReason: candidate ? null : (result === null ? "UNKNOWN_FEE" : "NO_POSITIVE_NET_EDGE"),
+    rejectionReason: candidate ? null : (feeRate === null ? "UNKNOWN_FEE" : "NO_POSITIVE_NET_EDGE"),
     // A single quote is an observation, never an aggregate route verdict.
     evidenceLevel: "OBSERVED_NOT_EXECUTABLE",
   };

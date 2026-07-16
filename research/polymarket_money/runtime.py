@@ -340,13 +340,20 @@ def _classification(format_name: str) -> str:
 _SENSITIVE_PATH_MARKERS = frozenset(
     {
         "browser-profile",
+        "config",
         "cookies",
         "credential",
         "edge-prof",
+        ".env",
+        "apikey",
+        "api-key",
+        "auth",
         "login data",
         "mnemonic",
         "private key",
         "seed phrase",
+        "secret",
+        "token",
         "wallet",
         "web data",
     }
@@ -354,8 +361,8 @@ _SENSITIVE_PATH_MARKERS = frozenset(
 
 
 def _content_read_forbidden(path: Path) -> bool:
-    normalized_parts = {part.casefold() for part in path.parts}
-    return any(marker in normalized_parts for marker in _SENSITIVE_PATH_MARKERS)
+    normalized_parts = tuple(part.casefold() for part in path.parts)
+    return any(marker in part for part in normalized_parts for marker in _SENSITIVE_PATH_MARKERS)
 
 
 def _partial_fingerprint(path: Path, size: int) -> str:

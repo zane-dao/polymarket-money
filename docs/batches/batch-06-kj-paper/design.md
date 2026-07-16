@@ -123,3 +123,12 @@ The output directory is created with no-overwrite semantics and contains:
   accounting fields.
 
 The same core mapping always produces the same SHA-256 result hash.
+
+## Public runtime input boundary
+
+The public TypeScript runtime now exposes a paper-only K/J StrategyContext with
+full market/token identity, top-of-book, fee evidence, signal source/receive
+times, connection/input hashes, and receive stamps.  It fails closed for stale,
+crossed, missing-fee, mixed-clock, future-time, and non-running market inputs.
+See `live-context.md`.  This does not yet execute the Python strategy or mutate
+a real-time paper portfolio.

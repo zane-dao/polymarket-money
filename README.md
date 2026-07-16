@@ -80,3 +80,8 @@ artifact=387201c1eacbbe54f81d4519407bdb4acf50c9f6ce9f46a2bdb6f924796265da \
 
 The output directory must not already exist.  This prevents an earlier run
 from being silently overwritten.
+
+The TypeScript public runtime also emits a paper-only
+`kjStrategyContextReady/reason/context` envelope.  It binds verified Up/Down
+token IDs, fee evidence, book and signal receive stamps, freshness, and source
+identity.  It does not place orders or yet run the real-time portfolio loop.

@@ -134,3 +134,7 @@
   单速/fast/slow EWMA，但仍不是旧逐笔流、K 的 USD 换算和旧 `vol_epoch`，因而不能称为
   Strict legacy-equivalent K/J。权威设计与结果见
   `docs/batches/batch-06-kj-paper/`。
+- `execution/src/strategy/kj-context.ts` 已把 TypeScript 公共 runtime 输出收敛为统一的
+  paper-only StrategyContext，绑定真实 outcome token、fee、盘口/信号时间与 ReceiveStamp；
+  stale、crossed、未来时间、混合时钟域和缺 fee 均失败关闭。实时 strategy/wallet/settlement
+  消费者仍未实现。

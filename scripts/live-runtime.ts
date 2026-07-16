@@ -63,6 +63,7 @@ import {
   type PaperSnapshot,
   type ObserverName,
 } from "../execution/src/runtime/paper.js";
+import { createKJStrategyContext } from "../execution/src/strategy/kj-context.js";
 import {
   MIN_FREE_BYTES,
   SharedByteBudget,
@@ -1174,6 +1175,32 @@ function snapshot(state: RuntimeState): PaperSnapshot | null {
   };
 }
 
+function kjStrategyContext(state: RuntimeState, value: PaperSnapshot | null) {
+  const polymarketInput = state.latestPolymarketInput;
+  const signal = state.spot ?? state.polymarketBinance;
+  return createKJStrategyContext({
+    decisionTime: value?.observedAt ?? new Date().toISOString(),
+    market: state.currentMarket,
+    book: value === null || polymarketInput === null ? null : {
+      state: state.orderBook?.state ?? "DISCONNECTED",
+      continuity: "UNVERIFIED",
+      up: value.up,
+      down: value.down,
+      receiveStamp: polymarketInput.receiveStamp,
+    },
+    signal: signal === null ? null : {
+      provider: state.spot === signal ? "BINANCE_SPOT" : "POLYMARKET_RTDS_BINANCE",
+      price: signal.value,
+      sourceTime: signal.sourceTime,
+      serverTime: signal.serverTime,
+      receiveTime: signal.receiveTime,
+      receiveStamp: signal.receiveStamp,
+      connectionId: signal.connectionId,
+      inputHash: signal.inputHash,
+    },
+  });
+}
+
 function opportunityAudits(value: PaperSnapshot, state: RuntimeState, now: number): readonly PaperAudit[] {
   const market = state.currentMarket;
   const feeRate = market?.takerFeeRate ?? null;
@@ -1296,6 +1323,7 @@ async function dashboardLoop(
     if (bookState === BookState.STALE && previousBookState !== BookState.STALE) state.staleCount += 1;
     previousBookState = bookState;
     const paperSnapshot = snapshot(state);
+    const kjContext = kjStrategyContext(state, paperSnapshot);
     const audits = paperSnapshot === null ? [] : opportunityAudits(paperSnapshot, state, Date.now());
     recordOpportunityObservations(audits, state, failureRuntime);
     trackOpportunities(audits, state, Date.now());
@@ -1324,6 +1352,9 @@ async function dashboardLoop(
       },
       bookState: state.orderBook?.state ?? "DISCONNECTED",
       snapshotReady: paperSnapshot !== null,
+      kjStrategyContextReady: kjContext.ready,
+      kjStrategyContextReason: kjContext.ready ? null : kjContext.reason,
+      kjStrategyContext: kjContext.ready ? kjContext.context : null,
       continuity: "UNVERIFIED",
       up: paperSnapshot?.up ?? null,
       down: paperSnapshot?.down ?? null,

@@ -48,7 +48,7 @@ gross-minus-fee identity, and zero position after settlement.
 
 ```text
 Python: 198 passed
-Node/TypeScript: 95 passed
+Node/TypeScript: 98 passed
 Ruff: All checks passed
 Targeted K/J: 8 passed
 git diff --check: passed
@@ -70,6 +70,6 @@ cancellation, shadow, or live action occurred.
 4. Historical settlement uses official final outcome evidence, not point-in-time
    Chainlink open/close observations.  It is valid for outcome PnL but not an
    oracle-latency study.
-5. Public real-time paper mode still needs to route immutable runtime snapshots
-   into the same strategy/accounting interface; the current TypeScript paper
-   observers are not this portfolio simulator.
+5. Public runtime snapshots now expose the immutable, fail-closed K/J
+   StrategyContext, but no real-time consumer yet runs the strategy, delayed
+   fill, wallet, or settlement state machine.

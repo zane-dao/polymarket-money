@@ -11,6 +11,7 @@
     "paper:mvp": "npm run build && node --use-env-proxy dist/scripts/kj-paper-mvp.js",
     "paper:finalize": "npm run build && node dist/scripts/finalize-kj-paper-run.js",
     "paper:report": "npm run build && node dist/scripts/report-kj-paper-run.js",
+    "paper:cohort-report": "npm run build && node dist/scripts/report-kj-paper-cohort.js",
     "paper:settle": "npm run build && node --use-env-proxy dist/scripts/settle-kj-paper-journal.js",
     "paper:inspect": "npm run build && node dist/scripts/inspect-kj-paper-journal.js",
     "smoke:readonly": "npm run build && node --use-env-proxy dist/scripts/smoke-capture.js",

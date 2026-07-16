@@ -80,6 +80,14 @@ The replay report is `DESCRIPTIVE_PAPER_ONLY`, explicitly sets
 It validates the product loop, not K/J profitability or shadow/live readiness.
 The exact current completion boundary is in `completion-audit.md`.
 
+The offline `paper:cohort-report` command now prepares independent-run
+aggregation.  It accepts only replay-verified, hash-chained descriptive reports
+and rejects duplicate IDs, overlapping target windows, legacy reports and hash
+tampering.  Its first one-run cohort artifact is outside Git at
+`/root/polymarket-money-data/kj-paper-cohort-20260716225739-48ff7c99`, with
+cohort hash `2509e8cf5948ce355c852c70fff7208e2232aafb42c0ffeb20fb4fdd8305d865`.
+It remains descriptive and has `profitabilityClaimEligible=false`.
+
 ## Remaining gaps
 
 1. Strict legacy-equivalent K/J still requires the historical trade-tick stream,

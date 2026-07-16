@@ -180,3 +180,11 @@ delayed fill and official Up settlement.  It verifies J's fee-threshold
 rejection and K's EWMA/probability/edge/intent quantity/fill/fee/position/PnL
 path within explicit tolerances.  This is a representative contract, not
 exhaustive parity over every book, timing, no-fill and lifecycle branch.
+
+`paper:cohort-report` is an offline-only aggregation layer over completed
+single-run report directories.  It rechecks each artifact hash, accepts only
+`HASH_CHAINED` `DESCRIPTIVE_PAPER_ONLY` reports, rejects duplicate run IDs and
+overlapping target windows, and publishes a no-overwrite cohort hash.  It
+aggregates per-strategy market/trade/PnL and per-run sign counts but permanently
+retains `profitabilityClaimEligible=false`; it neither changes parameters nor
+creates fill, alpha, shadow, or live evidence.

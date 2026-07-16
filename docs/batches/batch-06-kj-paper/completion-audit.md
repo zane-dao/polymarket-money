@@ -39,7 +39,7 @@ project goal is not complete.
 | Official resolution only | Proven | Exact Gamma response is journaled and revalidated; market/token/time, closed/status, and unique exact 1/0 winner must agree | Ambiguous or delayed results remain pending and are never inferred from last price |
 | Durable restart and tamper detection | Proven for paper inputs | fsync append, sequence/hash chain, checkpoint, replay, plan binding, tamper/truncation/symlink tests | This is not future exchange open-order reconciliation |
 | Delayed resolution recovery closes the product workflow | Proven offline end to end | `paper:settle -> paper:finalize -> paper:report`; test covers initial pending, recovered acceptance, final-result selection, and no-overwrite | A post-plan-binding delayed-resolution public case has not occurred yet |
-| Logs and research exports | Proven | Runtime NDJSON/metrics, journal, result JSON, `paper:inspect`, `paper:report` summary and per-market CSV | No graphical dashboard is claimed by this CLI MVP |
+| Logs and research exports | Proven | Runtime NDJSON/metrics, journal, result JSON, `paper:inspect`, `paper:report` summary/per-market CSV, and `paper:cohort-report` independent-run aggregate | No graphical dashboard is claimed by this CLI MVP; cohort results remain descriptive |
 | Target selection cannot be silently changed during reporting | Proven in current code and one public run | `RUN_PLAN` is the first post-header journal record and binds run ID, target count/window, and collector commit; report compares it to artifacts; the 2026-07-16 run replayed 479 records with a matching plan and journal tail | The earlier accepted public run is explicitly `LEGACY_UNBOUND` |
 | No credentials or real orders | Proven structurally and at runtime | No `ExecutionEngine` implementation exists; runtime safety counters are all false/zero and acceptance verifies them | The domain keeps a future `ExecutionEngine` interface, which is not an executable adapter |
 | Strategy profitability | Not proven | Final Test: J is only slightly positive in base and negative under stress/concentration removal; K is negative in base and stress | No tuning on Final Test; no shadow/live promotion |
@@ -65,7 +65,7 @@ Node/TypeScript: 120 passed
 Ruff: passed
 TypeScript typecheck: passed
 git diff --check: passed
-CLI help: paper:mvp, paper:settle, paper:finalize, paper:report passed
+CLI help: paper:mvp, paper:settle, paper:finalize, paper:report, paper:cohort-report passed
 ```
 
 Accepted public artifact (pre-plan-binding code):
@@ -94,7 +94,9 @@ Accepted public artifact (plan-bound multi-market code):
 The first plan-bound three-market gate has passed.  Subsequent bounded runs
 should accumulate an independently precommitted multi-market sample and record
 connection stability, official-resolution delay, fills/no-fills and PnL
-distribution without parameter changes.  Every run must still meet all of the
+distribution without parameter changes.  `paper:cohort-report` can aggregate
+only the resulting hash-chained reports; it rejects duplicate/overlapping runs
+and never makes a profitability claim.  Every run must still meet all of the
 following, not merely process exit zero:
 
 1. `resultKind=INITIAL`, `accepted=true`, and `planBinding=HASH_CHAINED`;

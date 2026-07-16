@@ -168,6 +168,21 @@ from runs created before journal plan binding are explicitly labeled
 fill evidence.  When `final-result.json` exists, `paper:report` validates and
 uses it in preference to the original timed-out result.
 
+To aggregate only independently precommitted, replay-verified reports without
+turning a short sample into a profitability claim:
+
+```bash
+npm run paper:cohort-report -- \
+  --input /absolute/path/to/report-one \
+  --input /absolute/path/to/report-two \
+  --output /absolute/path/to/new-cohort-directory
+```
+
+The cohort command rechecks every input artifact hash, accepts only
+`HASH_CHAINED` descriptive reports, rejects duplicate run IDs and overlapping
+target windows, and writes a no-overwrite hashed summary outside Git.  Its
+`profitabilityClaimEligible` field remains `false` regardless of aggregate PnL.
+
 `data/golden/batch-06/kj-ewma-intent-parity-v1.json` feeds the same five-second
 price path, book, fee, delayed fill, and official settlement to Python and
 TypeScript.  It verifies a representative J no-trade and K

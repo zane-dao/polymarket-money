@@ -82,7 +82,7 @@ preflight() {
       exit 3
       ;;
   esac
-  free_bytes="$(df -PB1 --output=avail "$DATA_ROOT" | tail -n 1 | tr -d ' ')"
+  free_bytes="$(df -B1 --output=avail "$DATA_ROOT" | tail -n 1 | tr -d ' ')"
   [[ "$free_bytes" =~ ^[0-9]+$ ]] && (( free_bytes >= MIN_FREE_BYTES )) || {
     printf 'Free disk is below the frozen 10 GiB gate: %s bytes.\n' "$free_bytes" >&2
     exit 3

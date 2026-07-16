@@ -6,6 +6,9 @@ import {
   EpisodeTracker,
   LeadLagEngine,
   createLeadLagConfig,
+  externalConnectionId,
+  polymarketConnectionId,
+  type ExternalConnectionId,
   type ExternalPriceState,
   type LeadLagStamp,
   type PolymarketBookState,
@@ -29,7 +32,7 @@ const external = (
   source: "BINANCE_SPOT",
   price,
   receive_stamp: stamp(ns, ordinal),
-  external_connection_id: connection,
+  external_connection_id: externalConnectionId(connection),
   parent_input_reference: `raw-event-v2:${externalEventId}`,
   quality: { stale: false, disconnected: false, quarantined: false },
 });
@@ -46,7 +49,7 @@ const book = (
   ask: mid,
   mid_price: mid,
   receive_stamp: stamp(ns, ordinal),
-  polymarket_connection_id: connection,
+  polymarket_connection_id: polymarketConnectionId(connection),
   parent_input_reference: `raw-event-v2:poly-${ordinal}`,
   quality: {
     snapshot: true,
@@ -126,6 +129,15 @@ test("external reconnect cannot reuse an old baseline", () => {
   });
   assert.equal(batch.triggers.length, 0);
   assert.ok(batch.rejections.some((item) => item.reason === "BASELINE_CONNECTION_MISMATCH"));
+});
+
+test("external and Polymarket connection ID types cannot be interchanged", () => {
+  const externalId: ExternalConnectionId = externalConnectionId("external-1");
+  const polymarketId = polymarketConnectionId("poly-1");
+  assert.notEqual(externalId, polymarketId);
+  // @ts-expect-error The two source-specific connection identities are intentionally branded.
+  const invalid: ExternalConnectionId = polymarketId;
+  assert.equal(invalid, "poly-1");
 });
 
 test("fixed horizon uses only point-in-time state; later update is a separate metric", () => {
@@ -226,15 +238,15 @@ test("episode v1 extends only within frozen gap and grouping dimensions", () => 
     direction: "UP" as const,
     market_id: "market-1",
     clock_domain: domain,
-    external_connection_id: "external-1",
-    polymarket_connection_id: "poly-1",
+    external_connection_id: externalConnectionId("external-1"),
+    polymarket_connection_id: polymarketConnectionId("poly-1"),
   };
   const first = tracker.assign({ ...identity, external_event_id: "a", receive_stamp: stamp(0, 1) });
   const overlapping = tracker.assign({ ...identity, external_event_id: "a", receive_stamp: stamp(0, 1) });
   const extended = tracker.assign({ ...identity, external_event_id: "b", receive_stamp: stamp(400_000_000, 2) });
   const gap = tracker.assign({ ...identity, external_event_id: "c", receive_stamp: stamp(901_000_000, 3) });
   const reverse = tracker.assign({ ...identity, direction: "DOWN", external_event_id: "d", receive_stamp: stamp(902_000_000, 4) });
-  const reconnect = tracker.assign({ ...identity, external_connection_id: "external-2", external_event_id: "e", receive_stamp: stamp(903_000_000, 5) });
+  const reconnect = tracker.assign({ ...identity, external_connection_id: externalConnectionId("external-2"), external_event_id: "e", receive_stamp: stamp(903_000_000, 5) });
   assert.equal(first, overlapping);
   assert.equal(first, extended);
   assert.notEqual(first, gap);
@@ -243,4 +255,10 @@ test("episode v1 extends only within frozen gap and grouping dimensions", () => 
   const summary = tracker.summaries().find((item) => item.trigger_episode_id === first);
   assert.equal(summary?.trigger_count, 3);
   assert.equal(summary?.duration_ms, 400);
+
+  const resetTracker = new EpisodeTracker();
+  const beforeReset = resetTracker.assign({ ...identity, external_event_id: "f", receive_stamp: stamp(1_000_000_000, 6) });
+  resetTracker.assign({ ...identity, external_connection_id: externalConnectionId("external-2"), external_event_id: "g", receive_stamp: stamp(1_100_000_000, 7) });
+  const afterReturning = resetTracker.assign({ ...identity, external_event_id: "h", receive_stamp: stamp(1_200_000_000, 8) });
+  assert.notEqual(beforeReset, afterReturning);
 });

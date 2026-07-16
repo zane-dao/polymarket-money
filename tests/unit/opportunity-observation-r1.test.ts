@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  canonicalOpportunityFacts,
   canonicalOpportunityObservationJson,
   createOpportunityObservationV1,
   createRouteEvaluationV1,
@@ -161,4 +162,16 @@ test("RouteEvaluationV1 is a separate aggregate and remains DATA_INSUFFICIENT", 
   assert.equal(evaluation.unique_episode_count, 1);
   assert.equal(evaluation.unique_market_count, 1);
   assert.equal(Object.isFrozen(evaluation.observation_hashes), true);
+});
+
+test("runtime facts convert non-integer durations to canonical decimal strings", () => {
+  assert.deepEqual(canonicalOpportunityFacts({
+    state_age_ms: 10.000001,
+    integer_count: 2,
+    nested: { next_update_delay_ms: 0.000001 },
+  }), {
+    integer_count: 2,
+    nested: { next_update_delay_ms: "0.000001" },
+    state_age_ms: "10.000001",
+  });
 });

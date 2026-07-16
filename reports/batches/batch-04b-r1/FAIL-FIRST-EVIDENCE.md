@@ -176,3 +176,8 @@ Polymarket lineage and horizon-state lineage are distinct named fields. A succes
 must name the 640ms state input rather than only the 590ms trigger snapshot; a censor caused by a
 rejected frame must name that rejected raw input. This prevents one ambiguous `polymarket_parent`
 field from conflating two causal instants.
+
+The live-artifact test also freezes serialization of fractional millisecond durations: safe integer
+counts remain JSON numbers, while non-integer durations become canonical non-exponent decimal
+strings before entering `facts`. Without this boundary a real sub-millisecond horizon age would
+throw during observation hashing.

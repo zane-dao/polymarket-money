@@ -46,6 +46,10 @@ test("legacy observers delegate exact money and fee calculations", async () => {
   assert.match(opportunities, /FeeEdgeCalculator/u);
   assert.match(opportunities, /Money/u);
   assert.doesNotMatch(opportunities, /\bNumber\(/u);
+  assert.doesNotMatch(paper, /function\s+completeSetGrossEdge/u);
+  assert.doesNotMatch(opportunities, /grossEdge:\s*result\?\./u);
+  assert.match(paper, /evidence_status:\s*feeRate === null \? "MISSING"/u);
+  assert.match(opportunities, /evidence_status:\s*feeRate === null \? "MISSING"/u);
 });
 
 test("active capture and runtime paths contain no empty catch disposition", async () => {

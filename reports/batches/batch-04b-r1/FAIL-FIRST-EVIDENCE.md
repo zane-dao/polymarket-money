@@ -202,3 +202,10 @@ The same review found the offline data-quality report still labeled provider-clo
 deltas as `receive_latency`. The v2 fail-first test requires explicit
 `provider_source_to_local_wall_delta_ms` / `provider_server_to_local_wall_delta_ms` fields and
 forbids the two legacy latency names; provider clocks cannot prove transport latency.
+
+## Second Sol Critical follow-up D — single complete-set calculator path
+
+The reviewer found that unknown-fee branches in `paper.ts` and `opportunities.ts` bypassed
+`FeeEdgeCalculator` and hand-wrote gross edge. The fail-first guards forbid the helper/fallback,
+require `MISSING` evidence in both modules, and use visible size 2 to prove the legacy opportunity
+gross amount is `0.08` rather than the unscaled per-unit `0.04`.

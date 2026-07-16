@@ -19,7 +19,11 @@ test("complete-set record uses common visible size and never claims atomic risk-
 });
 
 test("unknown fees and stale books fail closed", () => {
-  assert.equal(observeCompleteSet(book, null).executableVisibleSize, "0");
+  const unknownFee = observeCompleteSet({ ...book, downAskSize: "2" }, null);
+  assert.equal(unknownFee.executableVisibleSize, "0");
+  assert.equal(unknownFee.grossEdge, "0.08");
+  assert.equal(unknownFee.scenarioNetEdge, null);
+  assert.equal(unknownFee.rejectionReason, "UNKNOWN_FEE");
   assert.equal(observeCompleteSet({ ...book, stale: true }, "0").rejectionReason, "STALE_OR_DISCONNECTED_BOOK");
 });
 

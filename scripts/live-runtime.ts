@@ -741,7 +741,7 @@ async function dashboardLoop(config: RuntimeOptions, end: number, started: numbe
     const audits = paperSnapshot === null ? [] : opportunityAudits(paperSnapshot, state, Date.now());
     trackOpportunities(audits, state, Date.now());
     if (config.mode === "paper") state.paperAudits.push(...audits);
-    const storage = config.outputPath === null ? null : await statfs(config.outputPath);
+    const storage = await statfs(config.outputPath ?? "/root/polymarket-money-data").catch(() => null);
     const elapsedHours = Math.max((Date.now() - started) / 3_600_000, 1 / 3_600_000);
     const publicPayloadBytes = STREAMS.reduce((sum, name) => sum + stats[name].payloadBytes, 0);
     const projectedBytesPerHour = config.record.mode === "raw"

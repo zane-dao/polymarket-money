@@ -16,6 +16,10 @@ const fixture = JSON.parse(await readFile(
 )) as {
   schedule: FeeScheduleEvidence;
   fee_cases: Array<{ name: string; role: "TAKER" | "MAKER"; price: string; quantity: string; fee_rate?: string; amount: string | null; reason: string | null }>;
+  contract_cases: {
+    missing_evidence: { price: string; quantity: string; amount: null; reason: "MISSING_FEE_EVIDENCE" };
+    invalid_price_above_one: { price: string; quantity: string };
+  };
   complete_set: {
     up_ask: string;
     down_ask: string;
@@ -107,4 +111,33 @@ test("complete-set charges each leg through the same calculator", () => {
   assert.equal(result.downFee.amount, fixture.complete_set.down_fee);
   assert.equal(result.grossEdgeAmount, fixture.complete_set.gross_edge_amount);
   assert.equal(result.scenarioNetEdgeAmount, fixture.complete_set.scenario_net_edge_amount);
+});
+
+test("missing evidence and price bounds match the cross-language contract fixture", () => {
+  const calculator = new FeeEdgeCalculator();
+  const missing = calculator.quoteFee({
+    marketId: fixture.schedule.market_id,
+    conditionId: fixture.schedule.condition_id,
+    executableTime: "2026-07-16T12:00:00.000Z",
+    liquidityRole: "TAKER",
+    price: fixture.contract_cases.missing_evidence.price,
+    quantity: fixture.contract_cases.missing_evidence.quantity,
+    evidence: {
+      ...fixture.schedule,
+      fee_rate: "0",
+      evidence_reference: "missing-fee-evidence",
+      evidence_status: "MISSING",
+    },
+  });
+  assert.equal(missing.amount, fixture.contract_cases.missing_evidence.amount);
+  assert.equal(missing.reasonCode, fixture.contract_cases.missing_evidence.reason);
+  assert.throws(() => calculator.quoteFee({
+    marketId: fixture.schedule.market_id,
+    conditionId: fixture.schedule.condition_id,
+    executableTime: "2026-07-16T12:00:00.000Z",
+    liquidityRole: "TAKER",
+    price: fixture.contract_cases.invalid_price_above_one.price,
+    quantity: fixture.contract_cases.invalid_price_above_one.quantity,
+    evidence: fixture.schedule,
+  }), /price must be between 0 and 1/i);
 });

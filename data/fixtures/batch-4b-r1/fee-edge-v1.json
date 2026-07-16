@@ -18,6 +18,10 @@
     { "name": "exact-tie", "role": "TAKER", "price": "0.5", "quantity": "0.001", "fee_rate": "0.02", "amount": null, "reason": "ROUNDING_TIE_UNVERIFIED" },
     { "name": "maker-zero", "role": "MAKER", "price": "0.5", "quantity": "100", "amount": "0", "reason": null }
   ],
+  "contract_cases": {
+    "missing_evidence": {"price": "0.5", "quantity": "1", "amount": null, "reason": "MISSING_FEE_EVIDENCE"},
+    "invalid_price_above_one": {"price": "1.00001", "quantity": "1"}
+  },
   "complete_set": {
     "up_ask": "0.47",
     "down_ask": "0.49",

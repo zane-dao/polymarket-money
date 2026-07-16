@@ -154,3 +154,19 @@ tests/unit/lead-lag-r1.test.ts: Property 'notePolymarketQualityFailure' does not
 tests/unit/opportunity-config-r1.test.ts: Cannot find module '../../execution/src/runtime/opportunity-config.js'
 tests/unit/runtime-paper.test.ts: Property 'grossEdge' does not exist on type 'PaperAudit'
 ```
+
+## Second Sol Critical follow-up B — offline raw-v2 and fee parity
+
+The offline Python truth chain still imported only `RawEventEnvelopeV1`, so a collector-produced
+raw-event-v2 segment could not pass manifest verification, replay, or normalization. A new
+cross-language fixture boundary also freezes missing-fee and price-above-one behavior.
+
+Observed fail-first Python collection failure:
+
+```text
+ImportError: cannot import name 'RawEventEnvelopeV2' from 'research.polymarket_money.raw_events'
+```
+
+Once collection reaches the fee test, the prior Python behavior also conflicts with the fixture:
+it returns `Decimal("0")` / `UNKNOWN_FEE` for missing evidence and accepts a price above one,
+whereas the frozen shared result is `None` / `MISSING_FEE_EVIDENCE` and fail-closed price bounds.

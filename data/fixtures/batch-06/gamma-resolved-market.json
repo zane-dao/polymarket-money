@@ -1,0 +1,23 @@
+{
+  "id": "golden-market-1",
+  "conditionId": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "slug": "btc-updown-5m-1784246400",
+  "question": "Bitcoin Up or Down - frozen resolution fixture",
+  "description": "This market will resolve to \"Up\" if the Bitcoin price at the end is greater than or equal to the price at the beginning. Otherwise, it will resolve to \"Down\".",
+  "resolutionSource": "https://data.chain.link/streams/btc-usd",
+  "eventStartTime": "2026-07-17T00:00:00Z",
+  "endDate": "2026-07-17T00:05:00Z",
+  "outcomes": "[\"Up\", \"Down\"]",
+  "outcomePrices": "[\"1\", \"0\"]",
+  "clobTokenIds": "[\"111\", \"222\"]",
+  "enableOrderBook": true,
+  "active": true,
+  "closed": true,
+  "acceptingOrders": false,
+  "umaResolutionStatus": "resolved",
+  "umaEndDate": "2026-07-17T00:05:52Z",
+  "automaticallyResolved": true,
+  "fixtureUnknownField": {
+    "mustRemainHarmless": true
+  }
+}

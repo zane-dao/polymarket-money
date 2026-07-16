@@ -15,6 +15,10 @@ import { fileURLToPath } from "node:url";
 
 import type { PublicBtcFiveMinuteMarket } from "../adapters/market-data/public-sources.js";
 import {
+  createKJOfficialSettlementFromGamma,
+  type GammaResolutionInput,
+} from "../adapters/settlement/gamma-resolution.js";
+import {
   DEFAULT_KJ_PAPER_ENGINE_CONFIG,
   KJ_PAPER_ENGINE_VERSION,
   KJPaperEngine,
@@ -30,10 +34,10 @@ import {
   type KJStrategyContextV1,
 } from "../strategy/kj-context.js";
 
-export const KJ_PAPER_JOURNAL_VERSION = "kj-paper-input-journal-v1" as const;
-const KJ_PAPER_CHECKPOINT_VERSION = "kj-paper-input-checkpoint-v1" as const;
+export const KJ_PAPER_JOURNAL_VERSION = "kj-paper-input-journal-v2" as const;
+const KJ_PAPER_CHECKPOINT_VERSION = "kj-paper-input-checkpoint-v2" as const;
 
-type JournalPayloadType = "HEADER" | "CONTEXT" | "OFFICIAL_SETTLEMENT";
+type JournalPayloadType = "HEADER" | "CONTEXT" | "GAMMA_RESOLUTION";
 
 interface JournalRecord {
   readonly schemaVersion: typeof KJ_PAPER_JOURNAL_VERSION;
@@ -355,32 +359,6 @@ function validateContext(value: unknown): KJStrategyContextV1 {
   }
 }
 
-function validateSettlement(value: unknown): KJOfficialSettlement {
-  const record = object(value, "K/J settlement");
-  exactKeys(record, [
-    "settlementId",
-    "marketId",
-    "winner",
-    "settlementTime",
-    "evidenceStatus",
-    "evidenceReference",
-  ], "K/J settlement");
-  if (record.winner !== "UP" && record.winner !== "DOWN") {
-    throw new Error("K/J settlement winner must be UP or DOWN");
-  }
-  if (record.evidenceStatus !== "OFFICIAL_RESOLUTION") {
-    throw new Error("K/J settlement evidence must be official");
-  }
-  return Object.freeze({
-    settlementId: nonEmpty(record.settlementId, "settlementId"),
-    marketId: nonEmpty(record.marketId, "marketId"),
-    winner: record.winner,
-    settlementTime: utc(record.settlementTime, "settlementTime"),
-    evidenceStatus: "OFFICIAL_RESOLUTION",
-    evidenceReference: nonEmpty(record.evidenceReference, "evidenceReference"),
-  });
-}
-
 function headerPayload(): Readonly<Record<string, unknown>> {
   const config = { ...DEFAULT_KJ_PAPER_ENGINE_CONFIG };
   return Object.freeze({
@@ -413,7 +391,7 @@ function parseRecord(line: string, ordinal: number, previous: string | null): Jo
   if (record.previousRecordHash !== previous) throw new Error("K/J journal hash chain is broken");
   if (record.payloadType !== "HEADER"
     && record.payloadType !== "CONTEXT"
-    && record.payloadType !== "OFFICIAL_SETTLEMENT") {
+    && record.payloadType !== "GAMMA_RESOLUTION") {
     throw new Error("K/J journal payload type is unsupported");
   }
   if (typeof record.recordHash !== "string" || !HASH.test(record.recordHash)) {
@@ -437,6 +415,7 @@ export class KJPaperJournal {
   readonly #contextIdentities = new Map<string, string>();
   readonly #signalIdentities = new Map<string, string>();
   readonly #marketIdentities = new Map<string, string>();
+  readonly #markets = new Map<string, PublicBtcFiveMinuteMarket>();
   readonly #marketEnds = new Map<string, number>();
   readonly #watermarks = new Map<string, readonly [bigint, bigint]>();
   readonly #settlementIds = new Map<string, string>();
@@ -499,12 +478,18 @@ export class KJPaperJournal {
   get recoveredInputCount(): number { return this.#recoveredInputCount; }
   get lastRecordHash(): string | null { return this.#lastHash; }
 
+  unsettledMarkets(): readonly PublicBtcFiveMinuteMarket[] {
+    return Object.freeze([...this.#markets.values()]
+      .filter((market) => this.engine.state(market.marketId) !== "DONE")
+      .sort((left, right) => left.intervalStart.localeCompare(right.intervalStart)));
+  }
+
   appendContext(context: KJStrategyContextV1): Promise<KJPaperJournalAppendReceipt> {
     return this.#serialize(() => this.#appendContext(context));
   }
 
-  appendSettlement(settlement: KJOfficialSettlement): Promise<KJPaperJournalAppendReceipt> {
-    return this.#serialize(() => this.#appendSettlement(settlement));
+  appendGammaResolution(input: GammaResolutionInput): Promise<KJPaperJournalAppendReceipt> {
+    return this.#serialize(() => this.#appendGammaResolution(input));
   }
 
   close(): Promise<void> {
@@ -541,8 +526,25 @@ export class KJPaperJournal {
         if (!this.engine.ingest(context)) throw new Error("K/J journal contains a duplicate context record");
         this.#rememberContext(context);
         this.#recoveredInputCount += 1;
-      } else if (record.payloadType === "OFFICIAL_SETTLEMENT") {
-        const settlement = validateSettlement(record.payload);
+      } else if (record.payloadType === "GAMMA_RESOLUTION") {
+        const evidence = object(record.payload, "K/J Gamma resolution record");
+        exactKeys(evidence, [
+          "marketId",
+          "responseStatus",
+          "rawPayload",
+          "receiveTime",
+        ], "K/J Gamma resolution record");
+        const expectedMarket = this.#markets.get(nonEmpty(evidence.marketId, "marketId"));
+        if (expectedMarket === undefined) throw new Error("K/J Gamma resolution market is unknown");
+        if (!Number.isSafeInteger(evidence.responseStatus)) {
+          throw new Error("K/J Gamma resolution responseStatus must be a safe integer");
+        }
+        const settlement = createKJOfficialSettlementFromGamma({
+          expectedMarket,
+          responseStatus: evidence.responseStatus as number,
+          rawPayload: nonEmpty(evidence.rawPayload, "rawPayload"),
+          receiveTime: utc(evidence.receiveTime, "receiveTime"),
+        });
         this.#rememberSettlement(settlement);
         if (!this.engine.settle(settlement)) throw new Error("K/J journal contains a duplicate settlement record");
         this.#recoveredInputCount += 1;
@@ -577,9 +579,27 @@ export class KJPaperJournal {
     }
   }
 
-  async #appendSettlement(value: KJOfficialSettlement): Promise<KJPaperJournalAppendReceipt> {
+  async #appendGammaResolution(input: GammaResolutionInput): Promise<KJPaperJournalAppendReceipt> {
     this.#requireOpen();
-    const settlement = validateSettlement(value);
+    const expectedMarket = this.#markets.get(input.expectedMarket.marketId);
+    if (expectedMarket === undefined) throw new Error("K/J journal settlement market is unknown");
+    for (const field of [
+      "marketId",
+      "conditionId",
+      "slug",
+      "upTokenId",
+      "downTokenId",
+    ] as const) {
+      if (expectedMarket[field] !== input.expectedMarket[field]) {
+        throw new Error(`K/J journal settlement expected market conflicts on ${field}`);
+      }
+    }
+    for (const field of ["intervalStart", "intervalEnd"] as const) {
+      if (Date.parse(expectedMarket[field]) !== Date.parse(input.expectedMarket[field])) {
+        throw new Error(`K/J journal settlement expected market conflicts on ${field}`);
+      }
+    }
+    const settlement = createKJOfficialSettlementFromGamma({ ...input, expectedMarket });
     const fingerprint = sha256(stableJson(settlement));
     const priorId = this.#settlementIds.get(settlement.settlementId);
     if (priorId !== undefined) {
@@ -594,7 +614,12 @@ export class KJPaperJournal {
     if (Date.parse(settlement.settlementTime) < marketEnd) {
       throw new Error("K/J journal settlement precedes market end");
     }
-    const receipt = await this.#appendRaw("OFFICIAL_SETTLEMENT", settlement);
+    const receipt = await this.#appendRaw("GAMMA_RESOLUTION", Object.freeze({
+      marketId: input.expectedMarket.marketId,
+      responseStatus: input.responseStatus,
+      rawPayload: input.rawPayload,
+      receiveTime: input.receiveTime,
+    }));
     try {
       if (!this.engine.settle(settlement)) throw new Error("new journal settlement was not applied");
       this.#settlementIds.set(settlement.settlementId, fingerprint);
@@ -696,6 +721,21 @@ export class KJPaperJournal {
     if (!this.#marketIdentities.has(context.market.marketId)) {
       this.#marketIdentities.set(context.market.marketId, sha256(stableJson(context.market)));
       this.#marketEnds.set(context.market.marketId, Date.parse(context.market.intervalEnd));
+      this.#markets.set(context.market.marketId, Object.freeze({
+        marketId: context.market.marketId,
+        conditionId: context.market.conditionId,
+        slug: context.market.slug,
+        intervalStart: context.market.intervalStart,
+        intervalEnd: context.market.intervalEnd,
+        upTokenId: context.market.upTokenId,
+        downTokenId: context.market.downTokenId,
+        active: true,
+        closed: false,
+        acceptingOrders: true,
+        collectible: true,
+        takerFeeRate: context.feeEvidence.rate,
+        rawPayload: "{}",
+      }));
     }
     const watermark = context.inputWatermark;
     this.#watermarks.set(watermark.clockDomain, [

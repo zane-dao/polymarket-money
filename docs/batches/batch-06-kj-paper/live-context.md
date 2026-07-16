@@ -41,13 +41,18 @@ wallets.  The versioned engine currently models:
   settlement ID, and second settlement-per-market content.
 
 Before engine mutation, accepted contexts are fsynced to
-`kj-paper-input-journal-v1`.  The journal validates exact reconstructed context,
-engine version/config, identity conflicts and per-clock order; each record is
-SHA-256 chained.  An atomic side checkpoint detects valid-line tail truncation
-while allowing a crash after journal fsync but before checkpoint publication to
-self-heal.  Restart strictly replays the journal into the same engine state.
-Symlink paths, Git-local storage, DrvFS, modified records, incomplete lines,
-missing anchors, reversed watermarks and conflicting identities fail closed.
+`kj-paper-input-journal-v2`.  After interval end, the runtime polls the public
+Gamma market endpoint; a matching closed market with
+`umaResolutionStatus=resolved` and exactly one 1-valued outcome is converted to
+official evidence only after the exact raw response is fsynced.  Replay
+revalidates that response instead of trusting a stored winner.  The journal
+validates exact reconstructed context, engine version/config, identity
+conflicts and per-clock order; each record is SHA-256 chained.  An atomic side
+checkpoint detects valid-line tail truncation while allowing a crash after
+journal fsync but before checkpoint publication to self-heal.  Restart strictly
+replays the journal into the same engine state.  Symlink paths, Git-local
+storage, DrvFS, modified records, incomplete lines, missing anchors, reversed
+watermarks and conflicting identities fail closed.
 
 Snapshots expose `kjPaperEngineVersion`, incremental `kjPaperEvents`, a full
 `kjPaperState` (wallets, reservations, positions, market ledgers and pending
@@ -55,17 +60,18 @@ intents), journal count/hash, and the current market state.  Events bind determi
 IDs to decision or execution context hashes, receive ordinals, intent data,
 fees, position-after-fill, and official settlement evidence.
 
-## Fail-closed limitations
+## Product boundary and fail-closed limitations
 
-This is not yet an unattended continuous paper service:
+`npm run paper:mvp -- --markets 1` is the bounded unattended product entry.  It
+waits for the next complete interval, records a committed code ID, runs both
+wallets, includes a finite resolution grace period, and emits `result.json`
+only after replay-based inspection.  It accepts at most 12 markets per run.
 
-1. `scripts/live-runtime.ts` does not currently obtain or pass a trusted
-   official resolution.  At interval end the engine cancels pending risk and
-   remains `STOPPING`; only an explicit `OFFICIAL_RESOLUTION` can settle wallets
-   and enter `DONE`.
-2. Journal replay restores accepted inputs and deterministic paper state, but it
+1. Journal replay restores accepted inputs and deterministic paper state, but it
    is not an exchange reconciliation mechanism and has no private account or
    order evidence by design.
+2. A delayed, ambiguous, 50/50, identity-conflicting, or otherwise unsupported
+   Gamma result is not guessed; the run remains unaccepted or terminates safely.
 3. TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
    approximation.  `data/golden/batch-06/kj-probability-v1.json` bounds it to
    `0.0000002` absolute error against Python `erf` for representative and

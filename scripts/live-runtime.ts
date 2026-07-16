@@ -13,6 +13,10 @@ import {
   parseRtdsPriceMessage,
 } from "../execution/src/adapters/market-data/parsers.js";
 import {
+  createKJOfficialSettlementFromGamma,
+  GammaResolutionPending,
+} from "../execution/src/adapters/settlement/gamma-resolution.js";
+import {
   capturePublicSocket,
   clobMarketSubscription,
   fetchPublicMarketBySlug,
@@ -94,6 +98,7 @@ interface RuntimeOptions {
   readonly outputPath: string | null;
   readonly summaryPath: string | null;
   readonly kjPaperJournalPath: string | null;
+  readonly kjSettlementGraceMilliseconds: number;
   readonly json: boolean;
   readonly collectorGitCommit: string;
   readonly preregistration: R2Preregistration | null;
@@ -287,6 +292,16 @@ async function options(): Promise<RuntimeOptions> {
   if (kjPaperJournalPath !== null && preregistration !== null) {
     throw new Error("frozen R2 sessions cannot enable the K/J paper journal");
   }
+  const settlementGraceValue = argument("--settlement-grace-seconds");
+  if (settlementGraceValue !== undefined && kjPaperJournalPath === null) {
+    throw new Error("--settlement-grace-seconds requires --kj-paper-journal");
+  }
+  const settlementGraceSeconds = kjPaperJournalPath === null
+    ? 0
+    : positiveInteger(settlementGraceValue ?? "90", "settlement-grace-seconds");
+  if (settlementGraceSeconds > 300) {
+    throw new Error("settlement-grace-seconds must not exceed 300");
+  }
   return {
     mode,
     durationMilliseconds: durationSeconds * 1_000,
@@ -294,6 +309,7 @@ async function options(): Promise<RuntimeOptions> {
     outputPath,
     summaryPath: argument("--summary") === undefined ? null : resolve(argument("--summary")!),
     kjPaperJournalPath,
+    kjSettlementGraceMilliseconds: settlementGraceSeconds * 1_000,
     json: process.argv.includes("--json"),
     collectorGitCommit: commit,
     preregistration,
@@ -557,6 +573,9 @@ class RuntimeState {
   readonly kjPaperJournal: KJPaperJournal | null;
   readonly kjPaperEngine: KJPaperEngine | null;
   kjPaperEventCursor: number;
+  readonly kjSettlementCandidates = new Map<string, PublicBtcFiveMinuteMarket>();
+  readonly kjSettlementAttempts = new Map<string, number>();
+  kjSettledMarketCount = 0;
   readonly opportunityConfig: OpportunityRuntimeConfig;
   completeSetCandidateSince: number | null = null;
 
@@ -572,6 +591,9 @@ class RuntimeState {
     this.kjPaperJournal = kjPaperJournal;
     this.kjPaperEngine = kjPaperJournal?.engine ?? null;
     this.kjPaperEventCursor = this.kjPaperEngine?.events().length ?? 0;
+    for (const market of kjPaperJournal?.unsettledMarkets() ?? []) {
+      this.kjSettlementCandidates.set(market.marketId, market);
+    }
   }
 }
 
@@ -1135,6 +1157,9 @@ async function marketLoop(
       await new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000));
       continue;
     }
+    if (state.kjPaperJournal !== null) {
+      state.kjSettlementCandidates.set(chosen.marketId, chosen);
+    }
     if (priorMarket !== null && priorMarket.marketId !== chosen.marketId) {
       const retiredMarketId = priorMarket.marketId;
       const timer = setTimeout(() => {
@@ -1172,6 +1197,92 @@ async function marketLoop(
     state.orderBook = null;
     state.latestPolymarketInput = null;
     state.completeSetCandidateSince = null;
+  }
+}
+
+async function settlementLoop(
+  deadline: number,
+  state: RuntimeState,
+  recorder: RuntimeRecorder,
+  stats: StreamStats,
+  failureRuntime: FailClosedRuntime,
+  signal: AbortSignal,
+): Promise<void> {
+  if (state.kjPaperJournal === null || state.kjPaperEngine === null) return;
+  while (Date.now() < deadline
+    && !recorder.stoppedByLimit
+    && !failureRuntime.terminated
+    && !signal.aborted) {
+    const candidates = [...state.kjSettlementCandidates.values()]
+      .filter((market) => Date.now() > Date.parse(market.intervalEnd))
+      .sort((left, right) => left.intervalEnd.localeCompare(right.intervalEnd))
+      .slice(0, 4);
+    for (const market of candidates) {
+      if (state.kjPaperEngine.state(market.marketId) === null) {
+        state.kjSettlementCandidates.delete(market.marketId);
+        continue;
+      }
+      state.kjSettlementAttempts.set(
+        market.marketId,
+        (state.kjSettlementAttempts.get(market.marketId) ?? 0) + 1,
+      );
+      let response;
+      try {
+        response = await fetchPublicMarketBySlug(market.slug, {
+          timeoutMilliseconds: 10_000,
+          maxResponseBytes: 2 * 1024 * 1024,
+        });
+      } catch (error) {
+        stats.reconnects += 1;
+        process.stderr.write(`Gamma settlement fetch deferred for ${market.slug}: ${String(error)}\n`);
+        continue;
+      }
+      observe(stats, response.rawPayload, response.receiveTime, null);
+      let parserStatus: ParserStatus = "parsed";
+      let parserError: string | null = null;
+      let settlementError: unknown = null;
+      try {
+        createKJOfficialSettlementFromGamma({
+          expectedMarket: market,
+          responseStatus: response.status,
+          rawPayload: response.rawPayload,
+          receiveTime: response.receiveTime,
+        });
+      } catch (error) {
+        settlementError = error;
+        if (error instanceof GammaResolutionPending) parserStatus = "unparsed";
+        else {
+          parserStatus = "error";
+          parserError = error instanceof Error ? error.message : String(error);
+          stats.quarantines += 1;
+        }
+      }
+      await recorder.raw("gamma", {
+        eventType: parserStatus === "parsed" ? "market_resolution" : "market_resolution_pending",
+        rawPayload: response.rawPayload,
+        receiveStamp: response.receiveStamp,
+        sourceTime: null,
+        serverTime: null,
+        market,
+        marketSlug: market.slug,
+        parserStatus,
+        parserError,
+        connectionId: `gamma-settlement-${market.marketId}`,
+      });
+      if (settlementError instanceof GammaResolutionPending) continue;
+      if (settlementError !== null) throw settlementError;
+      await state.kjPaperJournal.appendGammaResolution({
+        expectedMarket: market,
+        responseStatus: response.status,
+        rawPayload: response.rawPayload,
+        receiveTime: response.receiveTime,
+      });
+      state.kjSettlementCandidates.delete(market.marketId);
+      state.kjSettledMarketCount += 1;
+    }
+    if (Date.now() < deadline) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000));
+    }
   }
 }
 
@@ -1532,6 +1643,14 @@ async function main(): Promise<void> {
     await Promise.all([
       marketLoop(end, state, recorder, stats, failureRuntime, sessionAbort.signal),
       dashboardLoop(config, end, started, state, recorder, stats, failureRuntime, sessionAbort.signal),
+      settlementLoop(
+        end + config.kjSettlementGraceMilliseconds,
+        state,
+        recorder,
+        stats.gamma,
+        failureRuntime,
+        sessionAbort.signal,
+      ),
       ...external,
     ]);
   } catch (runtimeError) {
@@ -1641,10 +1760,18 @@ async function main(): Promise<void> {
     paperAuditCount: state.paperAudits.length,
     kjPaperEngineVersion: KJ_PAPER_ENGINE_VERSION,
     kjPaperEnabled: state.kjPaperJournal !== null,
+    kjSettlementGraceMilliseconds: config.kjSettlementGraceMilliseconds,
     kjPaperJournalPath: state.kjPaperJournal?.path ?? null,
     kjPaperJournalRecordCount: state.kjPaperJournal?.recordCount ?? null,
     kjPaperJournalRecoveredInputCount: state.kjPaperJournal?.recoveredInputCount ?? null,
     kjPaperJournalLastRecordHash: state.kjPaperJournal?.lastRecordHash ?? null,
+    kjSettledMarketCount: state.kjSettledMarketCount,
+    kjPendingSettlementMarkets: [...state.kjSettlementCandidates.values()].map((market) => ({
+      marketId: market.marketId,
+      slug: market.slug,
+      intervalEnd: market.intervalEnd,
+      attempts: state.kjSettlementAttempts.get(market.marketId) ?? 0,
+    })),
     kjPaperEventCount: state.kjPaperEngine?.events().length ?? 0,
     kjPaperState: state.kjPaperEngine?.snapshot() ?? null,
     kjPaperWallets: state.kjPaperEngine === null ? null : {

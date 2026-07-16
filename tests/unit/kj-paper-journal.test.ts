@@ -8,8 +8,8 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 import type { PublicBtcFiveMinuteMarket } from "../../execution/src/adapters/market-data/public-sources.js";
+import type { GammaResolutionInput } from "../../execution/src/adapters/settlement/gamma-resolution.js";
 import type { ReceiveStamp } from "../../execution/src/domain/receive-time.js";
-import type { KJOfficialSettlement } from "../../execution/src/runtime/kj-paper-engine.js";
 import { KJPaperJournal } from "../../execution/src/storage/kj-paper-journal.js";
 import { createKJStrategyContext, type KJStrategyContextV1 } from "../../execution/src/strategy/kj-context.js";
 
@@ -93,14 +93,30 @@ function inputSeries(): readonly KJStrategyContextV1[] {
   return values;
 }
 
-function settlement(): KJOfficialSettlement {
+function gammaResolution(): GammaResolutionInput {
+  const expected = market(1);
   return {
-    settlementId: "official-market-1",
-    marketId: "market-1",
-    winner: "UP",
-    settlementTime: iso(360),
-    evidenceStatus: "OFFICIAL_RESOLUTION",
-    evidenceReference: "official-fixture:market-1",
+    expectedMarket: expected,
+    responseStatus: 200,
+    receiveTime: iso(360),
+    rawPayload: JSON.stringify({
+      id: expected.marketId,
+      conditionId: expected.conditionId,
+      slug: expected.slug,
+      description: "This market will resolve to \"Up\" if the end price is greater than or equal to the start price. Otherwise, it will resolve to \"Down\".",
+      resolutionSource: "https://data.chain.link/streams/btc-usd",
+      eventStartTime: expected.intervalStart,
+      endDate: expected.intervalEnd,
+      outcomes: '["Up", "Down"]',
+      outcomePrices: '["1", "0"]',
+      clobTokenIds: JSON.stringify([expected.upTokenId, expected.downTokenId]),
+      enableOrderBook: true,
+      active: true,
+      closed: true,
+      acceptingOrders: false,
+      umaResolutionStatus: "resolved",
+      umaEndDate: iso(352),
+    }),
   };
 }
 
@@ -114,7 +130,7 @@ test("K/J journal durably replays contexts, fills, wallets, and official settlem
     const inputs = inputSeries();
     for (const value of inputs) assert.equal((await journal.appendContext(value)).appended, true);
     assert.equal((await journal.appendContext(inputs[0]!)).appended, false);
-    await journal.appendSettlement(settlement());
+    await journal.appendGammaResolution(gammaResolution());
 
     const events = journal.engine.events();
     const state = journal.engine.snapshot();
@@ -136,7 +152,7 @@ test("K/J journal durably replays contexts, fills, wallets, and official settlem
     assert.deepEqual(recovered.engine.wallet("J_FEE_AWARE"), jWallet);
     assert.deepEqual(recovered.engine.wallet("K_DUAL_VOL"), kWallet);
     assert.equal(recovered.engine.state("market-1"), "DONE");
-    assert.equal((await recovered.appendSettlement(settlement())).appended, false);
+    assert.equal((await recovered.appendGammaResolution(gammaResolution())).appended, false);
     await recovered.close();
 
     const inspectionScript = fileURLToPath(new URL(

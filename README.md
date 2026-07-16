@@ -103,14 +103,29 @@ tail checkpoint, and strictly replays contexts, fills, reservations, wallets,
 positions, and settlements after restart.  Inspect it offline with
 `npm run paper:inspect -- /absolute/path/to/kj-inputs.ndjson`.
 
+For a bounded end-to-end product run, use the single-command MVP:
+
+```bash
+npm run paper:mvp -- --markets 1
+```
+
+It waits for the next complete five-minute market, runs K and J with independent
+paper wallets, polls the public Gamma market endpoint for the resolved outcome,
+revalidates and journals the exact response, and writes a final `result.json`
+below `/root/polymarket-money-data/paper-mvp`.  It accepts 1 through 12 markets,
+refuses dirty tracked runtime code, never overwrites a run, and marks the run
+accepted only after every target market is settled with no pending intents,
+terminal failure, credential access, live client, user channel, or real order.
+
 `data/golden/batch-06/kj-ewma-intent-parity-v1.json` feeds the same five-second
 price path, book, fee, delayed fill, and official settlement to Python and
 TypeScript.  It verifies a representative J no-trade and K
 intent-to-settlement path within explicit numeric tolerances.
 
-The real-time engine is still intentionally not an unattended closed loop:
-`scripts/live-runtime.ts` does not currently supply official resolution events.
-An ended market therefore remains `STOPPING` until separately verified
-`OFFICIAL_RESOLUTION` evidence is supplied.  `monitor` mode never mutates K/J
-wallets, and neither mode has an order-submission path.  See
+The real-time paper engine completes its public-data loop without becoming a
+live-trading system.  Only a closed Gamma market with matching market/token/time
+identity, `umaResolutionStatus=resolved`, and a unique exact 1/0 outcome can
+create `OFFICIAL_RESOLUTION`; unresolved, ambiguous, premature, or conflicting
+evidence fails closed.  `monitor` mode never mutates K/J wallets, and neither
+mode has an order-submission path.  See
 `docs/batches/batch-06-kj-paper/live-context.md` for the exact boundary.

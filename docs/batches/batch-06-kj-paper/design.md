@@ -143,23 +143,27 @@ signal-input, intent, and settlement identities are idempotent and conflicting
 reuse fails closed.  A later context can reduce a frozen quantity but cannot
 recompute it from a future price.
 
-Every applied context or official settlement is first fsynced to a strict
+Every applied context or Gamma resolution response is first fsynced to a strict
 append-only NDJSON input journal.  Records carry contiguous sequence numbers and
 a SHA-256 chain; a separately atomically published checkpoint anchors the tail.
 Recovery validates exact fields, context reconstruction, engine version/config,
-market/signal/context identity, per-clock watermarks, the hash chain, and the
-checkpoint before deterministic replay.  A durable journal record ahead of its
-checkpoint is healed; an incomplete line, modified record, missing checkpoint,
-or tail truncation fails closed.  Journals are Linux-native, non-symlinked, and
-outside Git.  `paper:inspect` replays one journal and exports the full wallet,
-position, market-ledger, pending-intent, and event-count snapshot.
+market/signal/context identity, the exact public settlement body, per-clock
+watermarks, the hash chain, and the checkpoint before deterministic replay.
+Only a matching closed Gamma market with `umaResolutionStatus=resolved` and a
+unique exact 1/0 result is converted to official settlement evidence.  A
+durable journal record ahead of its checkpoint is healed; an incomplete line,
+modified record, missing checkpoint, or tail truncation fails closed.  Journals
+are Linux-native, non-symlinked, and outside Git.  `paper:inspect` replays one
+journal and exports the full wallet, position, market-ledger, pending-intent,
+and event-count snapshot.
 
 This real-time path is not claimed byte-equivalent to the Python historical
 runner: TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
-approximation, while Python uses its platform `erf`.  More importantly, the
-runtime does not yet obtain an official resolution.  It therefore stops risk at
-interval end and waits for an explicit `OFFICIAL_RESOLUTION`; it cannot yet
-settle a continuous sequence of markets unattended.  A shared probability
+approximation, while Python uses its platform `erf`.  The runtime polls the
+public Gamma market endpoint after interval end and keeps the exact response as
+replayable settlement evidence.  The bounded `paper:mvp` wrapper aligns capture
+to the next complete interval, adds a finite settlement grace window, and emits
+a machine-readable acceptance result.  A shared probability
 golden bounds the TypeScript approximation to `0.0000002` absolute error against
 Python `erf` at representative and clamped-tail z-scores.  A second shared
 golden feeds both languages the same five-second price path, final book, fee,

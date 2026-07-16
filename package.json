@@ -17,5 +17,8 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "dependencies": {
+    "decimal.js": "10.6.0"
   }
 }

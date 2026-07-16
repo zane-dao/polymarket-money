@@ -51,5 +51,8 @@ def test_python_fee_model_matches_cross_language_fixture() -> None:
             price=Decimal(item["price"]),
             quantity=Decimal(item["quantity"]),
         )
-        assert (None if result.amount is None else format(result.amount, "f").rstrip("0").rstrip(".")) == item["amount"]
+        formatted = None
+        if result.amount is not None:
+            formatted = format(result.amount, "f").rstrip("0").rstrip(".") or "0"
+        assert formatted == item["amount"]
         assert result.reason_code == item["reason"]

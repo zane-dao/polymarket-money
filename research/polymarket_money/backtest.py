@@ -364,6 +364,12 @@ class LiquidityRole(str, Enum):
     NO_FEE = "NO_FEE"
 
 
+class FeeEvidenceStatus(str, Enum):
+    VERIFIED = "VERIFIED"
+    UNVERIFIED = "UNVERIFIED"
+    MISSING = "MISSING"
+
+
 class NoFillReason(str, Enum):
     DATA_NOT_EXECUTION_ELIGIBLE = "DATA_NOT_EXECUTION_ELIGIBLE"
     NO_NEW_BOOK = "NO_NEW_BOOK"
@@ -372,6 +378,7 @@ class NoFillReason(str, Enum):
     MARKET_CLOSED = "MARKET_CLOSED"
     NO_VISIBLE_DEPTH = "NO_VISIBLE_DEPTH"
     INSUFFICIENT_DEPTH = "INSUFFICIENT_DEPTH"
+    FEE_CALCULATION_UNRESOLVED = "FEE_CALCULATION_UNRESOLVED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,10 +390,18 @@ class FeeRate:
     rate: Decimal
     quantum: Decimal
     rounding: str
+    condition_id: str | None = None
+    evidence_reference: str = "legacy-fixture"
+    evidence_status: FeeEvidenceStatus = FeeEvidenceStatus.UNVERIFIED
 
     def __post_init__(self) -> None:
         if self.market_id is not None:
             require_non_empty(self.market_id, "market_id")
+        if self.condition_id is not None:
+            require_non_empty(self.condition_id, "condition_id")
+        require_non_empty(self.evidence_reference, "evidence_reference")
+        if not isinstance(self.evidence_status, FeeEvidenceStatus):
+            raise ValueError("evidence_status must be explicit")
         require_utc(self.effective_from, "effective_from")
         require_utc(self.effective_to, "effective_to")
         if self.effective_to <= self.effective_from:
@@ -409,6 +424,9 @@ class FeeRate:
             "rate": self.rate,
             "quantum": self.quantum,
             "rounding": self.rounding,
+            "condition_id": self.condition_id,
+            "evidence_reference": self.evidence_reference,
+            "evidence_status": self.evidence_status,
         }
 
 
@@ -426,6 +444,7 @@ class FeeSchedule:
             self.rates,
             key=lambda item: (
                 item.market_id or "*",
+                item.condition_id or "*",
                 item.liquidity_role.value,
                 item.effective_from,
                 item.effective_to,
@@ -434,6 +453,7 @@ class FeeSchedule:
         for previous, current in zip(ordered, ordered[1:]):
             if (
                 previous.market_id == current.market_id
+                and previous.condition_id == current.condition_id
                 and previous.liquidity_role is current.liquidity_role
                 and current.effective_from < previous.effective_to
             ):
@@ -449,10 +469,12 @@ class FeeSchedule:
 
 @dataclass(frozen=True, slots=True)
 class FeeCharge:
-    amount: Decimal
+    amount: Decimal | None
     verified: bool
     schedule_version: str
     reason_code: str | None
+    evidence_reference: str | None = None
+    evidence_status: FeeEvidenceStatus = FeeEvidenceStatus.MISSING
 
 
 class FeeModel:
@@ -463,12 +485,15 @@ class FeeModel:
         self,
         *,
         market_id: str,
+        condition_id: str | None = None,
         executable_time: datetime,
         liquidity_role: LiquidityRole,
         price: Decimal,
         quantity: Decimal,
     ) -> FeeCharge:
         require_non_empty(market_id, "market_id")
+        if condition_id is not None:
+            require_non_empty(condition_id, "condition_id")
         require_utc(executable_time, "executable_time")
         require_decimal(price, "price", non_negative=True)
         require_decimal(quantity, "quantity", positive=True)
@@ -476,12 +501,16 @@ class FeeModel:
             rate
             for rate in self.schedule.rates
             if rate.market_id in {None, market_id}
+            and rate.condition_id in {None, condition_id}
             and rate.liquidity_role is liquidity_role
             and rate.effective_from <= executable_time < rate.effective_to
         ]
         exact = [item for item in matches if item.market_id == market_id]
         if exact:
             matches = exact
+        condition_exact = [item for item in matches if item.condition_id == condition_id]
+        if condition_exact:
+            matches = condition_exact
         if len(matches) > 1:
             raise ValueError("multiple fee rates match one fill")
         if not matches:
@@ -490,16 +519,36 @@ class FeeModel:
                 verified=False,
                 schedule_version=self.schedule.version,
                 reason_code="UNKNOWN_FEE",
+                evidence_reference=None,
+                evidence_status=FeeEvidenceStatus.MISSING,
             )
         rate = matches[0]
-        amount = (price * quantity * rate.rate).quantize(
-            rate.quantum, rounding=rate.rounding
+        if liquidity_role in {LiquidityRole.MAKER, LiquidityRole.NO_FEE}:
+            amount: Decimal | None = Decimal("0")
+        else:
+            raw_amount = quantity * rate.rate * price * (Decimal("1") - price)
+            remainder = raw_amount % rate.quantum
+            if remainder == rate.quantum / Decimal("2"):
+                return FeeCharge(
+                    amount=None,
+                    verified=False,
+                    schedule_version=self.schedule.version,
+                    reason_code="ROUNDING_TIE_UNVERIFIED",
+                    evidence_reference=rate.evidence_reference,
+                    evidence_status=rate.evidence_status,
+                )
+            amount = raw_amount.quantize(rate.quantum, rounding=rate.rounding)
+        verified = (
+            self.schedule.historical_verified
+            and rate.evidence_status is FeeEvidenceStatus.VERIFIED
         )
         return FeeCharge(
             amount=amount,
-            verified=self.schedule.historical_verified,
+            verified=verified,
             schedule_version=self.schedule.version,
-            reason_code=None if self.schedule.historical_verified else "UNVERIFIED_FEE_SCHEDULE",
+            reason_code=None if verified else "UNVERIFIED_FEE_SCHEDULE",
+            evidence_reference=rate.evidence_reference,
+            evidence_status=rate.evidence_status,
         )
 
 
@@ -760,11 +809,19 @@ class ExecutionModel:
                 continue
             charge = self.fee_model.charge(
                 market_id=market.market_id,
+                condition_id=market.condition_id,
                 executable_time=executable_time,
                 liquidity_role=role,
                 price=price,
                 quantity=quantity,
             )
+            if charge.amount is None:
+                return self._no_fill(
+                    intent,
+                    NoFillReason.FEE_CALCULATION_UNRESOLVED,
+                    executable_time=executable_time,
+                    book_state=book.state.value,
+                )
             fill_id = _digest(
                 {
                     "engine": BACKTEST_ENGINE_VERSION,

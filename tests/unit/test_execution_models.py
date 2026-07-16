@@ -9,6 +9,7 @@ from research.polymarket_money.backtest import (
     ExecutionConfig,
     ExecutionModel,
     ExecutionScenario,
+    FeeEvidenceStatus,
     FeeModel,
     FeeRate,
     FeeSchedule,
@@ -54,6 +55,12 @@ def fees(*, rate: str = "0.01", verified: bool = True) -> FeeModel:
                     rate=Decimal(rate),
                     quantum=Decimal("0.0001"),
                     rounding=ROUND_HALF_UP,
+                    evidence_reference="fixture-fees-v1",
+                    evidence_status=(
+                        FeeEvidenceStatus.VERIFIED
+                        if verified
+                        else FeeEvidenceStatus.UNVERIFIED
+                    ),
                 ),
                 FeeRate(
                     market_id=MARKET_ID,
@@ -63,6 +70,12 @@ def fees(*, rate: str = "0.01", verified: bool = True) -> FeeModel:
                     rate=Decimal("0"),
                     quantum=Decimal("0.0001"),
                     rounding=ROUND_HALF_UP,
+                    evidence_reference="fixture-fees-v1",
+                    evidence_status=(
+                        FeeEvidenceStatus.VERIFIED
+                        if verified
+                        else FeeEvidenceStatus.UNVERIFIED
+                    ),
                 ),
             ),
         )
@@ -93,7 +106,7 @@ class ExecutionModelsTest(unittest.TestCase):
     def test_taker_touch_charges_explicit_fee(self) -> None:
         outcome = self.execute(ExecutionScenario.TAKER_TOUCH_WITH_FEES)
         self.assertEqual(outcome.filled_quantity, Decimal("2"))
-        self.assertEqual(outcome.fee, Decimal("0.0104"))
+        self.assertEqual(outcome.fee, Decimal("0.0050"))
         self.assertTrue(outcome.fee_verified)
 
     def test_latency_uses_first_new_book_after_deadline(self) -> None:
@@ -140,7 +153,7 @@ class ExecutionModelsTest(unittest.TestCase):
         self.assertEqual([fill.price for fill in outcome.fills], [Decimal("0.51"), Decimal("0.53")])
         self.assertEqual(outcome.vwap, Decimal("0.5233333333333333333333333333"))
         self.assertEqual(outcome.unfilled_quantity, Decimal("0"))
-        self.assertEqual([fill.fee for fill in outcome.fills], [Decimal("0.0051"), Decimal("0.0106")])
+        self.assertEqual([fill.fee for fill in outcome.fills], [Decimal("0.0025"), Decimal("0.0050")])
 
     def test_insufficient_depth_produces_only_partial_fill(self) -> None:
         outcome = self.execute(
@@ -167,7 +180,7 @@ class ExecutionModelsTest(unittest.TestCase):
                             LiquidityRole.TAKER,
                             START,
                             END,
-                            Decimal("0.01"),
+                            Decimal("0.04"),
                             Decimal("0.01"),
                             ROUND_HALF_UP,
                         ),
@@ -256,7 +269,7 @@ class ExecutionModelsTest(unittest.TestCase):
                         liquidity_role=LiquidityRole.TAKER,
                         effective_from=START,
                         effective_to=END,
-                        rate=Decimal("0.01"),
+                        rate=Decimal("0.04"),
                         quantum=Decimal("0.01"),
                         rounding=ROUND_HALF_UP,
                     ),
@@ -278,7 +291,7 @@ class ExecutionModelsTest(unittest.TestCase):
         market = market_from_view(data.as_of(order.decision_time, MARKET_ID))
         outcome = ExecutionModel(
             ExecutionConfig(ExecutionScenario.TAKER_TOUCH_WITH_FEES),
-            fee_model=fees(rate="0.02"),
+            fee_model=fees(rate="2"),
             acceptance_policy=DatasetAcceptancePolicy(),
         ).execute(data, market, order)
         ledger = FillLedger()
@@ -373,9 +386,9 @@ class ExecutionModelsTest(unittest.TestCase):
         self.assertEqual(
             amounts,
             {
-                LiquidityRole.MAKER: Decimal("0.0250"),
-                LiquidityRole.TAKER: Decimal("0.0500"),
-                LiquidityRole.NO_FEE: Decimal("0.0000"),
+                LiquidityRole.MAKER: Decimal("0"),
+                LiquidityRole.TAKER: Decimal("0.0250"),
+                LiquidityRole.NO_FEE: Decimal("0"),
             },
         )
 

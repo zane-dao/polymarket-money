@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import Decimal from "decimal.js";
+import { Decimal } from "decimal.js";
 import {
   FeeEdgeCalculator,
   type FeeScheduleEvidence,
@@ -16,7 +16,17 @@ const fixture = JSON.parse(await readFile(
 )) as {
   schedule: FeeScheduleEvidence;
   fee_cases: Array<{ name: string; role: "TAKER" | "MAKER"; price: string; quantity: string; fee_rate?: string; amount: string | null; reason: string | null }>;
-  complete_set: Record<string, string>;
+  complete_set: {
+    up_ask: string;
+    down_ask: string;
+    up_size: string;
+    down_size: string;
+    visible_size: string;
+    up_fee: string;
+    down_fee: string;
+    gross_edge_amount: string;
+    scenario_net_edge_amount: string;
+  };
 };
 
 test("MoneyDecimal rejects Number, exponent notation, non-finite values, and non-canonical strings", () => {
@@ -29,6 +39,12 @@ test("MoneyDecimal rejects Number, exponent notation, non-finite values, and non
 
 test("private Decimal clone is isolated from mutations to the global Decimal configuration", () => {
   const calculator = new FeeEdgeCalculator();
+  const original = {
+    precision: Decimal.precision,
+    rounding: Decimal.rounding,
+    toExpNeg: Decimal.toExpNeg,
+    toExpPos: Decimal.toExpPos,
+  };
   const before = calculator.quoteFee({
     marketId: fixture.schedule.market_id,
     conditionId: fixture.schedule.condition_id,
@@ -38,17 +54,21 @@ test("private Decimal clone is isolated from mutations to the global Decimal con
     quantity: "1",
     evidence: fixture.schedule,
   });
-  Decimal.set({ precision: 2, rounding: Decimal.ROUND_UP, toExpNeg: 0, toExpPos: 1 });
-  const after = calculator.quoteFee({
-    marketId: fixture.schedule.market_id,
-    conditionId: fixture.schedule.condition_id,
-    executableTime: "2026-07-16T12:00:00.000Z",
-    liquidityRole: "TAKER",
-    price: "0.47",
-    quantity: "1",
-    evidence: fixture.schedule,
-  });
-  assert.deepEqual(after, before);
+  try {
+    Decimal.set({ precision: 2, rounding: Decimal.ROUND_UP, toExpNeg: 0, toExpPos: 1 });
+    const after = calculator.quoteFee({
+      marketId: fixture.schedule.market_id,
+      conditionId: fixture.schedule.condition_id,
+      executableTime: "2026-07-16T12:00:00.000Z",
+      liquidityRole: "TAKER",
+      price: "0.47",
+      quantity: "1",
+      evidence: fixture.schedule,
+    });
+    assert.deepEqual(after, before);
+  } finally {
+    Decimal.set(original);
+  }
 });
 
 test("official fee representatives, fractional size, minimum precision, and exact tie match fixture", () => {

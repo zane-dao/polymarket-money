@@ -404,7 +404,9 @@ def inventory_directory(root: Path) -> InventoryReport:
     classifications: dict[str, int] = {}
     duplicate_index: dict[tuple[int, str], list[str]] = {}
     mtimes: list[datetime] = []
-    for path in sorted(item for item in canonical.rglob("*") if item.is_file()):
+    for path in sorted(
+        item for item in canonical.rglob("*") if not item.is_symlink() and item.is_file()
+    ):
         before = path.stat()
         format_name = _format(path)
         sensitive = _content_read_forbidden(path.relative_to(canonical))

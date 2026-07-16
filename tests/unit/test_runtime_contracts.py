@@ -99,6 +99,19 @@ class RuntimeContractsTest(unittest.TestCase):
             self.assertEqual(report.files[0].partial_fingerprint, "NOT_READ_SENSITIVE_PATH")
             self.assertEqual(report.files[0].sample_error, "SKIPPED_SENSITIVE_PATH")
 
+    def test_inventory_does_not_follow_file_symlinks(self) -> None:
+        with TemporaryDirectory() as directory, TemporaryDirectory() as outside:
+            root = Path(directory)
+            target = Path(outside) / "outside.json"
+            target.write_text('{"secret":"must-not-be-read"}', encoding="utf-8")
+            (root / "linked.json").symlink_to(target)
+            with patch(
+                "research.polymarket_money.runtime._partial_fingerprint",
+                side_effect=AssertionError("symlink target was read"),
+            ):
+                report = inventory_directory(root)
+            self.assertEqual(report.file_count, 0)
+
     def test_replay_pacer_is_controller_not_a_second_engine(self) -> None:
         sleeps: list[float] = []
         pacer = ReplayPacer(ReplaySpeed.TEN_X, sleep=sleeps.append)

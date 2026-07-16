@@ -87,3 +87,18 @@ tests/unit/lead-lag-r1.test.ts(12,8): error TS2307: Cannot find module '../../ex
 tests/unit/lead-lag-r1.test.ts(128,36): error TS7006: Parameter 'item' implicitly has an 'any' type.
 tests/unit/lead-lag-r1.test.ts(243,45): error TS7006: Parameter 'item' implicitly has an 'any' type.
 ```
+
+## Group 6 — Active ReceiveClock and raw-event-v2 wiring
+
+Fail-first input: `tests/unit/runtime-wiring-r1.test.ts`. It requires HTTP and WebSocket receive
+boundaries to expose stamps from one shared `ReceiveClock`, and requires the active
+`RawSegmentWriter` to accept only v2 drafts while v1 remains read-only. The baseline public runtime
+has no `receiveClock`/`receiveStamp`, and the writer is typed exclusively for v1.
+
+Observed failures include:
+
+```text
+tests/unit/runtime-wiring-r1.test.ts(45,5): error TS2353: 'receiveClock' does not exist in type 'PublicSocketRuntime'.
+tests/unit/runtime-wiring-r1.test.ts(75,25): error TS2339: Property 'receiveStamp' does not exist on type 'PublicHttpResponse'.
+tests/unit/runtime-wiring-r1.test.ts(95,25): error TS2345: Argument of type 'RawEventEnvelopeDraftV2' is not assignable to parameter of type 'RawEventEnvelopeDraftV1'.
+```

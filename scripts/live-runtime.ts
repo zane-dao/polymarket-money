@@ -65,6 +65,10 @@ import {
 } from "../execution/src/runtime/paper.js";
 import { createKJStrategyContext } from "../execution/src/strategy/kj-context.js";
 import {
+  KJ_PAPER_ENGINE_VERSION,
+  KJPaperEngine,
+} from "../execution/src/runtime/kj-paper-engine.js";
+import {
   MIN_FREE_BYTES,
   SharedByteBudget,
   validateRecordingOptions,
@@ -534,6 +538,8 @@ class RuntimeState {
   readonly opportunities = new Map<ObserverName, number>();
   readonly opportunityDurations: number[] = [];
   readonly paperAudits: PaperAudit[] = [];
+  readonly kjPaperEngine = new KJPaperEngine();
+  kjPaperEventCursor = 0;
   readonly opportunityConfig: OpportunityRuntimeConfig;
   completeSetCandidateSince: number | null = null;
 
@@ -1324,6 +1330,12 @@ async function dashboardLoop(
     previousBookState = bookState;
     const paperSnapshot = snapshot(state);
     const kjContext = kjStrategyContext(state, paperSnapshot);
+    if (config.mode === "paper" && kjContext.ready) {
+      state.kjPaperEngine.ingest(kjContext.context);
+    }
+    const kjAllEvents = state.kjPaperEngine.events();
+    const kjPaperEvents = kjAllEvents.slice(state.kjPaperEventCursor);
+    state.kjPaperEventCursor = kjAllEvents.length;
     const audits = paperSnapshot === null ? [] : opportunityAudits(paperSnapshot, state, Date.now());
     recordOpportunityObservations(audits, state, failureRuntime);
     trackOpportunities(audits, state, Date.now());
@@ -1355,6 +1367,15 @@ async function dashboardLoop(
       kjStrategyContextReady: kjContext.ready,
       kjStrategyContextReason: kjContext.ready ? null : kjContext.reason,
       kjStrategyContext: kjContext.ready ? kjContext.context : null,
+      kjPaperEngineVersion: KJ_PAPER_ENGINE_VERSION,
+      kjPaperEvents,
+      kjPaperWallets: config.mode === "paper" ? {
+        J_FEE_AWARE: state.kjPaperEngine.wallet("J_FEE_AWARE"),
+        K_DUAL_VOL: state.kjPaperEngine.wallet("K_DUAL_VOL"),
+      } : null,
+      kjPaperCurrentMarketState: config.mode === "paper" && state.currentMarket !== null
+        ? state.kjPaperEngine.state(state.currentMarket.marketId)
+        : null,
       continuity: "UNVERIFIED",
       up: paperSnapshot?.up ?? null,
       down: paperSnapshot?.down ?? null,
@@ -1550,6 +1571,12 @@ async function main(): Promise<void> {
     staleCount: state.staleCount,
     opportunityDurationMilliseconds: state.opportunityDurations,
     paperAuditCount: state.paperAudits.length,
+    kjPaperEngineVersion: KJ_PAPER_ENGINE_VERSION,
+    kjPaperEventCount: state.kjPaperEngine.events().length,
+    kjPaperWallets: config.mode === "paper" ? {
+      J_FEE_AWARE: state.kjPaperEngine.wallet("J_FEE_AWARE"),
+      K_DUAL_VOL: state.kjPaperEngine.wallet("K_DUAL_VOL"),
+    } : null,
     opportunityObservationCount: state.observations.length,
     leadLagOpportunityObservationCount: state.leadLagObservations.length,
     opportunityConfig: state.opportunityConfig,

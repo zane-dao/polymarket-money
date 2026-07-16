@@ -48,9 +48,8 @@ gross-minus-fee identity, and zero position after settlement.
 
 ```text
 Python: 198 passed
-Node/TypeScript: 98 passed
+Node/TypeScript: 105 passed
 Ruff: All checks passed
-Targeted K/J: 8 passed
 git diff --check: passed
 ```
 
@@ -70,6 +69,13 @@ cancellation, shadow, or live action occurred.
 4. Historical settlement uses official final outcome evidence, not point-in-time
    Chainlink open/close observations.  It is valid for outcome PnL but not an
    oracle-latency study.
-5. Public runtime snapshots now expose the immutable, fail-closed K/J
-   StrategyContext, but no real-time consumer yet runs the strategy, delayed
-   fill, wallet, or settlement state machine.
+5. Public runtime `paper` mode now consumes the immutable K/J StrategyContext
+   through `kj-paper-engine-v1`, with independent wallets, reservations,
+   delayed/partial/no-fill handling, positions, and explicit official-only
+   settlement state.  The runtime still has no trusted official-resolution
+   adapter and no persisted recovery, so ended markets remain `STOPPING` and
+   this is not yet an unattended continuous paper service.
+6. The TypeScript real-time probability uses a documented deterministic
+   normal-CDF approximation.  Cross-language golden decision parity with the
+   Python historical implementation remains to be established before either
+   output can be treated as the other's exact replay.

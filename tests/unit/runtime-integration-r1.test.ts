@@ -58,6 +58,16 @@ test("legacy observers delegate exact money and fee calculations", async () => {
   assert.match(opportunities, /evidence_status:\s*feeRate === null \? "MISSING"/u);
 });
 
+test("live runtime wires K/J wallet mutation only behind paper mode", async () => {
+  const runtime = await source("scripts/live-runtime.ts");
+  assert.match(runtime, /if \(config\.mode === "paper" && kjContext\.ready\)/u);
+  assert.match(runtime, /state\.kjPaperEngine\.ingest\(kjContext\.context\)/u);
+  assert.match(runtime, /kjPaperEngineVersion:\s*KJ_PAPER_ENGINE_VERSION/u);
+  assert.match(runtime, /kjPaperEvents/u);
+  assert.match(runtime, /kjPaperWallets/u);
+  assert.doesNotMatch(runtime, /kjPaperEngine\.settle\(/u);
+});
+
 test("active capture and runtime paths contain no empty catch disposition", async () => {
   const paths = [
     "scripts/live-runtime.ts",

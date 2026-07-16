@@ -84,4 +84,14 @@ from being silently overwritten.
 The TypeScript public runtime also emits a paper-only
 `kjStrategyContextReady/reason/context` envelope.  It binds verified Up/Down
 token IDs, fee evidence, book and signal receive stamps, freshness, and source
-identity.  It does not place orders or yet run the real-time portfolio loop.
+identity.  In `paper` mode, `kj-paper-engine-v1` consumes only ready contexts
+and emits versioned decision, intent, delayed fill/no-fill, wallet, position,
+market-state, and explicit official-settlement events.  `monitor` mode never
+mutates the K/J wallets, and neither mode has an order-submission path.
+
+The real-time engine is intentionally not an unattended closed loop yet:
+`scripts/live-runtime.ts` does not currently supply official resolution events,
+and engine state is memory-only.  An ended market therefore remains
+`STOPPING` until a separately verified `OFFICIAL_RESOLUTION` is supplied; a
+restart does not recover prior paper positions.  See
+`docs/batches/batch-06-kj-paper/live-context.md` for the exact boundary.

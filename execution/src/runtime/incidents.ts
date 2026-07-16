@@ -121,9 +121,58 @@ export class FailClosedRuntime {
     return this.#state !== "RUNNING";
   }
 
+  get termination(): RuntimeTermination | null {
+    return this.#termination;
+  }
+
   noteObservation(): void {
     if (this.#state !== "RUNNING") throw new Error("runtime is terminated; observation is forbidden");
     this.#observationCount += 1;
+  }
+
+  /** Persists a recoverable incident. A writer failure is itself terminal and is never retried. */
+  async recordIncident(incidentValue: RuntimeIncidentV1): Promise<RuntimeTermination | null> {
+    if (this.#state !== "RUNNING") return this.#termination;
+    const incident = createRuntimeIncident(incidentValue);
+    try {
+      await this.#incidentWriter.write(incident);
+      return null;
+    } catch (writerError) {
+      this.#state = "TERMINATING";
+      this.#setExitCode(1);
+      return this.#finishEmergency(incident, writerError);
+    }
+  }
+
+  async #finishEmergency(incident: RuntimeIncidentV1, writerError: unknown): Promise<RuntimeTermination> {
+    const writerMessage = errorText(writerError);
+    this.#writeStderr(`terminal incident writer failure: ${writerMessage}`);
+    let emergencyReceiptPersisted = false;
+    const receipt: EmergencyTerminalReceipt = Object.freeze({
+      schemaVersion: TERMINAL_FAILURE_SCHEMA_VERSION,
+      stopReason: incident.stopReason,
+      errorClass: incident.errorClass,
+      message: incident.message,
+      incidentWriterError: writerMessage,
+      receiveStamp: incident.receiveStamp,
+      graceful: false,
+      exitCode: 1,
+    });
+    try {
+      await this.#emergencySink.write(receipt);
+      emergencyReceiptPersisted = true;
+    } catch (receiptError) {
+      this.#writeStderr(`terminal failure receipt failed: ${errorText(receiptError)}`);
+    }
+    this.#termination = Object.freeze({
+      stopReason: incident.stopReason,
+      graceful: false,
+      exitCode: 1,
+      incidentPersisted: false,
+      emergencyReceiptPersisted,
+    });
+    this.#state = "TERMINATED";
+    return this.#termination;
   }
 
   async terminate(incidentValue: RuntimeIncidentV1): Promise<RuntimeTermination> {
@@ -139,24 +188,7 @@ export class FailClosedRuntime {
       await this.#incidentWriter.write(incident);
       incidentPersisted = true;
     } catch (writerError) {
-      const writerMessage = errorText(writerError);
-      this.#writeStderr(`terminal incident writer failure: ${writerMessage}`);
-      const receipt: EmergencyTerminalReceipt = Object.freeze({
-        schemaVersion: TERMINAL_FAILURE_SCHEMA_VERSION,
-        stopReason: incident.stopReason,
-        errorClass: incident.errorClass,
-        message: incident.message,
-        incidentWriterError: writerMessage,
-        receiveStamp: incident.receiveStamp,
-        graceful: false,
-        exitCode: 1,
-      });
-      try {
-        await this.#emergencySink.write(receipt);
-        emergencyReceiptPersisted = true;
-      } catch (receiptError) {
-        this.#writeStderr(`terminal failure receipt failed: ${errorText(receiptError)}`);
-      }
+      return this.#finishEmergency(incident, writerError);
     }
     this.#termination = Object.freeze({
       stopReason: incident.stopReason,

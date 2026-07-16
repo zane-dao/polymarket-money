@@ -328,13 +328,15 @@ async function captureClob(
         if (parsed.eventType === "book") {
           try {
             orderBook.applySnapshot(parsed, connectionId, frame.receiveTime);
-          } catch {
+          } catch (snapshotError) {
+            void snapshotError;
             if (parserStatus !== "error") parserStatus = "quarantined";
           }
         } else if (parsed.eventType === "price_change" && orderBook.allExpectedAssetsReady) {
           try {
             orderBook.applyPriceChange(parsed, connectionId, frame.receiveTime);
-          } catch {
+          } catch (changeError) {
+            void changeError;
             if (parserStatus !== "error") parserStatus = "quarantined";
           }
         }

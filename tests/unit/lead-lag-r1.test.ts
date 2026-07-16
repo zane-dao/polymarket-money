@@ -131,6 +131,25 @@ test("external reconnect cannot reuse an old baseline", () => {
   assert.ok(batch.rejections.some((item) => item.reason === "BASELINE_CONNECTION_MISMATCH"));
 });
 
+test("Polymarket reset requires a new snapshot before another trigger", () => {
+  const engine = new LeadLagEngine(DEFAULT_LEAD_LAG_CONFIG);
+  engine.ingestExternal(external("baseline", 500_000_000, 1, "100"));
+  engine.ingestPolymarket(book(550_000_000, 2, "0.5"));
+  engine.notePolymarketConnectionReset({ market_id: "market-1", receive_stamp: stamp(580_000_000, 3) });
+  engine.ingestExternal(external("event", 600_000_000, 4, "101"));
+  const batch = engine.createTriggers({
+    externalEventId: "event",
+    marketId: "market-1",
+    baselineWatermarks: {
+      "100": stamp(500_000_000, 1),
+      "250": stamp(350_000_000, 1),
+      "500": stamp(100_000_000, 1),
+    },
+  });
+  assert.equal(batch.triggers.length, 0);
+  assert.ok(batch.rejections.some((item) => item.reason === "TRIGGER_SNAPSHOT_CONNECTION_RESET"));
+});
+
 test("external and Polymarket connection ID types cannot be interchanged", () => {
   const externalId: ExternalConnectionId = externalConnectionId("external-1");
   const polymarketId = polymarketConnectionId("poly-1");
@@ -179,6 +198,17 @@ test("stale horizon and either connection reconnect censor instead of reusing st
   });
   assert.equal(externalResult.censor_reason, "EXTERNAL_CONNECTION_CHANGED");
 
+  const externalDisconnect = engineWithTrigger();
+  externalDisconnect.engine.noteExternalConnectionReset({
+    source: "BINANCE_SPOT",
+    receive_stamp: stamp(620_000_000, 5),
+  });
+  assert.equal(externalDisconnect.engine.evaluateHorizon({
+    triggerId: externalDisconnect.triggerId,
+    horizonMs: 50,
+    targetWatermark: stamp(650_000_000, 6),
+  }).censor_reason, "EXTERNAL_CONNECTION_CHANGED");
+
   const polyReconnect = engineWithTrigger();
   polyReconnect.engine.ingestPolymarket(book(620_000_000, 5, "0.51", "poly-2"));
   const polyResult = polyReconnect.engine.evaluateHorizon({
@@ -187,6 +217,17 @@ test("stale horizon and either connection reconnect censor instead of reusing st
     targetWatermark: stamp(650_000_000, 6),
   });
   assert.equal(polyResult.censor_reason, "POLYMARKET_CONNECTION_CHANGED");
+
+  const polyDisconnect = engineWithTrigger();
+  polyDisconnect.engine.notePolymarketConnectionReset({
+    market_id: "market-1",
+    receive_stamp: stamp(620_000_000, 5),
+  });
+  assert.equal(polyDisconnect.engine.evaluateHorizon({
+    triggerId: polyDisconnect.triggerId,
+    horizonMs: 50,
+    targetWatermark: stamp(650_000_000, 6),
+  }).censor_reason, "POLYMARKET_CONNECTION_CHANGED");
 });
 
 test("snapshot, stale, disconnect, crossed, empty-side, quarantine and clock-domain gates fail closed", () => {

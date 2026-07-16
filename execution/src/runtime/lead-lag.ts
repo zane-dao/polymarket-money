@@ -128,6 +128,7 @@ export type TriggerRejectionReason =
   | "BASELINE_TOO_OLD"
   | "BASELINE_PRICE_ZERO"
   | "TRIGGER_SNAPSHOT_NOT_FOUND"
+  | "TRIGGER_SNAPSHOT_CONNECTION_RESET"
   | "TRIGGER_SNAPSHOT_QUALITY_REJECTED";
 
 export interface TriggerRejection {
@@ -202,6 +203,16 @@ export interface LeadLagGridCell {
   readonly raw_trigger_count: number;
   readonly completed_horizon_count: number;
   readonly censored_horizon_count: number;
+}
+
+interface ExternalConnectionReset {
+  readonly source: LeadLagSource;
+  readonly receive_stamp: LeadLagStamp;
+}
+
+interface PolymarketConnectionReset {
+  readonly market_id: string;
+  readonly receive_stamp: LeadLagStamp;
 }
 
 const UNSIGNED_INTEGER = /^(?:0|[1-9]\d*)$/u;
@@ -420,6 +431,8 @@ export class LeadLagEngine {
   readonly #books: PolymarketBookState[] = [];
   readonly #externalById = new Map<string, ExternalPriceState>();
   readonly #triggers = new Map<string, LeadLagTrigger>();
+  readonly #externalResets: ExternalConnectionReset[] = [];
+  readonly #polymarketResets: PolymarketConnectionReset[] = [];
   readonly #episodes = new EpisodeTracker();
   readonly #seenOrdinals = new Map<string, string>();
   readonly #horizons: HorizonObservation[] = [];
@@ -494,6 +507,27 @@ export class LeadLagEngine {
     this.#books.push(normalized);
   }
 
+  noteExternalConnectionReset(input: {
+    readonly source: LeadLagSource;
+    readonly receive_stamp: LeadLagStamp;
+  }): void {
+    if (!this.#config.sources.includes(input.source)) throw new Error("source is not pre-registered");
+    this.#externalResets.push(Object.freeze({
+      source: input.source,
+      receive_stamp: this.#registerReceiveStamp(input.receive_stamp),
+    }));
+  }
+
+  notePolymarketConnectionReset(input: {
+    readonly market_id: string;
+    readonly receive_stamp: LeadLagStamp;
+  }): void {
+    this.#polymarketResets.push(Object.freeze({
+      market_id: nonEmpty(input.market_id, "market_id"),
+      receive_stamp: this.#registerReceiveStamp(input.receive_stamp),
+    }));
+  }
+
   createTriggers(input: {
     readonly externalEventId: string;
     readonly marketId: string;
@@ -512,6 +546,10 @@ export class LeadLagEngine {
       this.#books.filter((item) => item.market_id === marketId),
       event.receive_stamp,
     );
+    const latestPolymarketReset = latestAtOrBefore(
+      this.#polymarketResets.filter((item) => item.market_id === marketId),
+      event.receive_stamp,
+    );
     const triggers: LeadLagTrigger[] = [];
     const rejections: TriggerRejection[] = [];
     for (const window of this.#config.trigger_windows_ms) {
@@ -525,6 +563,10 @@ export class LeadLagEngine {
       else if (millisecondsBetween(target, baseline.receive_stamp) > this.#config.baseline_max_age_ms) rejection = "BASELINE_TOO_OLD";
       else if (Money.from(baseline.price).isZero()) rejection = "BASELINE_PRICE_ZERO";
       else if (snapshot === null) rejection = "TRIGGER_SNAPSHOT_NOT_FOUND";
+      else if (latestPolymarketReset !== null
+        && compare(latestPolymarketReset.receive_stamp, snapshot.receive_stamp) > 0) {
+        rejection = "TRIGGER_SNAPSHOT_CONNECTION_RESET";
+      }
       else if (!bookQualityPass(snapshot)) rejection = "TRIGGER_SNAPSHOT_QUALITY_REJECTED";
       if (rejection !== null || baseline === null || snapshot === null) {
         rejections.push(Object.freeze({
@@ -621,6 +663,20 @@ export class LeadLagEngine {
     const trigger = this.trigger(input.triggerId);
     if (!this.#config.horizons_ms.includes(input.horizonMs)) throw new Error("horizon is not pre-registered");
     const target = targetStamp(trigger.trigger_receive_stamp, input.horizonMs, input.targetWatermark);
+    const externalReset = latestAtOrBefore(
+      this.#externalResets.filter((item) => item.source === trigger.source),
+      target,
+    );
+    if (externalReset !== null && compare(externalReset.receive_stamp, trigger.trigger_receive_stamp) > 0) {
+      return this.#censored(trigger, input.horizonMs, target, "EXTERNAL_CONNECTION_CHANGED");
+    }
+    const polymarketReset = latestAtOrBefore(
+      this.#polymarketResets.filter((item) => item.market_id === trigger.market_id),
+      target,
+    );
+    if (polymarketReset !== null && compare(polymarketReset.receive_stamp, trigger.trigger_receive_stamp) > 0) {
+      return this.#censored(trigger, input.horizonMs, target, "POLYMARKET_CONNECTION_CHANGED");
+    }
     const externalLatest = latestAtOrBefore(
       this.#external.filter((item) => item.source === trigger.source),
       target,

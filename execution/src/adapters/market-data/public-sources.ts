@@ -133,6 +133,11 @@ const PUBLIC_RECEIVE_CLOCK = new ReceiveClock({
 });
 const INJECTED_RUNTIME_CLOCKS = new WeakMap<object, ReceiveClock>();
 
+/** Shared by the default HTTP, WebSocket, and runtime timer boundaries. */
+export function publicReceiveClock(): ReceiveClock {
+  return PUBLIC_RECEIVE_CLOCK;
+}
+
 function receiveClock(runtime: PublicSocketRuntime | PublicHttpRuntime): ReceiveClock {
   if (runtime.receiveClock !== undefined) return runtime.receiveClock;
   let clock = INJECTED_RUNTIME_CLOCKS.get(runtime);
@@ -426,8 +431,13 @@ async function boundedResponseText(
       if (next.done) break;
       const chunk = next.value;
       if (byteLength > maxResponseBytes - chunk.byteLength) {
-        await reader.cancel(`HTTP response body exceeds maxResponseBytes=${maxResponseBytes}`).catch(() => undefined);
-        throw new Error(`HTTP response body exceeds maxResponseBytes=${maxResponseBytes}`);
+        const sizeError = new Error(`HTTP response body exceeds maxResponseBytes=${maxResponseBytes}`);
+        try {
+          await reader.cancel(sizeError.message);
+        } catch (cancelError) {
+          throw new AggregateError([sizeError, cancelError], "oversized HTTP body and reader cancel both failed");
+        }
+        throw sizeError;
       }
       byteLength += chunk.byteLength;
       chunks.push(chunk);
@@ -542,7 +552,9 @@ export function capturePublicSocket(
       if (heartbeat !== undefined) clearInterval(heartbeat);
       // A slow or stuck consumer must not prevent a byte-limit, timeout, or
       // transport failure from closing and settling the bounded capture.
-      void chain.catch(() => undefined);
+      void chain.catch((chainError) => {
+        process.stderr.write(`public capture consumer failed after terminal transition: ${String(chainError)}\n`);
+      });
       void (async () => {
         let terminalError = error;
         try {

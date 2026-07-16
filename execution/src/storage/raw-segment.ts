@@ -916,7 +916,8 @@ export class DatasetManifestWriter {
     } catch (error) {
       try {
         await handle.close();
-      } catch {
+      } catch (closeError) {
+        void closeError;
         // Preserve the original publication failure and leave .partial visible.
       }
       throw error;

@@ -1,6 +1,6 @@
 import { randomUUID, createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, statfs, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, statfs, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -8,6 +8,7 @@ import { createGzip } from "node:zlib";
 
 import { BookState, PublicOrderBook } from "../execution/src/adapters/market-data/book-state.js";
 import {
+  canonicalDecimalString,
   parseClobMarketFrame,
   parseRtdsPriceMessage,
 } from "../execution/src/adapters/market-data/parsers.js";
@@ -15,16 +16,40 @@ import {
   capturePublicSocket,
   clobMarketSubscription,
   fetchPublicMarketBySlug,
+  publicReceiveClock,
   rtdsSubscription,
   validatePublicBtcFiveMinuteMarket,
   type PublicBtcFiveMinuteMarket,
   type PublicSocketRequest,
 } from "../execution/src/adapters/market-data/public-sources.js";
-import { createEnvelopeDraftV2, type ParserStatus } from "../execution/src/domain/raw-event.js";
+import { createEnvelopeDraftV2, rawSha256, type ParserStatus } from "../execution/src/domain/raw-event.js";
 import type { ReceiveStamp } from "../execution/src/domain/receive-time.js";
+import { Money } from "../execution/src/domain/money.js";
+import {
+  createOpportunityObservationV1,
+  createRouteEvaluationV1,
+  type OpportunityObservationV1,
+  type RouteEvaluationV1,
+} from "../execution/src/domain/opportunity-observation.js";
+import { FeeEdgeCalculator } from "../execution/src/runtime/fee-edge.js";
+import {
+  createRuntimeIncident,
+  FailClosedRuntime,
+  type EmergencyTerminalReceipt,
+  type RuntimeIncidentV1,
+} from "../execution/src/runtime/incidents.js";
+import {
+  DEFAULT_LEAD_LAG_CONFIG,
+  LeadLagEngine,
+  externalConnectionId,
+  polymarketConnectionId,
+  type HorizonObservation,
+  type LeadLagSource,
+  type LeadLagStamp,
+  type LeadLagTrigger,
+} from "../execution/src/runtime/lead-lag.js";
 import {
   completeSetArbitrageObserver,
-  leadLagObserver,
   makerEnvelopeObserver,
   noTradeObserver,
   type PaperAudit,
@@ -63,7 +88,7 @@ interface StreamStats {
   payloadBytes: number;
   reconnects: number;
   quarantines: number;
-  latencies: number[];
+  providerToLocalWallDeltas: number[];
 }
 
 interface PriceState {
@@ -71,6 +96,10 @@ interface PriceState {
   sourceTime: string | null;
   serverTime: string | null;
   receiveTime: string;
+  receiveStamp: ReceiveStamp;
+  connectionId: string;
+  externalEventId: string;
+  parentInputReference: string;
 }
 
 interface BookTickerState extends PriceState {
@@ -89,6 +118,13 @@ interface CompressedSegmentResult {
   readonly compressedBytes: number;
   readonly compressedSha256: string;
   readonly compressionRatio: number;
+}
+
+class RuntimeStorageError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = "RuntimeStorageError";
+  }
 }
 
 const STREAMS: readonly StreamName[] = [
@@ -125,6 +161,21 @@ function percentile(values: readonly number[], fraction: number): number | null 
   if (values.length === 0) return null;
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.min(sorted.length - 1, Math.floor(fraction * sorted.length))] ?? null;
+}
+
+function leadLagStamp(receiveStamp: ReceiveStamp): LeadLagStamp {
+  return Object.freeze({
+    clock_domain: receiveStamp.clockDomain,
+    local_monotonic_receive_ns: receiveStamp.localMonotonicReceiveNs,
+    local_receive_ordinal: receiveStamp.localReceiveOrdinal,
+  });
+}
+
+function sourceForStream(stream: Exclude<StreamName, "gamma" | "clob">): LeadLagSource {
+  if (stream === "chainlink") return "POLYMARKET_RTDS_CHAINLINK";
+  if (stream === "polymarket_binance") return "POLYMARKET_RTDS_BINANCE";
+  if (stream === "binance_spot") return "BINANCE_SPOT";
+  return "BINANCE_PERPETUAL";
 }
 
 function parseMode(value: string | undefined): Mode {
@@ -167,7 +218,10 @@ async function options(): Promise<RuntimeOptions> {
     const linuxFreeBytes = storage.bavail * storage.bsize;
     const windowsD = process.env.WSL_DISTRO_NAME === undefined
       ? null
-      : await statfs("/mnt/d").catch(() => null);
+      : await statfs("/mnt/d").catch((storageError) => {
+          process.stderr.write(`Windows storage binding unavailable: ${String(storageError)}\n`);
+          return null;
+        });
     const bindingFreeBytes = windowsD === null
       ? linuxFreeBytes
       : Math.min(linuxFreeBytes, windowsD.bavail * windowsD.bsize);
@@ -246,6 +300,7 @@ class RuntimeRecorder {
     stream: StreamName,
     input: {
       readonly eventType: string;
+      readonly eventId?: string;
       readonly rawPayload: string;
       readonly receiveStamp: ReceiveStamp;
       readonly sourceTime?: string | null;
@@ -258,8 +313,9 @@ class RuntimeRecorder {
       readonly parserError?: string | null;
       readonly connectionId: string;
     },
-  ): Promise<void> {
-    if (this.#config.record.mode !== "raw" || this.stoppedByLimit) return;
+  ): Promise<string> {
+    const eventId = input.eventId ?? randomUUID();
+    if (this.#config.record.mode !== "raw" || this.stoppedByLimit) return eventId;
     if (stream === "clob" && input.market !== null && input.market !== undefined) {
       this.#clobAssets.add(input.market.upTokenId);
       this.#clobAssets.add(input.market.downTokenId);
@@ -283,7 +339,7 @@ class RuntimeRecorder {
     if (writer === undefined) throw new Error(`raw writer missing for ${stream}`);
     try {
       await writer.append(createEnvelopeDraftV2({
-        eventId: randomUUID(),
+        eventId,
         source: stream === "gamma" ? "polymarket.gamma" : stream === "clob" ? "polymarket.clob.market" : stream === "chainlink" ? "polymarket.rtds.chainlink" : stream === "polymarket_binance" ? "polymarket.rtds.binance" : stream === "binance_spot" ? "binance.spot" : "binance.perpetual",
         stream: stream === "gamma" ? "market-discovery" : stream === "clob" ? "market-channel" : stream.includes("binance_") && !stream.startsWith("polymarket") ? "book-ticker" : "crypto-prices",
         eventType: input.eventType,
@@ -304,10 +360,11 @@ class RuntimeRecorder {
     } catch (error) {
       if (error instanceof RawByteLimitReached) {
         this.stoppedByLimit = true;
-        return;
+        return eventId;
       }
-      throw error;
+      throw new RuntimeStorageError(`raw writer failed for ${stream}`, error);
     }
+    return eventId;
   }
 
   metric(value: Record<string, unknown>): void {
@@ -322,7 +379,11 @@ class RuntimeRecorder {
           const stream = key.startsWith("gamma:") ? "gamma" : key as StreamName;
           this.#closed.push({ key, stream, segment });
         } catch (error) {
-          await writer.leaveIncomplete().catch(() => undefined);
+          try {
+            await writer.leaveIncomplete();
+          } catch (cleanupError) {
+            throw new AggregateError([error, cleanupError], "segment close and incomplete cleanup both failed");
+          }
           if (!(error instanceof Error && /empty segment/u.test(error.message))) throw error;
         }
       }
@@ -395,6 +456,30 @@ class RuntimeRecorder {
   }
 }
 
+class RuntimeIncidentFileWriter {
+  readonly #path: string;
+
+  constructor(directory: string, runId: string) {
+    this.#path = join(directory, `${runId}-runtime-incidents.jsonl`);
+  }
+
+  write(incident: RuntimeIncidentV1): Promise<void> {
+    return appendFile(this.#path, `${JSON.stringify(incident)}\n`, { encoding: "utf8", mode: 0o600 });
+  }
+}
+
+class EmergencyReceiptFileSink {
+  readonly #path: string;
+
+  constructor(directory: string, runId: string) {
+    this.#path = join(directory, `${runId}-terminal-failure.json`);
+  }
+
+  write(receipt: EmergencyTerminalReceipt): Promise<void> {
+    return writeFile(this.#path, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o400 });
+  }
+}
+
 class RuntimeState {
   currentMarket: PublicBtcFiveMinuteMarket | null = null;
   nextMarket: PublicBtcFiveMinuteMarket | null = null;
@@ -403,7 +488,16 @@ class RuntimeState {
   polymarketBinance: PriceState | null = null;
   spot: BookTickerState | null = null;
   perpetual: BookTickerState | null = null;
-  previousSpot: BookTickerState | null = null;
+  readonly leadLagEngine = new LeadLagEngine(DEFAULT_LEAD_LAG_CONFIG);
+  readonly horizonObservations: HorizonObservation[] = [];
+  readonly observations: OpportunityObservationV1[] = [];
+  readonly routeEvaluations: RouteEvaluationV1[] = [];
+  readonly horizonTimers = new Set<ReturnType<typeof setTimeout>>();
+  readonly leadLagMarketIds = new Set<string>();
+  rawTriggerCount = 0;
+  latestPolymarketParentInputReference: string | null = null;
+  latestPolymarketInputHash: string | null = null;
+  latestPolymarketReceiveStamp: ReceiveStamp | null = null;
   staleCount = 0;
   readonly opportunities = new Map<ObserverName, number>();
   readonly opportunityDurations: number[] = [];
@@ -412,7 +506,13 @@ class RuntimeState {
 }
 
 function newStats(): Record<StreamName, StreamStats> {
-  const create = (): StreamStats => ({ events: 0, payloadBytes: 0, reconnects: 0, quarantines: 0, latencies: [] });
+  const create = (): StreamStats => ({
+    events: 0,
+    payloadBytes: 0,
+    reconnects: 0,
+    quarantines: 0,
+    providerToLocalWallDeltas: [],
+  });
   return {
     gamma: create(),
     clob: create(),
@@ -426,7 +526,9 @@ function newStats(): Record<StreamName, StreamStats> {
 function observe(stats: StreamStats, raw: string, receiveTime: string, referenceTime: string | null): void {
   stats.events += 1;
   stats.payloadBytes += payloadBytes(raw);
-  if (referenceTime !== null) stats.latencies.push(Date.parse(receiveTime) - Date.parse(referenceTime));
+  if (referenceTime !== null) {
+    stats.providerToLocalWallDeltas.push(Date.parse(receiveTime) - Date.parse(referenceTime));
+  }
 }
 
 async function discover(epoch: number, recorder: RuntimeRecorder, stats: StreamStats): Promise<PublicBtcFiveMinuteMarket | null> {
@@ -475,7 +577,7 @@ interface RuntimeCapturePlan {
   readonly stream: StreamName;
   readonly request: PublicSocketRequest;
   readonly beforeAttempt?: (connectionId: string) => void;
-  readonly afterAttempt?: () => void;
+  readonly afterAttempt?: (connectionId: string, receiveStamp: ReceiveStamp) => void;
   readonly handle: (raw: string, receiveStamp: ReceiveStamp, connectionId: string) => Promise<void>;
 }
 
@@ -484,9 +586,10 @@ async function captureUntil(
   end: number,
   stats: StreamStats,
   recorder: RuntimeRecorder,
+  failureRuntime: FailClosedRuntime,
 ): Promise<void> {
   let first = true;
-  while (Date.now() < end && !recorder.stoppedByLimit) {
+  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated) {
     if (!first) stats.reconnects += 1;
     first = false;
     const connectionId = `${plan.stream}-${randomUUID()}`;
@@ -504,36 +607,200 @@ async function captureUntil(
           return recorder.stoppedByLimit || Date.now() >= end;
         },
       });
-    } catch {
-      if (Date.now() >= end || recorder.stoppedByLimit) return;
+    } catch (captureError) {
+      const terminal = captureError instanceof RuntimeStorageError;
+      if (!terminal && (Date.now() >= end || recorder.stoppedByLimit)) return;
+      const received = publicReceiveClock().capture();
+      const incident = createRuntimeIncident({
+        errorClass: captureError instanceof Error ? captureError.name : "UnknownError",
+        message: captureError instanceof Error ? captureError.message : String(captureError),
+        stream: plan.stream,
+        connectionRole: terminal ? "storage" : plan.stream === "clob" ? "polymarket" : "external",
+        connectionId,
+        receiveStamp: received,
+        rawReference: null,
+        actionTaken: terminal ? "TERMINATE_SESSION" : "RECONNECT",
+        stopReason: terminal ? "RAW_WRITER_FAILED" : "PUBLIC_CAPTURE_RECONNECT",
+      });
+      if (terminal) await failureRuntime.terminate(incident);
+      else await failureRuntime.recordIncident(incident);
+      if (failureRuntime.terminated) return;
     } finally {
-      plan.afterAttempt?.();
+      if (plan.afterAttempt !== undefined) {
+        plan.afterAttempt(connectionId, publicReceiveClock().capture());
+      }
     }
     if (Date.now() < end) await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
   }
 }
 
-function directTicker(raw: string, receiveTime: string): BookTickerState {
+function directTicker(
+  raw: string,
+  receiveStamp: ReceiveStamp,
+  connectionId: string,
+  externalEventId: string,
+): BookTickerState {
   const value = JSON.parse(raw) as Record<string, unknown>;
   for (const key of ["b", "B", "a", "A", "s"]) {
     if (typeof value[key] !== "string") throw new Error(`bookTicker.${key} is required`);
   }
   if (value.s !== "BTCUSDT") throw new Error("bookTicker symbol is not BTCUSDT");
-  const bid = value.b as string;
-  const ask = value.a as string;
+  const bid = canonicalDecimalString(value.b as string);
+  const ask = canonicalDecimalString(value.a as string);
   return {
-    value: String((Number(bid) + Number(ask)) / 2),
+    value: Money.from(bid).plus(Money.from(ask)).dividedBy(Money.from("2")).toCanonical(),
     bid,
     bidSize: value.B as string,
     ask,
     askSize: value.A as string,
     sourceTime: isoFromMilliseconds(value.T),
     serverTime: isoFromMilliseconds(value.E),
-    receiveTime,
+    receiveTime: receiveStamp.localWallReceiveTime,
+    receiveStamp,
+    connectionId,
+    externalEventId,
+    parentInputReference: `raw-event-v2:${externalEventId}`,
   };
 }
 
-function clobHandler(state: RuntimeState, recorder: RuntimeRecorder, stats: StreamStats, market: PublicBtcFiveMinuteMarket) {
+function baselineWatermarks(receiveStamp: ReceiveStamp): Readonly<Record<"100" | "250" | "500", LeadLagStamp>> | null {
+  const eventNs = BigInt(receiveStamp.localMonotonicReceiveNs);
+  if (eventNs < 500_000_000n) return null;
+  const target = (windowMs: 100 | 250 | 500): LeadLagStamp => Object.freeze({
+    clock_domain: receiveStamp.clockDomain,
+    local_monotonic_receive_ns: (eventNs - BigInt(windowMs) * 1_000_000n).toString(),
+    local_receive_ordinal: receiveStamp.localReceiveOrdinal,
+  });
+  return Object.freeze({ "100": target(100), "250": target(250), "500": target(500) });
+}
+
+function scheduleHorizons(
+  state: RuntimeState,
+  trigger: LeadLagTrigger,
+  failureRuntime: FailClosedRuntime,
+): void {
+  for (const horizonMs of DEFAULT_LEAD_LAG_CONFIG.horizons_ms) {
+    const timer = setTimeout(() => {
+      state.horizonTimers.delete(timer);
+      void (async () => {
+        if (failureRuntime.terminated) return;
+        const timerStamp = publicReceiveClock().capture();
+        const targetNs = BigInt(trigger.trigger_receive_stamp.local_monotonic_receive_ns)
+          + BigInt(horizonMs) * 1_000_000n;
+        try {
+          const observation = state.leadLagEngine.evaluateHorizon({
+            triggerId: trigger.trigger_id,
+            horizonMs,
+            targetWatermark: {
+              clock_domain: trigger.clock_domain,
+              local_monotonic_receive_ns: targetNs.toString(),
+              local_receive_ordinal: timerStamp.localReceiveOrdinal,
+            },
+          });
+          if (!failureRuntime.terminated) state.horizonObservations.push(observation);
+        } catch (error) {
+          await failureRuntime.terminate(createRuntimeIncident({
+            errorClass: error instanceof Error ? error.name : "UnknownError",
+            message: error instanceof Error ? error.message : String(error),
+            stream: "lead-lag-horizon",
+            connectionRole: "session",
+            connectionId: trigger.polymarket_connection_id,
+            receiveStamp: timerStamp,
+            rawReference: null,
+            actionTaken: "TERMINATE_SESSION",
+            stopReason: "LEAD_LAG_HORIZON_EVALUATION_FAILED",
+          }));
+        }
+      })().catch((error) => {
+        process.stderr.write(`lead-lag timer terminal handler failed: ${String(error)}\n`);
+        process.exitCode = 1;
+      });
+    }, horizonMs);
+    state.horizonTimers.add(timer);
+  }
+}
+
+function ingestExternalPrice(
+  state: RuntimeState,
+  stream: Exclude<StreamName, "gamma" | "clob">,
+  price: PriceState,
+  failureRuntime: FailClosedRuntime,
+): void {
+  const source = sourceForStream(stream);
+  state.leadLagEngine.ingestExternal({
+    external_event_id: price.externalEventId,
+    source,
+    price: canonicalDecimalString(price.value),
+    receive_stamp: leadLagStamp(price.receiveStamp),
+    external_connection_id: externalConnectionId(price.connectionId),
+    parent_input_reference: price.parentInputReference,
+    quality: { stale: false, disconnected: false, quarantined: false },
+  });
+  const market = state.currentMarket;
+  const watermarks = baselineWatermarks(price.receiveStamp);
+  if (market === null || watermarks === null) return;
+  const batch = state.leadLagEngine.createTriggers({
+    externalEventId: price.externalEventId,
+    marketId: market.marketId,
+    baselineWatermarks: watermarks,
+  });
+  state.rawTriggerCount += batch.triggers.length;
+  if (batch.triggers.length > 0) state.leadLagMarketIds.add(market.marketId);
+  for (const trigger of batch.triggers) scheduleHorizons(state, trigger, failureRuntime);
+}
+
+function markExternalConnectionReset(
+  state: RuntimeState,
+  stream: Exclude<StreamName, "gamma" | "clob">,
+  receiveStamp: ReceiveStamp,
+): void {
+  state.leadLagEngine.noteExternalConnectionReset({
+    source: sourceForStream(stream),
+    receive_stamp: leadLagStamp(receiveStamp),
+  });
+}
+
+function ingestPolymarketBook(
+  state: RuntimeState,
+  market: PublicBtcFiveMinuteMarket,
+  receiveStamp: ReceiveStamp,
+  connectionId: string,
+  eventId: string,
+  quarantined: boolean,
+): void {
+  const book = state.orderBook;
+  if (book === null) return;
+  const bid = book.bestBid(market.upTokenId);
+  const ask = book.bestAsk(market.upTokenId);
+  if (bid === null || ask === null) return;
+  state.leadLagEngine.ingestPolymarket({
+    market_id: market.marketId,
+    bid,
+    ask,
+    mid_price: Money.from(bid).plus(Money.from(ask)).dividedBy(Money.from("2")).toCanonical(),
+    receive_stamp: leadLagStamp(receiveStamp),
+    polymarket_connection_id: polymarketConnectionId(connectionId),
+    parent_input_reference: `raw-event-v2:${eventId}`,
+    quality: {
+      snapshot: book.state === BookState.ACTIVE_UNVERIFIED,
+      stale: book.state === BookState.STALE,
+      disconnected: book.state === BookState.DISCONNECTED || book.state === BookState.RESET_REQUIRED,
+      crossed: false,
+      empty_side: false,
+      quarantined,
+    },
+  });
+  state.latestPolymarketParentInputReference = `raw-event-v2:${eventId}`;
+  state.latestPolymarketReceiveStamp = receiveStamp;
+}
+
+function clobHandler(
+  state: RuntimeState,
+  recorder: RuntimeRecorder,
+  stats: StreamStats,
+  market: PublicBtcFiveMinuteMarket,
+  failureRuntime: FailClosedRuntime,
+) {
   return async (raw: string, receiveStamp: ReceiveStamp, connectionId: string): Promise<void> => {
     const receiveTime = receiveStamp.localWallReceiveTime;
     observe(stats, raw, receiveTime, null);
@@ -557,7 +824,9 @@ function clobHandler(state: RuntimeState, recorder: RuntimeRecorder, stats: Stre
         error = reason instanceof Error ? reason.message : String(reason);
       }
     }
+    const eventId = randomUUID();
     await recorder.raw("clob", {
+      eventId,
       eventType: parsed.messages[0]?.eventType ?? "clob_batch_unverified",
       rawPayload: raw,
       receiveStamp,
@@ -567,23 +836,31 @@ function clobHandler(state: RuntimeState, recorder: RuntimeRecorder, stats: Stre
       parserError: status === "error" ? (error ?? "CLOB parse failed") : null,
       connectionId,
     });
+    if (!failureRuntime.terminated) {
+      ingestPolymarketBook(state, market, receiveStamp, connectionId, eventId, status === "quarantined" || status === "error");
+      state.latestPolymarketInputHash = rawSha256(raw);
+    }
   };
 }
 
-function rtdsHandler(source: "chainlink" | "binance", state: RuntimeState, recorder: RuntimeRecorder, stats: StreamStats) {
+function rtdsHandler(
+  source: "chainlink" | "binance",
+  state: RuntimeState,
+  recorder: RuntimeRecorder,
+  stats: StreamStats,
+  failureRuntime: FailClosedRuntime,
+) {
   const stream: StreamName = source === "chainlink" ? "chainlink" : "polymarket_binance";
   return async (raw: string, receiveStamp: ReceiveStamp, connectionId: string): Promise<void> => {
     const receiveTime = receiveStamp.localWallReceiveTime;
     const parsed = parseRtdsPriceMessage(raw, source);
     observe(stats, raw, receiveTime, parsed.serverTime ?? parsed.sourceTime);
-    if (parsed.parserStatus === "parsed" && parsed.valueDecimal !== null) {
-      const price = { value: parsed.valueDecimal, sourceTime: parsed.sourceTime, serverTime: parsed.serverTime, receiveTime };
-      if (source === "chainlink") state.chainlink = price;
-      else state.polymarketBinance = price;
-    } else if (parsed.parserStatus === "quarantined" || parsed.parserStatus === "error") {
+    if (parsed.parserStatus === "quarantined" || parsed.parserStatus === "error") {
       stats.quarantines += 1;
     }
+    const eventId = randomUUID();
     await recorder.raw(stream, {
+      eventId,
       eventType: parsed.eventType,
       rawPayload: raw,
       receiveStamp,
@@ -593,20 +870,39 @@ function rtdsHandler(source: "chainlink" | "binance", state: RuntimeState, recor
       parserError: parsed.parserError,
       connectionId,
     });
+    if (parsed.parserStatus === "parsed" && parsed.valueDecimal !== null && !failureRuntime.terminated) {
+      const price: PriceState = {
+        value: canonicalDecimalString(parsed.valueDecimal),
+        sourceTime: parsed.sourceTime,
+        serverTime: parsed.serverTime,
+        receiveTime,
+        receiveStamp,
+        connectionId,
+        externalEventId: eventId,
+        parentInputReference: `raw-event-v2:${eventId}`,
+      };
+      if (source === "chainlink") state.chainlink = price;
+      else state.polymarketBinance = price;
+      ingestExternalPrice(state, stream, price, failureRuntime);
+    }
   };
 }
 
-function directHandler(stream: "binance_spot" | "binance_perpetual", state: RuntimeState, recorder: RuntimeRecorder, stats: StreamStats) {
+function directHandler(
+  stream: "binance_spot" | "binance_perpetual",
+  state: RuntimeState,
+  recorder: RuntimeRecorder,
+  stats: StreamStats,
+  failureRuntime: FailClosedRuntime,
+) {
   return async (raw: string, receiveStamp: ReceiveStamp, connectionId: string): Promise<void> => {
     const receiveTime = receiveStamp.localWallReceiveTime;
     try {
-      const ticker = directTicker(raw, receiveTime);
+      const eventId = randomUUID();
+      const ticker = directTicker(raw, receiveStamp, connectionId, eventId);
       observe(stats, raw, receiveTime, ticker.serverTime ?? ticker.sourceTime);
-      if (stream === "binance_spot") {
-        state.previousSpot = state.spot;
-        state.spot = ticker;
-      } else state.perpetual = ticker;
       await recorder.raw(stream, {
+        eventId,
         eventType: "book_ticker",
         rawPayload: raw,
         receiveStamp,
@@ -616,7 +912,13 @@ function directHandler(stream: "binance_spot" | "binance_perpetual", state: Runt
         parserStatus: "parsed",
         connectionId,
       });
+      if (!failureRuntime.terminated) {
+        if (stream === "binance_spot") state.spot = ticker;
+        else state.perpetual = ticker;
+        ingestExternalPrice(state, stream, ticker, failureRuntime);
+      }
     } catch (reason) {
+      if (reason instanceof RuntimeStorageError) throw reason;
       stats.quarantines += 1;
       await recorder.raw(stream, {
         eventType: "book_ticker_parse_error",
@@ -630,8 +932,14 @@ function directHandler(stream: "binance_spot" | "binance_perpetual", state: Runt
   };
 }
 
-async function marketLoop(end: number, state: RuntimeState, recorder: RuntimeRecorder, stats: Record<StreamName, StreamStats>): Promise<void> {
-  while (Date.now() < end && !recorder.stoppedByLimit) {
+async function marketLoop(
+  end: number,
+  state: RuntimeState,
+  recorder: RuntimeRecorder,
+  stats: Record<StreamName, StreamStats>,
+  failureRuntime: FailClosedRuntime,
+): Promise<void> {
+  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated) {
     const epoch = Math.floor(Date.now() / 300_000) * 300;
     const current = await discover(epoch, recorder, stats.gamma);
     const next = await discover(epoch + 300, recorder, stats.gamma);
@@ -649,16 +957,22 @@ async function marketLoop(end: number, state: RuntimeState, recorder: RuntimeRec
     });
     const marketEnd = Math.min(end, Date.parse(chosen.intervalEnd));
     let first = true;
-    while (Date.now() < marketEnd && !recorder.stoppedByLimit) {
+    while (Date.now() < marketEnd && !recorder.stoppedByLimit && !failureRuntime.terminated) {
       if (!first) stats.clob.reconnects += 1;
       first = false;
       await captureUntil({
         stream: "clob",
         request: { source: "clob-market", assetIds: [chosen.upTokenId, chosen.downTokenId] },
         beforeAttempt: (connectionId) => state.orderBook?.connected(connectionId, new Date().toISOString()),
-        afterAttempt: () => state.orderBook?.disconnected(),
-        handle: clobHandler(state, recorder, stats.clob, chosen),
-      }, marketEnd, stats.clob, recorder);
+        afterAttempt: (_connectionId, receiveStamp) => {
+          state.orderBook?.disconnected();
+          state.leadLagEngine.notePolymarketConnectionReset({
+            market_id: chosen.marketId,
+            receive_stamp: leadLagStamp(receiveStamp),
+          });
+        },
+        handle: clobHandler(state, recorder, stats.clob, chosen, failureRuntime),
+      }, marketEnd, stats.clob, recorder, failureRuntime);
       if (Date.now() < marketEnd) await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_000));
     }
   }
@@ -692,30 +1006,86 @@ function snapshot(state: RuntimeState): PaperSnapshot | null {
 }
 
 function opportunityAudits(value: PaperSnapshot, state: RuntimeState, now: number): readonly PaperAudit[] {
+  const market = state.currentMarket;
+  const feeRate = market?.takerFeeRate ?? null;
   const candidate = completeSetArbitrageObserver(value, {
-    feeRate: state.currentMarket?.takerFeeRate ?? null,
+    feeRate,
     latencyMilliseconds: 1_000,
     latencySatisfied: false,
   });
-  const candidateDetected = candidate.edgeAfterFees !== null && Number(candidate.edgeAfterFees) > 0;
+  const candidateDetected = feeRate !== null && market !== null && (() => {
+    const result = new FeeEdgeCalculator().completeSet({
+      marketId: market.marketId,
+      conditionId: market.conditionId,
+      executableTime: value.observedAt,
+      upAsk: value.up.ask,
+      downAsk: value.down.ask,
+      upAskSize: value.up.askSize,
+      downAskSize: value.down.askSize,
+      evidence: {
+        market_id: market.marketId,
+        condition_id: market.conditionId,
+        effective_from: market.intervalStart.replace("Z", ".000Z"),
+        effective_to: market.intervalEnd.replace("Z", ".000Z"),
+        fee_rate: feeRate,
+        evidence_reference: `gamma:${market.slug}`,
+        evidence_status: "UNVERIFIED",
+      },
+    });
+    return result.scenarioNetEdgeAmount !== null && Money.from(result.scenarioNetEdgeAmount).isPositive();
+  })();
   if (!candidateDetected) state.completeSetCandidateSince = null;
   else state.completeSetCandidateSince ??= now;
   const latencySatisfied = state.completeSetCandidateSince !== null
     && now - state.completeSetCandidateSince >= 1_000;
   const complete = latencySatisfied
     ? completeSetArbitrageObserver(value, {
-        feeRate: state.currentMarket?.takerFeeRate ?? null,
+        feeRate,
         latencyMilliseconds: 1_000,
         latencySatisfied: true,
       })
     : candidate;
-  let change = "0";
-  if (state.spot !== null && state.previousSpot !== null) {
-    change = String(((Number(state.spot.value) / Number(state.previousSpot.value)) - 1) * 10_000);
+  const maker = makerEnvelopeObserver(value, { markoutPrice: null });
+  return [noTradeObserver(value), complete, maker];
+}
+
+function recordOpportunityObservations(
+  audits: readonly PaperAudit[],
+  state: RuntimeState,
+  failureRuntime: FailClosedRuntime,
+): void {
+  const parent = state.latestPolymarketParentInputReference;
+  const inputHash = state.latestPolymarketInputHash;
+  const received = state.latestPolymarketReceiveStamp;
+  if (parent === null || inputHash === null || received === null || failureRuntime.terminated) return;
+  const family: Readonly<Record<ObserverName, string>> = {
+    NO_TRADE: "NO_TRADE",
+    COMPLETE_SET_ARBITRAGE_OBSERVER: "COMPLETE_SET_ARBITRAGE",
+    LEAD_LAG_OBSERVER: "CROSS_VENUE_LEAD_LAG",
+    MAKER_ENVELOPE_OBSERVER: "MAKER_SPREAD_REBATE",
+  };
+  for (const audit of audits) {
+    failureRuntime.noteObservation();
+    state.observations.push(createOpportunityObservationV1({
+      opportunityFamily: family[audit.observer],
+      marketId: audit.marketId,
+      observedAtWall: audit.observedAt,
+      receiveStamp: leadLagStamp(received),
+      inputLineage: [{
+        source: "POLYMARKET_CLOB",
+        parent_input_reference: parent,
+        input_hash: inputHash,
+        receive_stamp: leadLagStamp(received),
+      }],
+      provenance: {
+        producer: "live-runtime-batch-4b-r1",
+        codeVersion: "batch-4b-r1",
+        configHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
+      },
+      quality: { status: "DEGRADED", rejectionReasons: ["CLOB_CONTINUITY_UNVERIFIED"] },
+      facts: JSON.parse(JSON.stringify(audit)) as Record<string, unknown>,
+    }));
   }
-  const leadLag = leadLagObserver(value, { referenceChangeBps: change, thresholdBps: "5" });
-  const maker = makerEnvelopeObserver(value, { markoutPrice: state.previousSpot === null ? null : value.up.bid });
-  return [noTradeObserver(value), complete, leadLag, maker];
 }
 
 function trackOpportunities(audits: readonly PaperAudit[], state: RuntimeState, now: number): void {
@@ -733,9 +1103,17 @@ function trackOpportunities(audits: readonly PaperAudit[], state: RuntimeState, 
   }
 }
 
-async function dashboardLoop(config: RuntimeOptions, end: number, started: number, state: RuntimeState, recorder: RuntimeRecorder, stats: Record<StreamName, StreamStats>): Promise<void> {
+async function dashboardLoop(
+  config: RuntimeOptions,
+  end: number,
+  started: number,
+  state: RuntimeState,
+  recorder: RuntimeRecorder,
+  stats: Record<StreamName, StreamStats>,
+  failureRuntime: FailClosedRuntime,
+): Promise<void> {
   let previousBookState: BookState | null = null;
-  while (Date.now() < end && !recorder.stoppedByLimit) {
+  while (Date.now() < end && !recorder.stoppedByLimit && !failureRuntime.terminated) {
     const now = new Date().toISOString();
     const bookState = state.orderBook?.state ?? BookState.DISCONNECTED;
     state.orderBook?.markStaleIfExpired(now);
@@ -743,9 +1121,13 @@ async function dashboardLoop(config: RuntimeOptions, end: number, started: numbe
     previousBookState = bookState;
     const paperSnapshot = snapshot(state);
     const audits = paperSnapshot === null ? [] : opportunityAudits(paperSnapshot, state, Date.now());
+    recordOpportunityObservations(audits, state, failureRuntime);
     trackOpportunities(audits, state, Date.now());
     if (config.mode === "paper") state.paperAudits.push(...audits);
-    const storage = await statfs(config.outputPath ?? "/root/polymarket-money-data").catch(() => null);
+    const storage = await statfs(config.outputPath ?? "/root/polymarket-money-data").catch((storageError) => {
+      process.stderr.write(`runtime storage telemetry unavailable: ${String(storageError)}\n`);
+      return null;
+    });
     const elapsedHours = Math.max((Date.now() - started) / 3_600_000, 1 / 3_600_000);
     const publicPayloadBytes = STREAMS.reduce((sum, name) => sum + stats[name].payloadBytes, 0);
     const projectedBytesPerHour = config.record.mode === "raw"
@@ -765,8 +1147,12 @@ async function dashboardLoop(config: RuntimeOptions, end: number, started: numbe
       chainlink: state.chainlink?.value ?? null,
       binanceSpot: state.spot?.value ?? state.polymarketBinance?.value ?? null,
       binancePerpetual: state.perpetual?.value ?? null,
-      latency: Object.fromEntries(STREAMS.map((name) => [name, { p50Ms: percentile(stats[name].latencies, 0.5), p95Ms: percentile(stats[name].latencies, 0.95) }])),
+      providerToLocalWallDelta: Object.fromEntries(STREAMS.map((name) => [name, {
+        p50Ms: percentile(stats[name].providerToLocalWallDeltas, 0.5),
+        p95Ms: percentile(stats[name].providerToLocalWallDeltas, 0.95),
+      }])),
       opportunities: audits,
+      leadLagGrid: state.leadLagEngine.grid(),
       diskFreeBytes: storage === null ? null : storage.bavail * storage.bsize,
       rawWriteBytesPerHour: recorder.usedRawBytes / elapsedHours,
       projectedCaptureBytesPerHour: projectedBytesPerHour,
@@ -784,8 +1170,29 @@ async function dashboardLoop(config: RuntimeOptions, end: number, started: numbe
 async function main(): Promise<void> {
   const config = await options();
   const runId = `runtime-${new Date().toISOString().replace(/[-:.TZ]/gu, "").slice(0, 14)}-${randomUUID().slice(0, 8)}`;
+  const incidentDirectory = config.outputPath ?? "/tmp/polymarket-runtime-incidents";
+  await mkdir(incidentDirectory, { recursive: true, mode: 0o700 });
+  const failureRuntime = new FailClosedRuntime({
+    incidentWriter: new RuntimeIncidentFileWriter(incidentDirectory, runId),
+    emergencySink: new EmergencyReceiptFileSink(incidentDirectory, runId),
+  });
   const recorder = new RuntimeRecorder(config, runId);
-  await recorder.open();
+  try {
+    await recorder.open();
+  } catch (openError) {
+    await failureRuntime.terminate(createRuntimeIncident({
+      errorClass: openError instanceof Error ? openError.name : "UnknownError",
+      message: openError instanceof Error ? openError.message : String(openError),
+      stream: "runtime-recorder",
+      connectionRole: "storage",
+      connectionId: runId,
+      receiveStamp: publicReceiveClock().capture(),
+      rawReference: null,
+      actionTaken: "TERMINATE_SESSION",
+      stopReason: "RAW_WRITER_OPEN_FAILED",
+    }));
+    return;
+  }
   const state = new RuntimeState();
   const stats = newStats();
   const started = Date.now();
@@ -794,27 +1201,85 @@ async function main(): Promise<void> {
     captureUntil({
       stream: "chainlink",
       request: { source: "rtds-chainlink" },
-      handle: rtdsHandler("chainlink", state, recorder, stats.chainlink),
-    }, end, stats.chainlink, recorder),
+      afterAttempt: (_connectionId, receiveStamp) => markExternalConnectionReset(state, "chainlink", receiveStamp),
+      handle: rtdsHandler("chainlink", state, recorder, stats.chainlink, failureRuntime),
+    }, end, stats.chainlink, recorder, failureRuntime),
     captureUntil({
       stream: "polymarket_binance",
       request: { source: "rtds-binance" },
-      handle: rtdsHandler("binance", state, recorder, stats.polymarket_binance),
-    }, end, stats.polymarket_binance, recorder),
+      afterAttempt: (_connectionId, receiveStamp) => markExternalConnectionReset(state, "polymarket_binance", receiveStamp),
+      handle: rtdsHandler("binance", state, recorder, stats.polymarket_binance, failureRuntime),
+    }, end, stats.polymarket_binance, recorder, failureRuntime),
     captureUntil({
       stream: "binance_spot",
       request: { source: "binance-spot-book" },
-      handle: directHandler("binance_spot", state, recorder, stats.binance_spot),
-    }, end, stats.binance_spot, recorder),
+      afterAttempt: (_connectionId, receiveStamp) => markExternalConnectionReset(state, "binance_spot", receiveStamp),
+      handle: directHandler("binance_spot", state, recorder, stats.binance_spot, failureRuntime),
+    }, end, stats.binance_spot, recorder, failureRuntime),
     captureUntil({
       stream: "binance_perpetual",
       request: { source: "binance-perpetual-book" },
-      handle: directHandler("binance_perpetual", state, recorder, stats.binance_perpetual),
-    }, end, stats.binance_perpetual, recorder),
+      afterAttempt: (_connectionId, receiveStamp) => markExternalConnectionReset(state, "binance_perpetual", receiveStamp),
+      handle: directHandler("binance_perpetual", state, recorder, stats.binance_perpetual, failureRuntime),
+    }, end, stats.binance_perpetual, recorder, failureRuntime),
   ];
-  await Promise.all([marketLoop(end, state, recorder, stats), dashboardLoop(config, end, started, state, recorder, stats), ...external]);
+  try {
+    await Promise.all([
+      marketLoop(end, state, recorder, stats, failureRuntime),
+      dashboardLoop(config, end, started, state, recorder, stats, failureRuntime),
+      ...external,
+    ]);
+  } catch (runtimeError) {
+    if (!failureRuntime.terminated) {
+      await failureRuntime.terminate(createRuntimeIncident({
+        errorClass: runtimeError instanceof Error ? runtimeError.name : "UnknownError",
+        message: runtimeError instanceof Error ? runtimeError.message : String(runtimeError),
+        stream: "runtime-session",
+        connectionRole: "session",
+        connectionId: runId,
+        receiveStamp: publicReceiveClock().capture(),
+        rawReference: null,
+        actionTaken: "TERMINATE_SESSION",
+        stopReason: "UNRECOVERABLE_RUNTIME_FAILURE",
+      }));
+    }
+  }
+  for (const timer of state.horizonTimers) clearTimeout(timer);
+  state.horizonTimers.clear();
   for (const startedAt of state.opportunities.values()) state.opportunityDurations.push(Date.now() - startedAt);
-  const segments = await recorder.close();
+  let segments: readonly CompressedSegmentResult[] = [];
+  try {
+    segments = await recorder.close();
+  } catch (closeError) {
+    if (!failureRuntime.terminated) {
+      await failureRuntime.terminate(createRuntimeIncident({
+        errorClass: closeError instanceof Error ? closeError.name : "UnknownError",
+        message: closeError instanceof Error ? closeError.message : String(closeError),
+        stream: "runtime-recorder",
+        connectionRole: "storage",
+        connectionId: runId,
+        receiveStamp: publicReceiveClock().capture(),
+        rawReference: null,
+        actionTaken: "TERMINATE_SESSION",
+        stopReason: "RAW_WRITER_CLOSE_FAILED",
+      }));
+    } else {
+      process.stderr.write(`runtime recorder close failed after terminal transition: ${String(closeError)}\n`);
+    }
+  }
+  if (state.rawTriggerCount > 0 && state.observations.length > 0) {
+    const leadLagEvidence = state.observations.filter((item) => state.leadLagMarketIds.has(item.market_id));
+    if (leadLagEvidence.length > 0) {
+    state.routeEvaluations.push(createRouteEvaluationV1({
+      route: "CROSS_VENUE_LEAD_LAG",
+      configHash: DEFAULT_LEAD_LAG_CONFIG.config_hash,
+      observationHashes: leadLagEvidence.map((item) => item.observation_hash),
+      rawTriggerCount: state.rawTriggerCount,
+      uniqueEpisodeCount: state.leadLagEngine.episodes().length,
+      uniqueMarketCount: state.leadLagMarketIds.size,
+    }));
+    }
+  }
   const elapsedSeconds = (Date.now() - started) / 1_000;
   const totalUncompressed = segments.reduce((sum, item) => sum + item.uncompressedBytes, 0);
   const totalCompressed = segments.reduce((sum, item) => sum + item.compressedBytes, 0);
@@ -829,7 +1294,8 @@ async function main(): Promise<void> {
     endedAt: new Date().toISOString(),
     elapsedSeconds,
     stoppedByByteLimit: recorder.stoppedByLimit,
-    stoppedByDuration: !recorder.stoppedByLimit,
+    stoppedByDuration: !recorder.stoppedByLimit && !failureRuntime.terminated,
+    terminalFailure: failureRuntime.termination,
     streams: Object.fromEntries(STREAMS.map((name) => [name, {
       events: stats[name].events,
       payloadBytes: stats[name].payloadBytes,
@@ -837,12 +1303,17 @@ async function main(): Promise<void> {
       payloadBytesPerHour: stats[name].payloadBytes * 3_600 / elapsedSeconds,
       reconnects: stats[name].reconnects,
       quarantines: stats[name].quarantines,
-      receiveLatencyP50Ms: percentile(stats[name].latencies, 0.5),
-      receiveLatencyP95Ms: percentile(stats[name].latencies, 0.95),
+      providerToLocalWallDeltaP50Ms: percentile(stats[name].providerToLocalWallDeltas, 0.5),
+      providerToLocalWallDeltaP95Ms: percentile(stats[name].providerToLocalWallDeltas, 0.95),
     }])),
     staleCount: state.staleCount,
     opportunityDurationMilliseconds: state.opportunityDurations,
     paperAuditCount: state.paperAudits.length,
+    opportunityObservationCount: state.observations.length,
+    routeEvaluations: state.routeEvaluations,
+    leadLagGrid: state.leadLagEngine.grid(),
+    leadLagEpisodes: state.leadLagEngine.episodes(),
+    leadLagHorizons: state.horizonObservations,
     theoreticalFillCount: state.paperAudits.flatMap((audit) => audit.fills).length,
     realOrderCount: 0,
     raw: {

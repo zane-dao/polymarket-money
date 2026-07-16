@@ -409,14 +409,16 @@ export function parseRtdsPriceMessage(
       const sourceTime = (() => {
         try {
           return millisecondsIso(payload.timestamp, "payload.timestamp");
-        } catch {
+        } catch (_invalidSourceTimestamp) {
+          // Off-topic frames are already quarantined; an invalid optional timestamp stays absent.
           return null;
         }
       })();
       const serverTime = (() => {
         try {
           return millisecondsIso(message.timestamp, "timestamp");
-        } catch {
+        } catch (_invalidServerTimestamp) {
+          // Off-topic frames are already quarantined; an invalid optional timestamp stays absent.
           return null;
         }
       })();

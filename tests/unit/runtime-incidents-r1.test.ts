@@ -71,3 +71,20 @@ test("emergency sink failure still leaves a non-zero non-graceful termination", 
   assert.equal(termination.exitCode, 1);
   assert.match(stderr.join("\n"), /receipt failed/);
 });
+
+test("recoverable incident writer failure switches directly to the terminal fallback", async () => {
+  let writerCalls = 0;
+  let exitCode = 0;
+  const runtime = new FailClosedRuntime({
+    incidentWriter: { write: async () => { writerCalls += 1; throw new Error("log disk failed"); } },
+    emergencySink: { write: async () => undefined },
+    writeStderr: () => undefined,
+    setExitCode: (code) => { exitCode = code; },
+  });
+  const termination = await runtime.recordIncident(incident());
+  assert.equal(writerCalls, 1);
+  assert.equal(exitCode, 1);
+  assert.equal(runtime.terminated, true);
+  assert.equal(termination?.graceful, false);
+  assert.throws(() => runtime.noteObservation(), /terminated/i);
+});

@@ -46,7 +46,7 @@ function market(): PublicBtcFiveMinuteMarket {
   };
 }
 
-test("paper finalization recovers a missing wrapper result into a reportable final result", async () => {
+test("paper finalization recovers a missing wrapper result into a reportable final result and observability cohort", async () => {
   const runDirectory = await mkdtemp(join(tmpdir(), "kj-paper-finalize-"));
   const journalPath = join(runDirectory, "kj-inputs.ndjson");
   const runId = "kj-paper-20260717000000-12345678";
@@ -160,13 +160,29 @@ test("paper finalization recovers a missing wrapper result into a reportable fin
         umaEndDate: "2026-07-17T00:05:52.000Z",
       }),
     });
+    const observabilityRuntimeSummary = {
+      ...runtimeSummary,
+      startedAt: START,
+      endedAt: "2026-07-17T00:06:00.000Z",
+      kjPaperJournalRecordCount: journal.recordCount,
+      kjPaperJournalLastRecordHash: journal.lastRecordHash,
+      kjPaperEventCount: journal.engine.events().length,
+      streams: {
+        gamma: { events: 1, reconnects: 0, quarantines: 0 },
+        clob: { events: 2, reconnects: 0, quarantines: 0 },
+        chainlink: { events: 3, reconnects: 0, quarantines: 0 },
+        polymarket_binance: { events: 4, reconnects: 0, quarantines: 0 },
+        binance_spot: { events: 5, reconnects: 0, quarantines: 0 },
+        binance_perpetual: { events: 6, reconnects: 0, quarantines: 0 },
+      },
+    };
     const readyInput = {
       plan,
       resultKind: "RECOVERED_FINAL" as const,
       resultPath: join(runDirectory, "final-result.json"),
       childExitedCleanly: true,
       collectorGitCommit: COMMIT,
-      runtimeSummary,
+      runtimeSummary: observabilityRuntimeSummary,
       journalPath,
       journalRecordCount: journal.recordCount,
       journalLastRecordHash: journal.lastRecordHash,
@@ -182,7 +198,7 @@ test("paper finalization recovers a missing wrapper result into a reportable fin
     await journal.close();
 
     await writeFile(join(runDirectory, "run-plan.json"), `${JSON.stringify(plan)}\n`, "utf8");
-    await writeFile(join(runDirectory, "runtime-summary.json"), `${JSON.stringify(runtimeSummary)}\n`, "utf8");
+    await writeFile(join(runDirectory, "runtime-summary.json"), `${JSON.stringify(observabilityRuntimeSummary)}\n`, "utf8");
     const finalizeScript = fileURLToPath(new URL("../../scripts/finalize-kj-paper-run.js", import.meta.url));
     const finalized = await execFile(process.execPath, [finalizeScript, runDirectory]);
     assert.equal(JSON.parse(finalized.stdout).accepted, true);
@@ -203,6 +219,22 @@ test("paper finalization recovers a missing wrapper result into a reportable fin
     const report = JSON.parse(await readFile(join(reportDirectory, "summary.json"), "utf8"));
     assert.equal(report.resultFileName, "final-result.json");
     assert.equal(report.report.run.resultKind, "RECOVERED_FINAL");
+
+    const observabilityScript = fileURLToPath(new URL("../../scripts/report-kj-paper-cohort-observability.js", import.meta.url));
+    const observabilityDirectory = join(runDirectory, "observability");
+    const observed = await execFile(process.execPath, [
+      observabilityScript,
+      "--input",
+      reportDirectory,
+      "--output",
+      observabilityDirectory,
+    ]);
+    const observability = JSON.parse(observed.stdout);
+    assert.equal(observability.accepted, true);
+    assert.equal(observability.evidenceStatus, "DESCRIPTIVE_PAPER_ONLY");
+    const observabilitySummary = JSON.parse(await readFile(join(observabilityDirectory, "summary.json"), "utf8"));
+    assert.equal(observabilitySummary.report.runs[0].journalRecordCount, String(observabilityRuntimeSummary.kjPaperJournalRecordCount));
+    assert.equal(observabilitySummary.report.aggregate.streams.binance_spot.eventCount, "5");
 
     await assert.rejects(
       execFile(process.execPath, [finalizeScript, runDirectory]),

@@ -40,7 +40,7 @@ project goal is not complete.
 | Official resolution only | Proven | Exact Gamma response is journaled and revalidated; market/token/time, closed/status, and unique exact 1/0 winner must agree | Ambiguous or delayed results remain pending and are never inferred from last price |
 | Durable restart and tamper detection | Proven for paper inputs | fsync append, sequence/hash chain, checkpoint, replay, plan binding, tamper/truncation/symlink tests | This is not future exchange open-order reconciliation |
 | Delayed resolution recovery closes the product workflow | Proven offline end to end | `paper:settle -> paper:finalize -> paper:report`; tests cover initial pending, recovered acceptance, final-result selection, no-overwrite, and a missing outer `result.json` only when the durable runtime summary proves clean paper-only completion | A post-plan-binding delayed-resolution public case has not occurred yet |
-| Logs and research exports | Proven | Runtime NDJSON/metrics, journal, result JSON, `paper:inspect`, `paper:report` summary/per-market CSV, and `paper:cohort-report` independent-run aggregate | A derived offline static dashboard is supplied separately; cohort results remain descriptive |
+| Logs and research exports | Proven | Runtime NDJSON/metrics, journal, result JSON, `paper:inspect`, `paper:report` summary/per-market CSV, PnL-only `paper:cohort-report`, and replay-verified `paper:cohort-observability-report` for stream/settlement/execution quality | Static dashboards are offline snapshots; all cohort results remain descriptive |
 | Target selection cannot be silently changed during reporting | Proven in current code and one public run | `RUN_PLAN` is the first post-header journal record and binds run ID, target count/window, and collector commit; report compares it to artifacts; the 2026-07-16 run replayed 479 records with a matching plan and journal tail | The earlier accepted public run is explicitly `LEGACY_UNBOUND` |
 | No credentials or real orders | Proven structurally and at runtime | No `ExecutionEngine` implementation exists; runtime safety counters are all false/zero and acceptance verifies them | The domain keeps a future `ExecutionEngine` interface, which is not an executable adapter |
 | Strategy profitability | Not proven | Final Test: J is only slightly positive in base and negative under stress/concentration removal; K is negative in base and stress | No tuning on Final Test; no shadow/live promotion |
@@ -63,11 +63,11 @@ project goal is not complete.
 
 ```text
 Python: 205 passed
-Node/TypeScript: 123 passed
+Node/TypeScript: 125 passed
 Ruff: passed
 TypeScript typecheck: passed
 git diff --check: passed
-CLI help: paper:mvp, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper-l-adaptive passed
+CLI help: paper:mvp, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper:cohort-observability-report, paper-l-adaptive passed
 ```
 
 Accepted public artifact (pre-plan-binding code):
@@ -111,14 +111,25 @@ Current descriptive cohort:
 - `profitabilityClaimEligible=false`; it neither establishes profitability nor
   changes J/K parameters.
 
+Current descriptive operational cohort:
+
+- `/root/polymarket-money-data/kj-paper-cohort-observability-two-runs-20260717`
+- 2 replay-verified runs, 6 target markets; report hash
+  `e4cd5370760da77e75caccbf0e4ed308dbd619aa3f83deee41dbc1d391f46a4d`
+- Reopens each journal and cross-checks runtime-summary hashes, tail, record and
+  event counts before aggregating public-stream counters, official-settlement
+  delay and J/K execution outcomes. It is permanently descriptive paper evidence.
+
 ## Next evidence gate
 
 The first plan-bound three-market gate has passed.  Subsequent bounded runs
 should accumulate an independently precommitted multi-market sample and record
 connection stability, official-resolution delay, fills/no-fills and PnL
-distribution without parameter changes.  `paper:cohort-report` can aggregate
-only the resulting hash-chained reports; it rejects duplicate/overlapping runs
-and never makes a profitability claim.  Every run must still meet all of the
+distribution without parameter changes. `paper:cohort-report` aggregates only
+the PnL distribution, while `paper:cohort-observability-report` independently
+rechecks runtime/journal evidence and aggregates quality metrics. Both reject
+duplicate/overlapping inputs and never make a profitability claim. Every run
+must still meet all of the
 following, not merely process exit zero:
 
 1. `resultKind=INITIAL`, `accepted=true`, and `planBinding=HASH_CHAINED`;

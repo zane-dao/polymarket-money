@@ -143,6 +143,16 @@ hash `cba4f224237d0cd6a1c3984c1114920b101bc66a0e6cdd35e262c42417bc0410`.
 It covers six non-overlapping markets (J: 20 trades, K: 18 trades) but remains
 descriptive and has `profitabilityClaimEligible=false`.
 
+A second, replay-verified operational artifact now keeps quality evidence
+separate from cohort PnL: `/root/polymarket-money-data/kj-paper-cohort-observability-two-runs-20260717`
+has report hash `e4cd5370760da77e75caccbf0e4ed308dbd619aa3f83deee41dbc1d391f46a4d`.
+Across the same six targets, Gamma official-settlement delay is 3.91 minutes
+minimum, 6.31 minutes P50 and 7.89 minutes P95/max. J recorded 22 intents,
+20 fills, 12 partial fills and two `SLIPPAGE_LIMIT` no-fills; K recorded 20
+intents, 18 fills, nine partial fills and two `SLIPPAGE_LIMIT` no-fills. This
+artifact also preserves each public stream's events/reconnects/quarantines and
+remains `DESCRIPTIVE_PAPER_ONLY`; it does not upgrade theoretical fills or PnL.
+
 ## Remaining gaps
 
 1. Strict legacy-equivalent K/J still requires the historical trade-tick stream,

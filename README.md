@@ -205,6 +205,24 @@ The cohort command rechecks every input artifact hash, accepts only
 target windows, and writes a no-overwrite hashed summary outside Git.  Its
 `profitabilityClaimEligible` field remains `false` regardless of aggregate PnL.
 
+To keep operational quality separate from PnL, the offline observability
+cohort command reopens each verified journal and cross-checks its tail, record
+count, runtime summary hash, paper event count, public-stream counters,
+official-settlement delay, and target-market intent/fill/no-fill events:
+
+```bash
+npm run paper:cohort-observability-report -- \
+  --input /absolute/path/to/report-one \
+  --input /absolute/path/to/report-two \
+  --output /absolute/path/to/new-observability-directory
+```
+
+It accepts the same non-overlapping `HASH_CHAINED` reports as the PnL cohort,
+but additionally rejects a runtime/journal mismatch. It reports public-stream
+events/reconnects/quarantines, Gamma official-settlement-delay distribution and
+J/K intent, fill, partial-fill and no-fill-reason counts. It remains strictly
+`DESCRIPTIVE_PAPER_ONLY` with `profitabilityClaimEligible=false`.
+
 `data/golden/batch-06/kj-ewma-intent-parity-v1.json` feeds the same five-second
 price path, book, fee, delayed fill, and official settlement to Python and
 TypeScript.  It verifies a representative J no-trade and K

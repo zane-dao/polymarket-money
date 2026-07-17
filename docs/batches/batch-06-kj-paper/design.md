@@ -250,6 +250,17 @@ aggregates per-strategy market/trade/PnL and per-run sign counts but permanently
 retains `profitabilityClaimEligible=false`; it neither changes parameters nor
 creates fill, alpha, shadow, or live evidence.
 
+`paper:cohort-observability-report` is deliberately a second, offline-only
+layer rather than a change to the PnL cohort. For every accepted report it
+re-hashes the referenced runtime summary, strictly reopens the durable journal,
+checks record count/tail/event count against both the report and runtime
+summary, then reports the six public-stream event/reconnect/quarantine counters,
+target-market Gamma official-settlement delay, and J/K intent/fill/partial/no-
+fill/reason distribution. It rejects runtime safety/identity/tail conflicts and
+keeps the same permanent `DESCRIPTIVE_PAPER_ONLY`/`profitabilityClaimEligible=false`
+boundary. It measures paper execution quality; it does not turn a theoretical
+fill into exchange evidence.
+
 The current Chainlink RTDS relay is observability only.  A future boundary-based
 preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;
 the proposed evidence/state contract is in

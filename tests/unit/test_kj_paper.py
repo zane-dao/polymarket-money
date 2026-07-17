@@ -8,16 +8,21 @@ import math
 import unittest
 
 from research.polymarket_money.kj_paper import (
+    ADAPTIVE_SIGNAL_FIDELITY,
+    AdaptiveStrategy,
     KJConfig,
     KJStrategy,
+    LAdaptiveConfig,
     PaperScenario,
     SIGNAL_FIDELITY,
     export_kj_paper,
+    run_l_adaptive_paper,
     run_kj_paper,
     simulate_decision,
 )
 from research.polymarket_money.kj_ewma import SIGNAL_FIDELITY as EWMA_SIGNAL_FIDELITY
 from research.polymarket_money.kj_ewma import EwmaVolatility, KJDualVolatility
+from research.polymarket_money.cli import parser
 
 
 def row(*, condition: str = "m1", winner: str = "Up", current: str = "111") -> dict:
@@ -52,6 +57,150 @@ def row(*, condition: str = "m1", winner: str = "Up", current: str = "111") -> d
 
 
 class KJPaperTest(unittest.TestCase):
+    def test_l_adaptive_records_dynamic_costs_and_volatility_drag(self) -> None:
+        event = simulate_decision(
+            row(),
+            strategy=AdaptiveStrategy.L_ADAPTIVE_EXECUTION,
+            scenario=PaperScenario.BASE_1S,
+            bankroll=Decimal("10000"),
+            config=KJConfig(),
+        )
+        self.assertEqual(event["strategy"], "L_ADAPTIVE_EXECUTION")
+        self.assertEqual(event["signal_fidelity"], ADAPTIVE_SIGNAL_FIDELITY)
+        self.assertGreater(Decimal(event["volatility_drag"]), 0)
+        self.assertGreater(
+            Decimal(event["required_edge"]),
+            Decimal(event["required_edge_fee"]),
+        )
+        self.assertGreater(Decimal(event["required_edge_depth_participation"]), 0)
+        self.assertFalse(event["market_quote_velocity_available"])
+        self.assertEqual(
+            event["market_quote_reprice_risk_source"],
+            "CURRENT_TOP_OF_BOOK_SPREAD_PROXY_1HZ",
+        )
+        self.assertNotIn("edge_threshold", event)
+
+    def test_l_adaptive_higher_volatility_increases_drag_and_remaining_risk(self) -> None:
+        low_event = simulate_decision(
+            row(),
+            strategy=AdaptiveStrategy.L_ADAPTIVE_EXECUTION,
+            scenario=PaperScenario.BASE_1S,
+            bankroll=Decimal("10000"),
+            config=KJConfig(),
+        )
+        high = row()
+        high["binance"].update(
+            {
+                "realized_vol_30s": "0.01",
+                "realized_vol_60s": "0.01",
+                "realized_vol_120s": "0.01",
+            }
+        )
+        high_event = simulate_decision(
+            high,
+            strategy=AdaptiveStrategy.L_ADAPTIVE_EXECUTION,
+            scenario=PaperScenario.BASE_1S,
+            bankroll=Decimal("10000"),
+            config=KJConfig(),
+        )
+        self.assertGreater(
+            Decimal(high_event["volatility_drag"]),
+            Decimal(low_event["volatility_drag"]),
+        )
+        self.assertGreater(
+            Decimal(high_event["required_edge_volatility_remaining"]),
+            Decimal(low_event["required_edge_volatility_remaining"]),
+        )
+
+    def test_l_adaptive_does_not_look_ahead_to_execution_quote_for_speed(self) -> None:
+        baseline = simulate_decision(
+            row(),
+            strategy=AdaptiveStrategy.L_ADAPTIVE_EXECUTION,
+            scenario=PaperScenario.BASE_1S,
+            bankroll=Decimal("10000"),
+            config=KJConfig(),
+        )
+        changed_execution = row()
+        changed_execution["books"]["execution_base_1s"].update(
+            {"au": "0.75", "ad": "0.25", "sau": "1", "sad": "1"}
+        )
+        changed = simulate_decision(
+            changed_execution,
+            strategy=AdaptiveStrategy.L_ADAPTIVE_EXECUTION,
+            scenario=PaperScenario.BASE_1S,
+            bankroll=Decimal("10000"),
+            config=KJConfig(),
+        )
+        self.assertEqual(baseline["required_edge"], changed["required_edge"])
+        self.assertEqual(
+            baseline["market_quote_reprice_risk_proxy"],
+            changed["market_quote_reprice_risk_proxy"],
+        )
+
+    def test_l_adaptive_preregistration_blocks_final_test_and_isolates_l(self) -> None:
+        receipt = SimpleNamespace(
+            dataset_hash="a" * 64,
+            manifest={"audit": {"gate": {"passed": True}}},
+        )
+        train = row()
+        train["split"] = "TRAIN"
+        validation = row(condition="m2", winner="Down")
+        validation["split"] = "VALIDATION"
+        with self.assertRaisesRegex(ValueError, "only TRAIN or VALIDATION"):
+            run_l_adaptive_paper(receipt, (train, validation), split="FINAL_TEST")
+        with self.assertRaisesRegex(ValueError, "only TRAIN or VALIDATION"):
+            run_kj_paper(
+                receipt,
+                (train, validation),
+                strategies=(AdaptiveStrategy.L_ADAPTIVE_EXECUTION,),
+                split="FINAL_TEST",
+            )
+        result = run_l_adaptive_paper(receipt, (train, validation), split="TRAIN")
+        self.assertEqual(result["evaluation_stage"], "TRAIN_FIXED_CONFIGURATION_AUDIT")
+        self.assertEqual(
+            result["evaluation_protocol"]["final_test_policy"],
+            "LOCKED_NOT_ACCEPTED_BY_PAPER_L_ADAPTIVE",
+        )
+        self.assertEqual(result["config"]["config_version"], LAdaptiveConfig().config_version)
+        self.assertNotIn("edge_threshold", result["config"])
+        with self.assertRaisesRegex(ValueError, "run separately"):
+            run_kj_paper(
+                receipt,
+                (train,),
+                strategies=(KJStrategy.J_FEE_AWARE, AdaptiveStrategy.L_ADAPTIVE_EXECUTION),
+                split="TRAIN",
+            )
+
+    def test_l_adaptive_cli_exposes_only_train_and_validation(self) -> None:
+        arguments = parser().parse_args(
+            [
+                "paper-l-adaptive",
+                "--dataset",
+                "/tmp/dataset",
+                "--dataset-hash",
+                "a" * 64,
+                "--split",
+                "VALIDATION",
+                "--output",
+                "/tmp/output",
+            ]
+        )
+        self.assertEqual(arguments.command, "paper-l-adaptive")
+        with self.assertRaises(SystemExit):
+            parser().parse_args(
+                [
+                    "paper-l-adaptive",
+                    "--dataset",
+                    "/tmp/dataset",
+                    "--dataset-hash",
+                    "a" * 64,
+                    "--split",
+                    "FINAL_TEST",
+                    "--output",
+                    "/tmp/output",
+                ]
+            )
+
     def test_python_ewma_to_intent_is_the_shared_decision_golden_reference(self) -> None:
         fixture_path = (
             Path(__file__).parents[2]

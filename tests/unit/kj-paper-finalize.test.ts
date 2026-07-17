@@ -46,7 +46,7 @@ function market(): PublicBtcFiveMinuteMarket {
   };
 }
 
-test("paper finalization turns a clean recovered run into a reportable final result", async () => {
+test("paper finalization recovers a missing wrapper result into a reportable final result", async () => {
   const runDirectory = await mkdtemp(join(tmpdir(), "kj-paper-finalize-"));
   const journalPath = join(runDirectory, "kj-inputs.ndjson");
   const runId = "kj-paper-20260717000000-12345678";
@@ -77,6 +77,7 @@ test("paper finalization turns a clean recovered run into a reportable final res
     kjMarketStartBefore: END,
     kjPaperJournalPath: journalPath,
     terminalFailure: null,
+    stoppedByDuration: true,
     realOrderCount: 0,
     safety: {
       liveClientConstructed: false,
@@ -182,14 +183,6 @@ test("paper finalization turns a clean recovered run into a reportable final res
 
     await writeFile(join(runDirectory, "run-plan.json"), `${JSON.stringify(plan)}\n`, "utf8");
     await writeFile(join(runDirectory, "runtime-summary.json"), `${JSON.stringify(runtimeSummary)}\n`, "utf8");
-    await writeFile(join(runDirectory, "result.json"), `${JSON.stringify({
-      schemaVersion: "kj-paper-mvp-v1",
-      accepted: false,
-      checks: { childExitedCleanly: true, noPendingMarkets: false },
-      runId,
-      collectorGitCommit: COMMIT,
-    })}\n`, "utf8");
-
     const finalizeScript = fileURLToPath(new URL("../../scripts/finalize-kj-paper-run.js", import.meta.url));
     const finalized = await execFile(process.execPath, [finalizeScript, runDirectory]);
     assert.equal(JSON.parse(finalized.stdout).accepted, true);
@@ -215,6 +208,68 @@ test("paper finalization turns a clean recovered run into a reportable final res
       execFile(process.execPath, [finalizeScript, runDirectory]),
       /EEXIST/u,
     );
+  } finally {
+    await rm(runDirectory, { recursive: true, force: true });
+  }
+});
+
+test("paper finalization can recover a missing wrapper result only from a clean runtime summary", async () => {
+  const runDirectory = await mkdtemp(join(tmpdir(), "kj-paper-finalize-missing-result-"));
+  const journalPath = join(runDirectory, "kj-inputs.ndjson");
+  const runId = "kj-paper-20260717000000-87654321";
+  const plan = {
+    schemaVersion: "kj-paper-mvp-v1",
+    runId,
+    targetMarketCount: 1,
+    plannedAt: "2026-07-16T23:59:00.000Z",
+    firstFullMarketStart: START,
+    captureEnd: END,
+    expectedFinishBy: "2026-07-17T00:15:00.000Z",
+    durationSeconds: 360,
+    settlementGraceSeconds: 600,
+    runDirectory,
+    metricsDirectory: join(runDirectory, "metrics"),
+    journalPath,
+    summaryPath: join(runDirectory, "runtime-summary.json"),
+    runtimeStdoutPath: join(runDirectory, "runtime.ndjson"),
+    runtimeStderrPath: join(runDirectory, "runtime.stderr.log"),
+    resultPath: join(runDirectory, "result.json"),
+    collectorGitCommit: COMMIT,
+  } as const;
+  const runtimeSummary = {
+    type: "runtime_summary",
+    mode: "paper",
+    collectorGitCommit: COMMIT,
+    kjMarketStartBefore: END,
+    kjPaperJournalPath: journalPath,
+    stoppedByDuration: true,
+    terminalFailure: null,
+    realOrderCount: 0,
+    safety: {
+      liveClientConstructed: false,
+      userChannelConnected: false,
+      credentialsRead: false,
+      ordersSent: 0,
+    },
+  };
+  try {
+    const journal = await KJPaperJournal.open(journalPath);
+    await journal.appendRunPlan({
+      schemaVersion: "kj-paper-run-plan-v1",
+      runId,
+      targetMarketCount: 1,
+      firstFullMarketStart: START,
+      captureEnd: END,
+      collectorGitCommit: COMMIT,
+    });
+    await journal.close();
+    await writeFile(join(runDirectory, "run-plan.json"), `${JSON.stringify(plan)}\n`, "utf8");
+    await writeFile(join(runDirectory, "runtime-summary.json"), `${JSON.stringify(runtimeSummary)}\n`, "utf8");
+
+    const finalizeScript = fileURLToPath(new URL("../../scripts/finalize-kj-paper-run.js", import.meta.url));
+    await assert.rejects(execFile(process.execPath, [finalizeScript, runDirectory]));
+    const finalResult = JSON.parse(await readFile(join(runDirectory, "final-result.json"), "utf8").catch(() => "null"));
+    assert.equal(finalResult, null);
   } finally {
     await rm(runDirectory, { recursive: true, force: true });
   }

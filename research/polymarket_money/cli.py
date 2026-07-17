@@ -29,6 +29,7 @@ from .kj_paper import (
     KJStrategy,
     PaperScenario,
     export_kj_paper,
+    run_l_adaptive_paper,
     run_kj_paper,
 )
 from .kj_ewma import build_kj_ewma_artifact, load_kj_ewma_artifact
@@ -154,6 +155,49 @@ def _run_paper_kj(args: argparse.Namespace) -> int:
                     )
                 }
                 for name, run in result["runs"].items()
+            },
+        },
+        None,
+    )
+    return 0
+
+
+def _run_paper_l_adaptive(args: argparse.Namespace) -> int:
+    """Run the separately pre-registered L strategy without opening FINAL_TEST."""
+    dataset_path = Path(args.dataset).resolve(strict=True)
+    receipt, rows = ExternalHistoricalDatasetAdapter.load(dataset_path)
+    if receipt.dataset_hash != args.dataset_hash:
+        raise SystemExit("historical dataset hash does not match --dataset-hash")
+    result = run_l_adaptive_paper(
+        receipt,
+        rows,
+        split=args.split,
+        horizon_seconds=args.horizon,
+        scenario=PaperScenario(args.scenario),
+        initial_cash=Decimal(args.initial_cash),
+    )
+    output = Path(args.output).resolve()
+    export_kj_paper(result, output)
+    run = result["runs"]["L_ADAPTIVE_EXECUTION"]
+    _write_json(
+        {
+            "output": str(output),
+            "result_hash": result["result_hash"],
+            "signal_fidelity": result["signal_fidelity"],
+            "evaluation_stage": result["evaluation_stage"],
+            "evaluation_protocol": result["evaluation_protocol"],
+            "run": {
+                key: run[key]
+                for key in (
+                    "decision_count",
+                    "filled_count",
+                    "final_cash",
+                    "net_pnl",
+                    "max_drawdown",
+                    "brier_score",
+                    "log_loss",
+                    "net_without_best_3_days",
+                )
             },
         },
         None,
@@ -404,6 +448,23 @@ def parser() -> argparse.ArgumentParser:
     paper_kj.add_argument("--ewma-artifact")
     paper_kj.add_argument("--output", required=True)
     paper_kj.set_defaults(handler=_run_paper_kj)
+
+    paper_l_adaptive = commands.add_parser(
+        "paper-l-adaptive",
+        help="pre-registered L_ADAPTIVE_EXECUTION TRAIN/VALIDATION research only",
+    )
+    paper_l_adaptive.add_argument("--dataset", required=True)
+    paper_l_adaptive.add_argument("--dataset-hash", required=True)
+    paper_l_adaptive.add_argument("--split", choices=("TRAIN", "VALIDATION"), required=True)
+    paper_l_adaptive.add_argument("--horizon", type=int, choices=(15, 30, 60), default=30)
+    paper_l_adaptive.add_argument(
+        "--scenario",
+        choices=tuple(item.value for item in PaperScenario),
+        default=PaperScenario.BASE_1S.value,
+    )
+    paper_l_adaptive.add_argument("--initial-cash", default="10000")
+    paper_l_adaptive.add_argument("--output", required=True)
+    paper_l_adaptive.set_defaults(handler=_run_paper_l_adaptive)
 
     build_ewma = commands.add_parser("build-kj-ewma")
     build_ewma.add_argument("--dataset", required=True)

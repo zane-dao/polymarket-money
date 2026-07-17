@@ -54,6 +54,41 @@ async function json(path: string, field: string): Promise<unknown> {
   }
 }
 
+async function optionalJson(path: string, field: string): Promise<unknown | null> {
+  try {
+    return await json(path, field);
+  } catch (error) {
+    const cause = error instanceof Error ? error.cause : undefined;
+    if (cause !== null && typeof cause === "object" && "code" in cause
+      && (cause as { code?: unknown }).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function proveCleanRuntimeCompletion(
+  value: unknown,
+  expected: { readonly plan: KJPaperMvpPlan; readonly collectorGitCommit: string },
+): void {
+  const summary = object(value, "runtime summary");
+  const safety = object(summary.safety, "runtime summary safety");
+  if (summary.type !== "runtime_summary"
+    || summary.mode !== "paper"
+    || summary.collectorGitCommit !== expected.collectorGitCommit
+    || summary.kjMarketStartBefore !== expected.plan.captureEnd
+    || summary.kjPaperJournalPath !== expected.plan.journalPath
+    || summary.stoppedByDuration !== true
+    || summary.terminalFailure !== null
+    || summary.realOrderCount !== 0
+    || safety.liveClientConstructed !== false
+    || safety.userChannelConnected !== false
+    || safety.credentialsRead !== false
+    || safety.ordersSent !== 0) {
+    throw new Error("runtime summary does not prove a clean paper-only child completion");
+  }
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes("--help")) {
     process.stdout.write("Usage: npm run paper:finalize -- /absolute/mvp-run-directory\n");
@@ -69,15 +104,22 @@ async function main(): Promise<void> {
     throw new Error("MVP run directory must be a real non-symlink directory");
   }
   const parsedPlan = plan(await json(join(runDirectory, "run-plan.json"), "run plan"), runDirectory);
-  const originalResult = object(await json(join(runDirectory, "result.json"), "original result"), "original result");
-  const originalChecks = object(originalResult.checks, "original result checks");
-  if (originalResult.runId !== parsedPlan.value.runId
-    || originalResult.collectorGitCommit !== parsedPlan.collectorGitCommit
-    || originalChecks.childExitedCleanly !== true) {
-    throw new Error("original result does not prove a clean child exit for this run");
+  const originalResultValue = await optionalJson(join(runDirectory, "result.json"), "original result");
+  if (originalResultValue !== null) {
+    const originalResult = object(originalResultValue, "original result");
+    const originalChecks = object(originalResult.checks, "original result checks");
+    if (originalResult.runId !== parsedPlan.value.runId
+      || originalResult.collectorGitCommit !== parsedPlan.collectorGitCommit
+      || originalChecks.childExitedCleanly !== true) {
+      throw new Error("original result does not prove a clean child exit for this run");
+    }
+    if (originalResult.accepted === true) throw new Error("accepted runs do not require finalization");
   }
-  if (originalResult.accepted === true) throw new Error("accepted runs do not require finalization");
   const runtimeSummary = await json(join(runDirectory, "runtime-summary.json"), "runtime summary");
+  proveCleanRuntimeCompletion(runtimeSummary, {
+    plan: parsedPlan.value,
+    collectorGitCommit: parsedPlan.collectorGitCommit,
+  });
   const finalResultPath = join(runDirectory, "final-result.json");
   const journal = await KJPaperJournal.open(parsedPlan.value.journalPath);
   let finalResult;

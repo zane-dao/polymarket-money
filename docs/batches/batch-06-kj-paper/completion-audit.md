@@ -4,7 +4,8 @@ Audit date: 2026-07-17
 
 Code branch: `batch/06-kj-paper-loop`
 
-Audited implementation HEAD: `ce1d819`
+Audited baseline: `e6b2780`; the L research boundary and recovery hardening
+below were verified in the current working tree.
 
 ## Decision
 
@@ -15,11 +16,11 @@ project goal is not complete.
   paper loop connect market identity, signal, intent, delayed theoretical fill,
   wallet reservation, token position, official settlement, PnL, durable journal,
   recovery, finalization, and report export.
-- `CURRENT_PLAN_BOUND_MULTI_MARKET_EVIDENCE_COMPLETE`: the approved bounded
-  public run at collector commit `76131eb` recorded `RUN_PLAN` before context,
-  settled exactly three targets, returned `accepted=true`, and produced a
-  replay-verified `DESCRIPTIVE_PAPER_ONLY` report.  This is product-path
-  evidence only, not profitability evidence.
+- `CURRENT_PLAN_BOUND_MULTI_MARKET_EVIDENCE_COMPLETE`: two approved bounded
+  public runs, each with three non-overlapping targets, recorded `RUN_PLAN`
+  before context, returned `accepted=true`, and produced replay-verified
+  `DESCRIPTIVE_PAPER_ONLY` reports.  This is product-path evidence only, not
+  profitability evidence.
 - `NOT_SHADOW_OR_LIVE_READY`: public CLOB continuity remains `UNVERIFIED`, fills
   are theoretical, historical K/J does not have strict legacy signal fidelity,
   and K/J has no stable independent-sample positive edge.
@@ -38,11 +39,12 @@ project goal is not complete.
 | Independent wallet, position, fee, and PnL | Proven | Decimal `Money`, independent J/K wallets, reservations, token positions, settlement events, golden tests, and report identities | Not exchange reconciliation; no private account truth is read |
 | Official resolution only | Proven | Exact Gamma response is journaled and revalidated; market/token/time, closed/status, and unique exact 1/0 winner must agree | Ambiguous or delayed results remain pending and are never inferred from last price |
 | Durable restart and tamper detection | Proven for paper inputs | fsync append, sequence/hash chain, checkpoint, replay, plan binding, tamper/truncation/symlink tests | This is not future exchange open-order reconciliation |
-| Delayed resolution recovery closes the product workflow | Proven offline end to end | `paper:settle -> paper:finalize -> paper:report`; test covers initial pending, recovered acceptance, final-result selection, and no-overwrite | A post-plan-binding delayed-resolution public case has not occurred yet |
-| Logs and research exports | Proven | Runtime NDJSON/metrics, journal, result JSON, `paper:inspect`, `paper:report` summary/per-market CSV, and `paper:cohort-report` independent-run aggregate | No graphical dashboard is claimed by this CLI MVP; cohort results remain descriptive |
+| Delayed resolution recovery closes the product workflow | Proven offline end to end | `paper:settle -> paper:finalize -> paper:report`; tests cover initial pending, recovered acceptance, final-result selection, no-overwrite, and a missing outer `result.json` only when the durable runtime summary proves clean paper-only completion | A post-plan-binding delayed-resolution public case has not occurred yet |
+| Logs and research exports | Proven | Runtime NDJSON/metrics, journal, result JSON, `paper:inspect`, `paper:report` summary/per-market CSV, and `paper:cohort-report` independent-run aggregate | A derived offline static dashboard is supplied separately; cohort results remain descriptive |
 | Target selection cannot be silently changed during reporting | Proven in current code and one public run | `RUN_PLAN` is the first post-header journal record and binds run ID, target count/window, and collector commit; report compares it to artifacts; the 2026-07-16 run replayed 479 records with a matching plan and journal tail | The earlier accepted public run is explicitly `LEGACY_UNBOUND` |
 | No credentials or real orders | Proven structurally and at runtime | No `ExecutionEngine` implementation exists; runtime safety counters are all false/zero and acceptance verifies them | The domain keeps a future `ExecutionEngine` interface, which is not an executable adapter |
 | Strategy profitability | Not proven | Final Test: J is only slightly positive in base and negative under stress/concentration removal; K is negative in base and stress | No tuning on Final Test; no shadow/live promotion |
+| L adaptive research candidate | Rejected at historical gate | Separate Python-only V1 has dynamic execution edge, volatility drag, dynamic anchor band and depth/reprice-risk proxies; TRAIN is -20.66 and frozen VALIDATION is -1,287.05 | No verified historical Chainlink boundary series or continuous CLOB quote velocity; L does not enter real-time paper/shadow/live and leaves Final Test closed |
 
 ## Reference-engine lessons: adopted versus deferred
 
@@ -60,12 +62,12 @@ project goal is not complete.
 ## Current verification
 
 ```text
-Python: 200 passed
-Node/TypeScript: 120 passed
+Python: 205 passed
+Node/TypeScript: 123 passed
 Ruff: passed
 TypeScript typecheck: passed
 git diff --check: passed
-CLI help: paper:mvp, paper:settle, paper:finalize, paper:report, paper:cohort-report passed
+CLI help: paper:mvp, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper-l-adaptive passed
 ```
 
 Accepted public artifact (pre-plan-binding code):
@@ -88,6 +90,26 @@ Accepted public artifact (plan-bound multi-market code):
 - Replay report: `/root/polymarket-money-data/kj-paper-report-20260716225739-48ff7c99`
 - Report: `DESCRIPTIVE_PAPER_ONLY`, `profitabilityClaimEligible=false`, artifact
   hash `6fb04978225a1680c5e747d8b8b2544111e650fafc197e4b163525608d38d775`
+
+Accepted public artifact (second plan-bound multi-market code):
+
+- Run: `/root/polymarket-money-data/paper-mvp/kj-paper-20260717011239-edcb5933`
+- Runtime collector commit: `e6b27806a7ced5f2748bf4ff89b76797e65d76d1`
+- Plan: 3 targets, 2026-07-17 01:15--01:30 UTC, hash-chained before contexts
+- Result: `INITIAL`, `accepted=true`, `planBinding=HASH_CHAINED`, 3/3 targets
+  settled, 505 journal records, no pending risk, terminal failure, credentials,
+  private channel, or real orders
+- Replay report: `/root/polymarket-money-data/kj-paper-report-20260717011239-edcb5933`
+- Report: `DESCRIPTIVE_PAPER_ONLY`, `profitabilityClaimEligible=false`, artifact
+  hash `15f776e2e972401cff33a3030889b728738018ac08232f0b3e260d307c061c30`
+
+Current descriptive cohort:
+
+- `/root/polymarket-money-data/kj-paper-cohort-two-runs-20260717`
+- 2 non-overlapping plan-bound runs, 6 markets; cohort hash
+  `cba4f224237d0cd6a1c3984c1114920b101bc66a0e6cdd35e262c42417bc0410`
+- `profitabilityClaimEligible=false`; it neither establishes profitability nor
+  changes J/K parameters.
 
 ## Next evidence gate
 

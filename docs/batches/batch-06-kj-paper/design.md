@@ -93,6 +93,67 @@ equivalence: one-second kline closes are not live trade ticks, BTCUSDT is not
 K's historical `binance_usd` conversion, and the archive start fixes a
 canonical phase instead of recovering an old process `vol_epoch`.
 
+## L_ADAPTIVE_EXECUTION (separate, pre-registered research strategy)
+
+`L_ADAPTIVE_EXECUTION` is a new offline Python strategy; it does not alter the
+frozen J/K enum, `paper-kj` CLI, TypeScript runtime, or any current public
+paper configuration. It is intentionally a separate invocation:
+
+```text
+poly-lab paper-l-adaptive --split TRAIN|VALIDATION ...
+```
+
+`FINAL_TEST` is not an accepted CLI/API value. The immutable configuration is
+`l-adaptive-execution-v1-preregistered`; it is an execution-risk specification,
+not a set of values selected against FINAL_TEST. The protocol records
+`TRAIN_FIXED_CONFIGURATION_AUDIT` and then
+`VALIDATION_PRE_REGISTERED_CONFIGURATION`. Opening the untouched final split
+requires a later explicit decision after the train/validation outcome is
+recorded.
+
+L has no absolute base edge. For the selected outcome at decision time its
+required edge is the sum of these separately exported terms:
+
+```text
+official taker fee per share
++ half overround
++ latency tick/slippage budget
++ Binance log-price speed × latency budget
++ current top-of-book spread reprice-risk proxy × latency budget
++ smoothed sigma × sqrt(remaining time) uncertainty budget
++ visible-depth / permitted-participation pressure budget
+```
+
+The order size is still bounded by fractional Kelly, cash, absolute cash cap,
+and permitted visible ask depth; the depth term does not claim that a single
+top-of-book level reveals the whole L2 curve.
+
+Instead of K's `max(fast, 0.4*slow, floor)`, L combines the receipt's causal
+30/60/120-second realised volatilities as a weighted RMS (50%/30%/20%), adds a
+small variance-space numerical floor, then applies a continuous short-vs-medium
+and medium-vs-long divergence shock multiplier. The normal-CDF probability is
+also pulled continuously toward 0.5 using a bounded function of
+`sigma * sqrt(remaining)`. This is an explicit volatility drag rather than
+assuming that wider uncertainty alone is sufficient.
+
+The fixed `$10` K/J critical band is not used. L fails closed in a dynamic
+opening-anchor ambiguity band:
+
+```text
+current BTC price × sqrt((1 bp noise)^2
+                         + (0.35 × sigma × sqrt(remaining))^2)
+```
+
+The historical receipt contains one point-in-time top of book per decision and
+one one-second-later execution book. It does **not** contain a prior quote
+sequence suitable for CLOB quote velocity. L therefore records
+`market_quote_velocity_available=false` and uses only the current bid/ask
+width as `CURRENT_TOP_OF_BOOK_SPREAD_PROXY_1HZ`; it never uses the later
+execution book to manufacture a speed measurement. Historical rows also lack
+a point-in-time Chainlink price, so Binance--Chainlink basis is unavailable in
+this study. Both are prerequisites for a later real-time L context, not
+assumed alpha here.
+
 ## Paper execution and accounting
 
 - Signal and intent use the point-in-time decision book.
@@ -188,3 +249,8 @@ overlapping target windows, and publishes a no-overwrite cohort hash.  It
 aggregates per-strategy market/trade/PnL and per-run sign counts but permanently
 retains `profitabilityClaimEligible=false`; it neither changes parameters nor
 creates fill, alpha, shadow, or live evidence.
+
+The current Chainlink RTDS relay is observability only.  A future boundary-based
+preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;
+the proposed evidence/state contract is in
+[`chainlink-provisional-settlement.md`](chainlink-provisional-settlement.md).

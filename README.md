@@ -81,6 +81,25 @@ artifact=387201c1eacbbe54f81d4519407bdb4acf50c9f6ce9f46a2bdb6f924796265da \
 The output directory must not already exist.  This prevents an earlier run
 from being silently overwritten.
 
+`L_ADAPTIVE_EXECUTION` is intentionally separate from the frozen J/K command.
+It is a Python-only, research-only dynamic-edge experiment: no fixed base edge
+or fixed $10 critical band, a smooth 30/60/120-second volatility blend and
+explicit probability drag, plus individually exported fee, overround, latency,
+depth and reprice-risk terms. It accepts only `TRAIN` or `VALIDATION`; the CLI
+and API reject `FINAL_TEST`, and it has no TypeScript runtime/paper-MVP route.
+The current frozen V1 failed its independent validation and is not eligible for
+real-time paper, shadow, or live use; see the Batch 06 result document.
+
+```bash
+.venv/bin/poly-lab paper-l-adaptive \
+  --dataset /root/polymarket-money-data/external-research/normalized/\
+dataset_id=btc-5m-primary-v2-baseline-samples/\
+version=a27d9d1bf4dc5276c7ae5b11abd64250b6e6dc17f01fd432ab0dc10e4425cafc \
+  --dataset-hash a27d9d1bf4dc5276c7ae5b11abd64250b6e6dc17f01fd432ab0dc10e4425cafc \
+  --split TRAIN --horizon 30 --scenario BASE_1S \
+  --output /root/polymarket-money-data/experiments/my-l-train-run
+```
+
 The TypeScript public runtime also emits a paper-only
 `kjStrategyContextReady/reason/context` envelope.  It binds verified Up/Down
 token IDs, fee evidence, book and signal receive stamps, freshness, and source
@@ -144,12 +163,15 @@ resolution arrived after its finite window, complete the local acceptance step:
 npm run paper:finalize -- /absolute/path/to/mvp-run
 ```
 
-Finalization requires the original result to prove a clean child exit, then
-reuses the same acceptance builder as `paper:mvp` to check runtime identity,
-paper-only safety, hash-chained plan, exact target count, current journal tail,
-settlement, and pending risk.  It writes a no-overwrite `final-result.json` with
-`resultKind=RECOVERED_FINAL`; it cannot legitimize legacy unbound plans or a
-runtime safety failure.
+Finalization normally checks the original result's clean child exit. If an
+outer wrapper was interrupted before it wrote `result.json`, recovery is still
+possible only when the durable runtime summary independently proves a normal
+duration stop, no terminal failure, matching plan/commit/journal identity, and
+zero live/private/order safety counters. It then reuses the same acceptance
+builder as `paper:mvp` to check the hash-chained plan, exact target count,
+current journal tail, settlement, and pending risk. It writes a no-overwrite
+`final-result.json` with `resultKind=RECOVERED_FINAL`; it cannot legitimize a
+partial capture, legacy unbound plan, or runtime safety failure.
 
 After an accepted run, generate a replay-verified research report:
 

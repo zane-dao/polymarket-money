@@ -57,7 +57,9 @@ Batch evidence and the canonical handoff live under `docs/batches/` and
 The credential-free local console brings the historical K/J and L replay
 commands plus the bounded realtime-paper command into one localhost page. It
 does not start collection, paper trading, or orders; realtime paper remains an
-explicit operator action.
+explicit operator action. It also lists small published `summary.json` files
+under `<data-root>/mvp-runs`, so the offline research loop is visible without
+opening raw capture or journal data.
 
 ```bash
 npm run mvp:console -- --data-root /root/polymarket-money-data

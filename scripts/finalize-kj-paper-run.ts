@@ -18,6 +18,24 @@ function text(value: unknown, field: string): string {
   return value;
 }
 
+function campaignBinding(value: unknown): KJPaperMvpPlan["campaign"] {
+  if (value === undefined) return undefined;
+  const candidate = object(value, "run plan campaign binding");
+  const keys = Object.keys(candidate).sort();
+  const expected = ["campaignHash", "campaignId", "campaignRunIndex"];
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    throw new Error("run plan campaign binding contains missing or unsupported fields");
+  }
+  const campaignId = text(candidate.campaignId, "campaignId");
+  if (!/^[a-z0-9][a-z0-9-]{2,63}$/u.test(campaignId)) throw new Error("campaignId is invalid");
+  const campaignHash = text(candidate.campaignHash, "campaignHash");
+  if (!/^[0-9a-f]{64}$/u.test(campaignHash)) throw new Error("campaignHash is invalid");
+  if (!Number.isSafeInteger(candidate.campaignRunIndex) || (candidate.campaignRunIndex as number) <= 0) {
+    throw new Error("campaignRunIndex must be positive");
+  }
+  return Object.freeze({ campaignId, campaignHash, campaignRunIndex: candidate.campaignRunIndex as number });
+}
+
 function plan(value: unknown, runDirectory: string): {
   readonly value: KJPaperMvpPlan;
   readonly collectorGitCommit: string;
@@ -40,8 +58,9 @@ function plan(value: unknown, runDirectory: string): {
   }
   const collectorGitCommit = text(candidate.collectorGitCommit, "collectorGitCommit");
   if (!/^[0-9a-f]{40,64}$/u.test(collectorGitCommit)) throw new Error("collectorGitCommit is invalid");
+  const campaign = campaignBinding(candidate.campaign);
   return {
-    value: candidate as unknown as KJPaperMvpPlan,
+    value: Object.freeze({ ...candidate, ...(campaign === undefined ? {} : { campaign }) }) as unknown as KJPaperMvpPlan,
     collectorGitCommit,
   };
 }

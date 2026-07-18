@@ -49,7 +49,7 @@ function market(): PublicBtcFiveMinuteMarket {
 test("paper finalization recovers a missing wrapper result into a reportable final result and observability cohort", async () => {
   const runDirectory = await mkdtemp(join(tmpdir(), "kj-paper-finalize-"));
   const journalPath = join(runDirectory, "kj-inputs.ndjson");
-  const runId = "kj-paper-20260717000000-12345678";
+  const runId = "campaign-finalize-r001";
   const plan = {
     schemaVersion: "kj-paper-mvp-v1",
     runId,
@@ -68,6 +68,7 @@ test("paper finalization recovers a missing wrapper result into a reportable fin
     runtimeStderrPath: join(runDirectory, "runtime.stderr.log"),
     resultPath: join(runDirectory, "result.json"),
     collectorGitCommit: COMMIT,
+    campaign: { campaignId: "campaign-finalize", campaignHash: "c".repeat(64), campaignRunIndex: 1 },
   } as const;
   const runtimeSummary = {
     type: "runtime_summary",
@@ -89,12 +90,15 @@ test("paper finalization recovers a missing wrapper result into a reportable fin
   try {
     const journal = await KJPaperJournal.open(journalPath);
     await journal.appendRunPlan({
-      schemaVersion: "kj-paper-run-plan-v1",
+      schemaVersion: "kj-paper-run-plan-v2",
       runId,
       targetMarketCount: 1,
       firstFullMarketStart: START,
       captureEnd: END,
       collectorGitCommit: COMMIT,
+      campaignId: plan.campaign.campaignId,
+      campaignHash: plan.campaign.campaignHash,
+      campaignRunIndex: plan.campaign.campaignRunIndex,
     });
     const selectedMarket = market();
     const context = createKJStrategyContext({
@@ -206,6 +210,7 @@ test("paper finalization recovers a missing wrapper result into a reportable fin
     assert.equal(finalResult.accepted, true);
     assert.equal(finalResult.resultKind, "RECOVERED_FINAL");
     assert.equal(finalResult.checks.hashChainedRunPlan, true);
+    assert.deepEqual(finalResult.planBinding, "HASH_CHAINED");
 
     const reportScript = fileURLToPath(new URL("../../scripts/report-kj-paper-run.js", import.meta.url));
     const reportDirectory = join(runDirectory, "report");
@@ -219,6 +224,7 @@ test("paper finalization recovers a missing wrapper result into a reportable fin
     const report = JSON.parse(await readFile(join(reportDirectory, "summary.json"), "utf8"));
     assert.equal(report.resultFileName, "final-result.json");
     assert.equal(report.report.run.resultKind, "RECOVERED_FINAL");
+    assert.deepEqual(report.report.run.campaign, plan.campaign);
 
     const observabilityScript = fileURLToPath(new URL("../../scripts/report-kj-paper-cohort-observability.js", import.meta.url));
     const observabilityDirectory = join(runDirectory, "observability");

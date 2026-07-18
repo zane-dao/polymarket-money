@@ -126,6 +126,10 @@ runs plus the matching `paper:campaign-cohort-report` and
 collected. The two existing plan-bound runs predate this v2 binding and remain
 descriptive PnL/observability cohorts only.
 
+The delayed-resolution recovery integration test uses a v2 campaign-bound run:
+it verifies journal recovery, `paper:finalize`, `paper:report`, and report
+campaign binding remain intact after the original finite wrapper has no result.
+
 ## Next evidence gate
 
 The first plan-bound three-market gate has passed.  Subsequent bounded runs

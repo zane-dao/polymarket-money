@@ -274,6 +274,9 @@ selection constraint, not a profitability claim or an execution change.
 campaign verification before it reopens journals and runtime summaries. It
 therefore makes the PnL and execution-quality cohort refer to the identical
 immutable run set; neither report may substitute a convenient post-hoc subset.
+The delayed-settlement `paper:finalize` path separately validates the optional
+campaign binding in `run-plan.json` before rebuilding its result, so recovery
+cannot silently downgrade a v2 journal run-plan to an unbound plan.
 
 The current Chainlink RTDS relay is observability only.  A future boundary-based
 preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;

@@ -81,6 +81,9 @@ records replay into EWMA only and are rejected after a market session starts.
 They cannot create a market, intent, wallet event, or settlement candidate, and
 one journal rejects a Binance/Chainlink source-family change. This replaces the
 invalid practice of using a pre-target market session as implicit K warmup.
+The replay report now independently verifies its durable count, source family
+and elapsed span before the first target boundary; missing or cross-source
+warmup fails the report.
 
 Accepted public artifact (pre-plan-binding code):
 

@@ -151,6 +151,13 @@ an extremely small decimal rounding tolerance. Any non-zero residual inside
 that tolerance is exported as `pnlReconciliationResidual`; a larger residual,
 or a mismatch with the accepted result, still rejects the report.
 
+For plans that declare the default 180-second K warmup, the replay report also
+requires durable pre-market `WARMUP_SIGNAL` evidence: at least two inputs, a
+full 180-second observed span ending before the first target market, and the
+same Binance-or-Chainlink source family as the runtime. It exports the observed
+count, duration and source family with the run instead of treating warmup as an
+implicit condition.
+
 For a bounded end-to-end product run, use the single-command MVP:
 
 ```bash

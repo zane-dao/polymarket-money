@@ -297,6 +297,10 @@ must be imminent and maps to the matching source campaign index in both legs;
 it cannot substitute a standalone run or a different source's result. This is
 an evidence-selection control only: each child still uses the existing public
 paper engine, durable journal, official Gamma settlement and independent wallet.
+The campaign launcher waits for each fixed pre-warmup timestamp, may overlap a
+prior run's Gamma wait with a later run's capture, and writes an immutable exit
+summary only after every scheduled child ends. It never moves a missed window
+to a later market; any missed/failed run remains visible to the eventual cohort.
 
 Before a plan-bound K/J run, the launcher reserves 180 seconds and the runtime
 records only source-specific `WARMUP_SIGNAL` inputs in the same fsync/hash-chain

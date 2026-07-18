@@ -155,7 +155,10 @@ and every per-window pair plan under one SHA-256 hash. Start an imminent pair
 only through `paper:signal-compare-mvp -- --compare-campaign-plan ...
 --campaign-run N`; the runner rejects a source-run, commit, window or run-index
 mismatch. This keeps a later source comparison from being assembled from a
-post-hoc subset of standalone runs.
+post-hoc subset of standalone runs. `paper:signal-compare-campaign-run` is the
+bounded launcher for the whole artifact: it starts each pair 210 seconds before
+its fixed boundary, fails closed if any launch window has already passed, and
+never shifts, retries, or replaces a scheduled run.
 
 Single-run reports reconcile per-market aggregate PnL to the final wallet with
 an extremely small decimal rounding tolerance. Any non-zero residual inside

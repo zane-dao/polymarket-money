@@ -12,6 +12,7 @@
     "paper:signal-compare-mvp": "npm run build && node --use-env-proxy dist/scripts/kj-signal-compare-mvp.js",
     "paper:signal-compare-report": "npm run build && node dist/scripts/report-kj-signal-compare.js",
     "paper:signal-compare-campaign-plan": "npm run build && node dist/scripts/create-kj-signal-compare-campaign.js",
+    "paper:signal-compare-campaign-run": "npm run build && node --use-env-proxy dist/scripts/run-kj-signal-compare-campaign.js",
     "paper:campaign-plan": "npm run build && node dist/scripts/create-kj-paper-campaign.js",
     "paper:finalize": "npm run build && node dist/scripts/finalize-kj-paper-run.js",
     "paper:report": "npm run build && node dist/scripts/report-kj-paper-run.js",

@@ -29,6 +29,7 @@ from .kj_paper import (
     KJStrategy,
     PaperScenario,
     export_kj_paper,
+    l_adaptive_v2_midrange_train_selected_config,
     run_l_adaptive_paper,
     run_kj_paper,
 )
@@ -168,6 +169,11 @@ def _run_paper_l_adaptive(args: argparse.Namespace) -> int:
     receipt, rows = ExternalHistoricalDatasetAdapter.load(dataset_path)
     if receipt.dataset_hash != args.dataset_hash:
         raise SystemExit("historical dataset hash does not match --dataset-hash")
+    adaptive_config = (
+        l_adaptive_v2_midrange_train_selected_config()
+        if args.candidate == "v2-midrange-train-selected"
+        else None
+    )
     result = run_l_adaptive_paper(
         receipt,
         rows,
@@ -175,6 +181,7 @@ def _run_paper_l_adaptive(args: argparse.Namespace) -> int:
         horizon_seconds=args.horizon,
         scenario=PaperScenario(args.scenario),
         initial_cash=Decimal(args.initial_cash),
+        **({"config": adaptive_config} if adaptive_config is not None else {}),
     )
     output = Path(args.output).resolve()
     export_kj_paper(result, output)
@@ -186,6 +193,7 @@ def _run_paper_l_adaptive(args: argparse.Namespace) -> int:
             "signal_fidelity": result["signal_fidelity"],
             "evaluation_stage": result["evaluation_stage"],
             "evaluation_protocol": result["evaluation_protocol"],
+            "candidate": args.candidate,
             "run": {
                 key: run[key]
                 for key in (
@@ -463,6 +471,12 @@ def parser() -> argparse.ArgumentParser:
         default=PaperScenario.BASE_1S.value,
     )
     paper_l_adaptive.add_argument("--initial-cash", default="10000")
+    paper_l_adaptive.add_argument(
+        "--candidate",
+        choices=("v1-preregistered", "v2-midrange-train-selected"),
+        default="v1-preregistered",
+        help="separate L candidate; V2 is fixed from TRAIN and never opens FINAL_TEST",
+    )
     paper_l_adaptive.add_argument("--output", required=True)
     paper_l_adaptive.set_defaults(handler=_run_paper_l_adaptive)
 

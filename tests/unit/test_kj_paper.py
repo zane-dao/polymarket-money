@@ -13,6 +13,8 @@ from research.polymarket_money.kj_paper import (
     KJConfig,
     KJStrategy,
     LAdaptiveConfig,
+    LAdaptiveV2Config,
+    l_adaptive_v2_midrange_train_selected_config,
     PaperScenario,
     SIGNAL_FIDELITY,
     export_kj_paper,
@@ -57,6 +59,15 @@ def row(*, condition: str = "m1", winner: str = "Up", current: str = "111") -> d
 
 
 class KJPaperTest(unittest.TestCase):
+    def test_l_v2_train_selected_factory_is_explicit_and_stable(self) -> None:
+        config = l_adaptive_v2_midrange_train_selected_config()
+        self.assertEqual(config.config_version, "l-adaptive-execution-v2-candidate")
+        self.assertEqual(config.probability_clamp, Decimal("0.02"))
+        self.assertEqual(config.max_signal_edge, Decimal("0.25"))
+        self.assertEqual(config.depth_risk_max, Decimal("0.02"))
+        self.assertEqual(config.entry_price_min, Decimal("0.20"))
+        self.assertEqual(config.entry_price_max, Decimal("0.80"))
+
     def test_l_adaptive_records_dynamic_costs_and_volatility_drag(self) -> None:
         event = simulate_decision(
             row(),
@@ -110,6 +121,22 @@ class KJPaperTest(unittest.TestCase):
         self.assertGreater(
             Decimal(high_event["required_edge_volatility_remaining"]),
             Decimal(low_event["required_edge_volatility_remaining"]),
+        )
+
+    def test_l_v2_price_substrategy_rejects_extreme_decision_odds_causally(self) -> None:
+        event = simulate_decision(
+            row(),
+            strategy=AdaptiveStrategy.L_ADAPTIVE_EXECUTION,
+            scenario=PaperScenario.BASE_1S,
+            bankroll=Decimal("10000"),
+            config=KJConfig(),
+            adaptive_config=LAdaptiveV2Config(entry_price_min=Decimal("0.60")),
+        )
+        self.assertEqual(event["status"], "NO_TRADE")
+        self.assertEqual(event["reason"], "ENTRY_PRICE_OUTSIDE_V2_RANGE")
+        self.assertEqual(
+            LAdaptiveV2Config().to_mapping()["entry_price_max"],
+            "1",
         )
 
     def test_l_adaptive_does_not_look_ahead_to_execution_quote_for_speed(self) -> None:

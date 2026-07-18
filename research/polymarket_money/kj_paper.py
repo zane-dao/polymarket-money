@@ -232,6 +232,56 @@ class LAdaptiveConfig:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class LAdaptiveV2Config(LAdaptiveConfig):
+    """Separate L candidate family with explicit, auditable entry sub-strategies.
+
+    V1 remains byte-for-byte selectable through ``LAdaptiveConfig``.  V2 does
+    not infer a price filter from outcomes: every rejection below is based only
+    on the decision-time signal, book and volatility fields already available
+    to V1.
+    """
+
+    config_version: str = "l-adaptive-execution-v2-candidate"
+    entry_price_min: Decimal = Decimal("0")
+    entry_price_max: Decimal = Decimal("1")
+    edge_surplus_min: Decimal = Decimal("0")
+    volatility_shock_max: Decimal = Decimal("100")
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not ZERO <= self.entry_price_min < self.entry_price_max <= ONE:
+            raise ValueError("V2 entry price range must be inside (0, 1)")
+        if self.edge_surplus_min < ZERO or self.volatility_shock_max < ZERO:
+            raise ValueError("V2 entry guards must be non-negative")
+
+    def to_mapping(self) -> dict[str, str]:
+        return {
+            **super().to_mapping(),
+            "entry_price_min": format(self.entry_price_min, "f"),
+            "entry_price_max": format(self.entry_price_max, "f"),
+            "edge_surplus_min": format(self.edge_surplus_min, "f"),
+            "volatility_shock_max": format(self.volatility_shock_max, "f"),
+        }
+
+
+def l_adaptive_v2_midrange_train_selected_config() -> LAdaptiveV2Config:
+    """Return the one V2 candidate selected only from the TRAIN split.
+
+    This is deliberately a named factory instead of a new V1 default: V1 must
+    remain reproducible, and callers must opt into this separate candidate.
+    The three non-price settings were selected together on TRAIN before the
+    single VALIDATION run; they must not be changed from VALIDATION outcomes.
+    """
+    return LAdaptiveV2Config(
+        probability_clamp=Decimal("0.02"),
+        max_signal_edge=Decimal("0.25"),
+        depth_risk_max=Decimal("0.02"),
+        entry_price_min=Decimal("0.20"),
+        entry_price_max=Decimal("0.80"),
+    )
+
+
 L_ADAPTIVE_PREREGISTRATION = {
     "protocol_version": "l-adaptive-execution-protocol-v1",
     "parameter_origin": "PRE_REGISTERED_EXECUTION_RISK_SPECIFICATION",
@@ -554,11 +604,36 @@ def simulate_l_adaptive_decision(
         "market_quote_velocity_available": False,
         "depth_pressure": format(depth_pressure, "f"),
     }
+    entry_price_min = getattr(config, "entry_price_min", ZERO)
+    entry_price_max = getattr(config, "entry_price_max", ONE)
+    edge_surplus_min = getattr(config, "edge_surplus_min", ZERO)
+    volatility_shock_max = getattr(config, "volatility_shock_max", Decimal("100"))
+    if not entry_price_min < decision_ask < entry_price_max:
+        return {
+            **base,
+            "status": "NO_TRADE",
+            "reason": "ENTRY_PRICE_OUTSIDE_V2_RANGE",
+            "net_pnl": "0",
+        }
+    if signal["volatility_shock"] > volatility_shock_max:
+        return {
+            **base,
+            "status": "NO_TRADE",
+            "reason": "VOLATILITY_SHOCK_ABOVE_V2_GUARD",
+            "net_pnl": "0",
+        }
     if edge <= required_edge:
         return {
             **base,
             "status": "NO_TRADE",
             "reason": "EDGE_BELOW_DYNAMIC_EXECUTION_THRESHOLD",
+            "net_pnl": "0",
+        }
+    if edge - required_edge <= edge_surplus_min:
+        return {
+            **base,
+            "status": "NO_TRADE",
+            "reason": "EDGE_SURPLUS_BELOW_V2_GUARD",
             "net_pnl": "0",
         }
     if edge > config.max_signal_edge:
@@ -953,7 +1028,15 @@ def run_kj_paper(
         for event in fills:
             day = str(event["decision_time"])[:10]
             daily[day] = daily.get(day, ZERO) + _d(event["net_pnl"], "net_pnl")
-        best_three = sum(sorted(daily.values(), reverse=True)[:3], ZERO)
+        best_days = sorted(daily.values(), reverse=True)
+        concentration = {
+            str(count): {
+                "best_days_pnl": format(sum(best_days[:count], ZERO), "f"),
+                "net_without_best_days": format(net - sum(best_days[:count], ZERO), "f"),
+            }
+            for count in (1, 2, 3)
+        }
+        best_three = sum(best_days[:3], ZERO)
         probabilities = [_d(event["probability_up"], "probability_up") for event in events]
         labels = [ONE if event["winner"] == "Up" else ZERO for event in events]
         brier = sum(
@@ -996,6 +1079,7 @@ def run_kj_paper(
             "daily_pnl": {
                 day: format(value, "f") for day, value in sorted(daily.items())
             },
+            "concentration_stress": concentration,
             "best_3_days_pnl": format(best_three, "f"),
             "net_without_best_3_days": format(net - best_three, "f"),
         }

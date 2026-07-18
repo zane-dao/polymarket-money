@@ -80,8 +80,8 @@ available through the page and must remain an explicit terminal command.
 
 The same page also reads existing compact `paper-mvp/*/result.json` or recovered
 `final-result.json` files and displays their acceptance state, plan binding,
-target counts, and per-strategy paper PnL. It never reads a paper journal or
-starts a realtime process.
+target counts, and per-strategy paper PnL in tables. It never reads a paper
+journal or starts a realtime process.
 
 ## Historical J/K paper loop
 

@@ -37,6 +37,11 @@ export type MvpPaperSummary = {
 };
 
 type HistoricalRunKind = "kj" | "l-v1" | "l-v2";
+const HISTORICAL_STUDIES: Readonly<Record<HistoricalRunKind, { label: string; outputSlug: string }>> = {
+  kj: { label: "K/J frozen FINAL_TEST audit", outputSlug: "kj-final-test" },
+  "l-v1": { label: "L V1 TRAIN research", outputSlug: "l-v1-train" },
+  "l-v2": { label: "L V2 train-selected VALIDATION research", outputSlug: "l-v2-validation" },
+};
 type HistoricalRun = {
   id: string;
   kind: HistoricalRunKind;
@@ -58,18 +63,15 @@ function commit(): string {
 
 export function createMvpConsoleSnapshot(dataRoot: string): MvpConsoleSnapshot {
   const root = resolve(dataRoot);
-  const dataset = resolve(root, DATASET);
-  const ewma = resolve(root, EWMA);
   const output = resolve(root, "mvp-runs");
-  const base = `--dataset ${dataset} --dataset-hash ${DATASET_HASH} --horizon 30 --scenario BASE_1S`;
   const paperRoot = resolve(root, "paper-mvp");
   return {
-    liveTradingEnabled: false, dataRoot: root, datasetAvailable: existsSync(dataset), ewmaArtifactAvailable: existsSync(ewma),
+    liveTradingEnabled: false, dataRoot: root, datasetAvailable: existsSync(resolve(root, DATASET)), ewmaArtifactAvailable: existsSync(resolve(root, EWMA)),
     gitCommit: commit(), completedPaperRunDirectories: existsSync(paperRoot) ? readdirSync(paperRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory()).length : 0,
     commands: {
-      "K/J historical replay": `.venv/bin/poly-lab paper-kj ${base} --ewma-artifact ${ewma} --strategy both --split FINAL_TEST --output ${resolve(output, "kj-final-test")}`,
-      "L V1 historical replay": `.venv/bin/poly-lab paper-l-adaptive ${base} --candidate v1-preregistered --split TRAIN --output ${resolve(output, "l-v1-train")}`,
-      "L V2 historical replay": `.venv/bin/poly-lab paper-l-adaptive ${base} --candidate v2-midrange-train-selected --split VALIDATION --output ${resolve(output, "l-v2-validation")}`,
+      [HISTORICAL_STUDIES.kj.label]: `.venv/bin/poly-lab ${commandForHistoricalRun(root, "kj", resolve(output, HISTORICAL_STUDIES.kj.outputSlug)).join(" ")}`,
+      [HISTORICAL_STUDIES["l-v1"].label]: `.venv/bin/poly-lab ${commandForHistoricalRun(root, "l-v1", resolve(output, HISTORICAL_STUDIES["l-v1"].outputSlug)).join(" ")}`,
+      [HISTORICAL_STUDIES["l-v2"].label]: `.venv/bin/poly-lab ${commandForHistoricalRun(root, "l-v2", resolve(output, HISTORICAL_STUDIES["l-v2"].outputSlug)).join(" ")}`,
       "Bounded K/J realtime paper": "npm run paper:mvp -- --markets 1",
     },
   };
@@ -152,7 +154,7 @@ export function listMvpPaperSummaries(dataRoot: string): MvpPaperSummary[] {
     });
 }
 
-function commandForHistoricalRun(dataRoot: string, kind: HistoricalRunKind, output: string): string[] {
+export function commandForHistoricalRun(dataRoot: string, kind: HistoricalRunKind, output: string): string[] {
   const dataset = resolve(dataRoot, DATASET);
   const base = ["--dataset", dataset, "--dataset-hash", DATASET_HASH, "--horizon", "30", "--scenario", "BASE_1S"];
   if (kind === "kj") return ["paper-kj", ...base, "--ewma-artifact", resolve(dataRoot, EWMA), "--strategy", "both", "--split", "FINAL_TEST", "--output", output];

@@ -17,8 +17,8 @@ function sourceArtifact(runId: string, net: string) {
       journalPath: `/tmp/${runId}/kj-inputs.ndjson`, journalRecordCount: "10", journalLastRecordHash: "b".repeat(64), resultKind: "INITIAL" as const },
     checks: { hashChainedRunPlan: true as const, noPendingRisk: true as const, officialSettlementPairs: true as const, aggregateWalletPnlIdentity: true as const },
     strategies: {
-      J_FEE_AWARE: { marketCount: "1", tradedMarketCount: "1", noTradeMarketCount: "0", profitableMarketCount: "1", losingMarketCount: "0", flatMarketCount: "0", totalTradeCount: "1", totalSpent: "1", totalGrossPnl: net, totalFees: "0", totalNetPnl: net, averageNetPnlPerMarket: net, finalCash: `1000${net}` },
-      K_DUAL_VOL: { marketCount: "1", tradedMarketCount: "0", noTradeMarketCount: "1", profitableMarketCount: "0", losingMarketCount: "0", flatMarketCount: "1", totalTradeCount: "0", totalSpent: "0", totalGrossPnl: "0", totalFees: "0", totalNetPnl: "0", averageNetPnlPerMarket: "0", finalCash: "10000" },
+      J_FEE_AWARE: { marketCount: "1", tradedMarketCount: "1", noTradeMarketCount: "0", profitableMarketCount: "1", losingMarketCount: "0", flatMarketCount: "0", totalTradeCount: "1", totalSpent: "1", totalGrossPnl: net, totalFees: "0", totalNetPnl: net, pnlReconciliationResidual: "0", averageNetPnlPerMarket: net, finalCash: `1000${net}` },
+      K_DUAL_VOL: { marketCount: "1", tradedMarketCount: "0", noTradeMarketCount: "1", profitableMarketCount: "0", losingMarketCount: "0", flatMarketCount: "1", totalTradeCount: "0", totalSpent: "0", totalGrossPnl: "0", totalFees: "0", totalNetPnl: "0", pnlReconciliationResidual: "0", averageNetPnlPerMarket: "0", finalCash: "10000" },
     }, markets: [],
   };
   const core = { schemaVersion: "kj-paper-report-artifact-v1" as const, report, sourceFileSha256: { runPlan: "c".repeat(64), result: "d".repeat(64), runtimeSummary: "e".repeat(64) }, resultFileName: "result.json" as const, marketsCsvSha256: "f".repeat(64) };

@@ -144,6 +144,11 @@ net-PnL and trade-count differences. It remains descriptive paper evidence;
 the two runtimes have independent public-stream receive clocks and it does not
 claim equivalent inbound event timing or strategy profitability.
 
+Single-run reports reconcile per-market aggregate PnL to the final wallet with
+an extremely small decimal rounding tolerance. Any non-zero residual inside
+that tolerance is exported as `pnlReconciliationResidual`; a larger residual,
+or a mismatch with the accepted result, still rejects the report.
+
 For a bounded end-to-end product run, use the single-command MVP:
 
 ```bash

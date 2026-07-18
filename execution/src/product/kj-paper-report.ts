@@ -13,6 +13,7 @@ export const KJ_PAPER_REPORT_VERSION = "kj-paper-report-v1" as const;
 const STRATEGIES = ["J_FEE_AWARE", "K_DUAL_VOL"] as const;
 const HASH = /^[0-9a-f]{64}$/u;
 const INTEGER = /^(?:0|[1-9]\d*)$/u;
+const PNL_RECONCILIATION_TOLERANCE = Money.from("0.000000000000000000000000000000000000000000000000000000000001");
 
 interface ReportPlan {
   readonly runId: string;
@@ -95,6 +96,7 @@ export interface KJPaperReport {
     totalGrossPnl: string;
     totalFees: string;
     totalNetPnl: string;
+    pnlReconciliationResidual: string;
     averageNetPnlPerMarket: string;
     finalCash: string;
   }>>>;
@@ -331,9 +333,10 @@ function strategySummary(
   const resultStrategy = object(resultStrategies[strategy], `result strategy ${strategy}`);
   const finalCash = snapshot.wallets[strategy].cash;
   const cashPnl = Money.from(finalCash).minus(Money.from(DEFAULT_KJ_PAPER_ENGINE_CONFIG.initialCash));
-  if (totalNet.comparedTo(cashPnl) !== 0
-    || resultStrategy.finalCash !== finalCash
-    || resultStrategy.netPnl !== totalNet.toCanonical()) {
+  const residual = cashPnl.minus(totalNet);
+  if (residual.abs().comparedTo(PNL_RECONCILIATION_TOLERANCE) > 0
+    || Money.from(text(resultStrategy.finalCash, `result ${strategy} finalCash`)).comparedTo(Money.from(finalCash)) !== 0
+    || Money.from(text(resultStrategy.netPnl, `result ${strategy} netPnl`)).comparedTo(cashPnl) !== 0) {
     throw new Error(`${strategy} aggregate PnL conflicts with final wallet or MVP result`);
   }
   const marketCount = selected.length;
@@ -349,6 +352,7 @@ function strategySummary(
     totalGrossPnl: totalGross.toCanonical(),
     totalFees: totalFees.toCanonical(),
     totalNetPnl: totalNet.toCanonical(),
+    pnlReconciliationResidual: residual.toCanonical(),
     averageNetPnlPerMarket: totalNet.dividedBy(Money.from(String(marketCount))).toCanonical(),
     finalCash,
   });

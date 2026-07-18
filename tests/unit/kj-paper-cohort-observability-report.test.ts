@@ -108,13 +108,13 @@ function input(
         marketCount: "1", tradedMarketCount: "1", noTradeMarketCount: "0",
         profitableMarketCount: "1", losingMarketCount: "0", flatMarketCount: "0",
         totalTradeCount: "1", totalSpent: "1", totalGrossPnl: "1", totalFees: "0",
-        totalNetPnl: "1", averageNetPnlPerMarket: "1", finalCash: "10001",
+        totalNetPnl: "1", pnlReconciliationResidual: "0", averageNetPnlPerMarket: "1", finalCash: "10001",
       },
       K_DUAL_VOL: {
         marketCount: "1", tradedMarketCount: "0", noTradeMarketCount: "1",
         profitableMarketCount: "0", losingMarketCount: "0", flatMarketCount: "1",
         totalTradeCount: "0", totalSpent: "0", totalGrossPnl: "0", totalFees: "0",
-        totalNetPnl: "0", averageNetPnlPerMarket: "0", finalCash: "10000",
+        totalNetPnl: "0", pnlReconciliationResidual: "0", averageNetPnlPerMarket: "0", finalCash: "10000",
       },
     },
     markets: [

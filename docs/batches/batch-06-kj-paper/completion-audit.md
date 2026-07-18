@@ -70,6 +70,12 @@ git diff --check: passed
 CLI help: paper:mvp, paper:signal-compare-mvp, paper:signal-compare-report, paper:campaign-plan, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper:campaign-cohort-report, paper:cohort-observability-report, paper:campaign-cohort-observability-report, paper-l-adaptive passed
 ```
 
+The report keeps an explicit `pnlReconciliationResidual` for the aggregate
+per-market PnL versus final-wallet subtraction. It only accepts an absolute
+residual at or below `1e-60`, and separately requires the accepted result's
+final cash/net PnL to match the wallet. This records finite decimal operation
+ordering dust without weakening the report's accounting gate.
+
 Accepted public artifact (pre-plan-binding code):
 
 - Run: `/root/polymarket-money-data/paper-mvp/kj-paper-20260716194322-59e2d360`

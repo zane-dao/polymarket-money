@@ -83,6 +83,9 @@ The same page also reads existing compact `paper-mvp/*/result.json` or recovered
 target counts, and per-strategy paper PnL in tables. It never reads a paper
 journal or starts a realtime process.
 
+The evidence, verified paths, and remaining non-live boundaries are recorded in
+[`docs/batches/batch-06-kj-paper/mvp-console-acceptance.md`](docs/batches/batch-06-kj-paper/mvp-console-acceptance.md).
+
 ## Historical J/K paper loop
 
 `poly-lab build-kj-ewma` builds a content-addressed point-in-time volatility

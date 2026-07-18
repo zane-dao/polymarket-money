@@ -4,8 +4,9 @@ Audit date: 2026-07-18
 
 Code branch: `batch/06-kj-paper-loop`
 
-Audited baseline: `e6b2780`; the L research boundary and recovery hardening
-below were verified in the current working tree.
+Audited baseline: `a7f6231`; the L research boundary, recovery hardening and
+local MVP result-publication verification below were verified in the current
+working tree.
 
 ## Decision
 
@@ -41,6 +42,7 @@ project goal is not complete.
 | Durable restart and tamper detection | Proven for paper inputs | fsync append, sequence/hash chain, checkpoint, replay, plan binding, tamper/truncation/symlink tests | This is not future exchange open-order reconciliation |
 | Delayed resolution recovery closes the product workflow | Proven offline end to end | `paper:settle -> paper:finalize -> paper:report -> paper:cohort-observability-report`; one integration test covers initial pending, recovered acceptance, final-result selection, report export, runtime/journal observability replay, no-overwrite, and a missing outer `result.json` only when the durable runtime summary proves clean paper-only completion | A post-plan-binding delayed-resolution public case has not occurred yet |
 | Logs and research exports | Proven | Runtime NDJSON/metrics, journal, result JSON, `paper:inspect`, `paper:report` summary/per-market CSV, PnL-only `paper:cohort-report`, and replay-verified `paper:cohort-observability-report` for stream/settlement/execution quality | Static dashboards are offline snapshots; all cohort results remain descriptive |
+| Local research product surface | Proven | localhost-only `mvp:console` exposes only fixed offline K/J, L V1 and L V2 studies; result display recomputes historical summary hashes, and new historical exports require a committed sidecar manifest before they are shown as complete | Existing pre-manifest exports remain explicitly `LEGACY_SUMMARY_VERIFIED`; the console never starts public paper or orders |
 | Target selection cannot be silently changed during reporting | Proven in current code and one public run | `RUN_PLAN` is the first post-header journal record and binds run ID, target count/window, and collector commit; report compares it to artifacts; the 2026-07-16 run replayed 479 records with a matching plan and journal tail | The earlier accepted public run is explicitly `LEGACY_UNBOUND` |
 | No credentials or real orders | Proven structurally and at runtime | No `ExecutionEngine` implementation exists; runtime safety counters are all false/zero and acceptance verifies them | The domain keeps a future `ExecutionEngine` interface, which is not an executable adapter |
 | Strategy profitability | Not proven | Final Test: J is only slightly positive in base and negative under stress/concentration removal; K is negative in base and stress | No tuning on Final Test; no shadow/live promotion |
@@ -62,8 +64,8 @@ project goal is not complete.
 ## Current verification
 
 ```text
-Python: 205 passed
-Node/TypeScript: 137 passed
+Python: 200 passed
+Node/TypeScript: 146 passed
 Ruff: passed
 TypeScript typecheck: passed
 git diff --check: passed

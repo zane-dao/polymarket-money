@@ -136,7 +136,10 @@ settlement path. Warmup prices are hash-chained `WARMUP_SIGNAL` records; they
 can update EWMA but cannot create a market session, intent, wallet event or
 Gamma-settlement candidate. The first planned market start is passed to each
 child as an explicit lower bound, so an earlier discovery cannot become a paper
-session or settlement candidate.
+session or settlement candidate. The journal's pre-context run plan is v3 for
+these warmed runs and hash-binds `warmupSeconds` (plus campaign identity when
+present); a later report rejects a v1/v2 plan that did not pre-register that
+warmup requirement.
 
 After both legs independently pass the normal replay report, build the paired
 comparison with `paper:signal-compare-report`. It verifies the frozen compare
@@ -175,12 +178,14 @@ The default settlement grace is ten minutes and the target interval cutoff
 prevents the next market from leaking into the run.  The process exits early
 when capture has ended and every registered market has official settlement.
 Before any market context, the MVP also hash-binds its run ID, target count,
-half-open time window, and committed code ID into the journal.
+half-open time window, committed code ID, and, when used, the warmup duration
+into the journal.
 
 For a new multi-run evidence campaign, create the immutable offline schedule
 first, then launch its selected imminent run. The campaign hash, run index,
 window, count, settlement grace and collector commit are all written into the
-v2 journal run-plan before any context:
+v3 journal run-plan before any context (including warmup duration when the
+campaign declares one):
 
 ```bash
 npm run paper:campaign-plan -- \

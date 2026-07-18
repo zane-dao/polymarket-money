@@ -69,4 +69,5 @@ campaign PnL 比较。完整 campaign 仅在四轮、每条腿、每个配对报
 2. 主仓干净，当前 commit 通过 Node、Python、Ruff、typecheck；
 3. `LIVE_TRADING_ENABLED=false`，无凭据、无 private/user channel、无 order adapter；
 4. 生成 artifact 后核对其 hash、轮次、market count、warmup、source mapping；
-5. 仅启动 artifact 所规定的 launcher；启动后不改代码和计划。
+5. 仅启动 artifact 所规定的 launcher；启动时必须以 `O_EXCL` 写入并 fsync 一份 campaign
+   claim。claim 已存在、即使先前 launcher 崩溃，也一律拒绝第二次启动；启动后不改代码和计划。

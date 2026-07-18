@@ -5,6 +5,10 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { parseKJSignalCompareCampaignArtifact } from "../execution/src/product/kj-signal-compare-campaign.js";
+import {
+  claimKJSignalCompareCampaignLaunch,
+  KJ_SIGNAL_COMPARE_CAMPAIGN_LAUNCH_CLAIM_VERSION,
+} from "../execution/src/product/kj-signal-compare-campaign-launch-claim.js";
 import { KJ_PAPER_WARMUP_SECONDS } from "../execution/src/product/kj-paper-mvp.js";
 
 const LAUNCH_LEAD_SECONDS = KJ_PAPER_WARMUP_SECONDS + 30;
@@ -98,6 +102,14 @@ async function main(): Promise<void> {
   try { await readFile(resultPath); throw new Error("paired campaign launcher result already exists"); } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
   }
+  await claimKJSignalCompareCampaignLaunch(outputRoot, {
+    schemaVersion: KJ_SIGNAL_COMPARE_CAMPAIGN_LAUNCH_CLAIM_VERSION,
+    campaignId: campaign.campaignId,
+    campaignHash: campaign.campaignHash,
+    collectorGitCommit: campaign.collectorGitCommit,
+    claimedAt: new Date().toISOString(),
+  });
+  await syncDirectory(outputRoot);
   const runtime = fileURLToPath(new URL("./kj-signal-compare-mvp.js", import.meta.url));
   const launches: Array<Promise<Readonly<{ compareRunId: string; runIndex: number; launchedAt: string; exitCode: number | null }>>> = [];
   for (const [offset, artifact] of campaign.comparisons.entries()) {
@@ -122,4 +134,3 @@ async function main(): Promise<void> {
 }
 
 await main();
-

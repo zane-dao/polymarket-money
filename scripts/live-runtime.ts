@@ -90,6 +90,7 @@ import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
 
 type Mode = "monitor" | "paper";
 type StreamName = "clob" | "chainlink" | "polymarket_binance" | "binance_spot" | "binance_perpetual" | "gamma";
+type KJSignalSource = "BINANCE_SPOT" | "CHAINLINK";
 
 interface RuntimeOptions {
   readonly mode: Mode;
@@ -100,6 +101,7 @@ interface RuntimeOptions {
   readonly kjPaperJournalPath: string | null;
   readonly kjSettlementGraceMilliseconds: number;
   readonly kjMarketStartBeforeMilliseconds: number | null;
+  readonly kjSignalSource: KJSignalSource;
   readonly json: boolean;
   readonly collectorGitCommit: string;
   readonly preregistration: R2Preregistration | null;
@@ -293,6 +295,15 @@ async function options(): Promise<RuntimeOptions> {
   if (kjPaperJournalPath !== null && preregistration !== null) {
     throw new Error("frozen R2 sessions cannot enable the K/J paper journal");
   }
+  const configuredKJSignalSource = argument("--kj-signal-source") ?? "binance";
+  const kjSignalSource: KJSignalSource = configuredKJSignalSource === "binance"
+    ? "BINANCE_SPOT"
+    : configuredKJSignalSource === "chainlink"
+      ? "CHAINLINK"
+      : (() => { throw new Error("--kj-signal-source must be binance or chainlink"); })();
+  if (argument("--kj-signal-source") !== undefined && kjPaperJournalPath === null) {
+    throw new Error("--kj-signal-source requires --kj-paper-journal");
+  }
   const settlementGraceValue = argument("--settlement-grace-seconds");
   if (settlementGraceValue !== undefined && kjPaperJournalPath === null) {
     throw new Error("--settlement-grace-seconds requires --kj-paper-journal");
@@ -324,6 +335,7 @@ async function options(): Promise<RuntimeOptions> {
     kjPaperJournalPath,
     kjSettlementGraceMilliseconds: settlementGraceSeconds * 1_000,
     kjMarketStartBeforeMilliseconds: marketStartBefore,
+    kjSignalSource,
     json: process.argv.includes("--json"),
     collectorGitCommit: commit,
     preregistration,
@@ -1338,9 +1350,13 @@ function snapshot(state: RuntimeState): PaperSnapshot | null {
   };
 }
 
-function kjStrategyContext(state: RuntimeState, value: PaperSnapshot | null) {
+function kjStrategyContext(
+  state: RuntimeState,
+  value: PaperSnapshot | null,
+  source: KJSignalSource,
+) {
   const polymarketInput = state.latestPolymarketInput;
-  const signal = state.spot ?? state.polymarketBinance;
+  const signal = source === "CHAINLINK" ? state.chainlink : state.spot ?? state.polymarketBinance;
   return createKJStrategyContext({
     decisionTime: value?.observedAt ?? new Date().toISOString(),
     market: state.currentMarket,
@@ -1352,7 +1368,9 @@ function kjStrategyContext(state: RuntimeState, value: PaperSnapshot | null) {
       receiveStamp: polymarketInput.receiveStamp,
     },
     signal: signal === null ? null : {
-      provider: state.spot === signal ? "BINANCE_SPOT" : "POLYMARKET_RTDS_BINANCE",
+      provider: source === "CHAINLINK"
+        ? "POLYMARKET_RTDS_CHAINLINK"
+        : state.spot === signal ? "BINANCE_SPOT" : "POLYMARKET_RTDS_BINANCE",
       price: signal.value,
       sourceTime: signal.sourceTime,
       serverTime: signal.serverTime,
@@ -1486,7 +1504,7 @@ async function dashboardLoop(
     if (bookState === BookState.STALE && previousBookState !== BookState.STALE) state.staleCount += 1;
     previousBookState = bookState;
     const paperSnapshot = snapshot(state);
-    const kjContext = kjStrategyContext(state, paperSnapshot);
+    const kjContext = kjStrategyContext(state, paperSnapshot, config.kjSignalSource);
     if (config.mode === "paper" && kjContext.ready && state.kjPaperJournal !== null) {
       await state.kjPaperJournal.appendContext(kjContext.context);
     }
@@ -1526,6 +1544,7 @@ async function dashboardLoop(
       kjStrategyContext: kjContext.ready ? kjContext.context : null,
       kjPaperEngineVersion: KJ_PAPER_ENGINE_VERSION,
       kjPaperEnabled: state.kjPaperJournal !== null,
+      kjSignalSource: state.kjPaperJournal === null ? null : config.kjSignalSource,
       kjPaperJournalRecordCount: state.kjPaperJournal?.recordCount ?? null,
       kjPaperJournalLastRecordHash: state.kjPaperJournal?.lastRecordHash ?? null,
       kjPaperEvents,
@@ -1790,6 +1809,7 @@ async function main(): Promise<void> {
     paperAuditCount: state.paperAudits.length,
     kjPaperEngineVersion: KJ_PAPER_ENGINE_VERSION,
     kjPaperEnabled: state.kjPaperJournal !== null,
+    kjSignalSource: state.kjPaperJournal === null ? null : config.kjSignalSource,
     kjSettlementGraceMilliseconds: config.kjSettlementGraceMilliseconds,
     kjMarketStartBefore: config.kjMarketStartBeforeMilliseconds === null
       ? null

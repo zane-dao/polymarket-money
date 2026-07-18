@@ -278,6 +278,12 @@ The delayed-settlement `paper:finalize` path separately validates the optional
 campaign binding in `run-plan.json` before rebuilding its result, so recovery
 cannot silently downgrade a v2 journal run-plan to an unbound plan.
 
+The runtime's `--kj-signal-source` selector now permits either the existing
+Binance spot signal or a separately identified public Chainlink relay context.
+It deliberately does not mix two prices into one K/J engine: each source must
+have an independent EWMA/anchor/wallet in the forthcoming paired comparison
+mode, otherwise source attribution and PnL would be invalid.
+
 The current Chainlink RTDS relay is observability only.  A future boundary-based
 preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;
 the proposed evidence/state contract is in

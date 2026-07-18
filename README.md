@@ -122,6 +122,12 @@ tail checkpoint, and strictly replays contexts, fills, reservations, wallets,
 positions, and settlements after restart.  Inspect it offline with
 `npm run paper:inspect -- /absolute/path/to/kj-inputs.ndjson`.
 
+K/J's default fast signal is Binance spot. A bounded paper runtime may instead
+select the public Polymarket Chainlink relay with `--kj-signal-source chainlink`;
+the provider, receive stamp, connection ID and input hash remain explicit in
+every context. This is a one-source run, not a blended price: a later
+two-source comparison must keep its wallets and EWMA state isolated.
+
 For a bounded end-to-end product run, use the single-command MVP:
 
 ```bash

@@ -68,6 +68,21 @@ test("K/J StrategyContext binds verified outcome tokens, clocks, fee, and paper-
   assert.equal(Object.isFrozen(result.context), true);
 });
 
+test("K/J StrategyContext preserves a public Chainlink relay as a distinct signal source", () => {
+  const result = createKJStrategyContext({
+    ...validInput(),
+    signal: {
+      ...validInput().signal,
+      provider: "POLYMARKET_RTDS_CHAINLINK",
+      connectionId: "chainlink-1",
+      inputHash: "c".repeat(64),
+    },
+  });
+  if (!result.ready) throw new Error(result.reason);
+  assert.equal(result.context.signal.provider, "POLYMARKET_RTDS_CHAINLINK");
+  assert.equal(result.context.signal.connectionId, "chainlink-1");
+});
+
 test("K/J StrategyContext fails closed for missing fee, stale book, crossed book, and future signal", () => {
   const missingFee = createKJStrategyContext({
     ...validInput(),

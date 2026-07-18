@@ -17,7 +17,7 @@ export interface KJTopOfBookInput {
 }
 
 export interface KJPriceEvidenceInput {
-  readonly provider: "BINANCE_SPOT" | "POLYMARKET_RTDS_BINANCE";
+  readonly provider: "BINANCE_SPOT" | "POLYMARKET_RTDS_BINANCE" | "POLYMARKET_RTDS_CHAINLINK";
   readonly price: string;
   readonly sourceTime: string | null;
   readonly serverTime: string | null;

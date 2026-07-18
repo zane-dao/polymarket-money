@@ -337,7 +337,8 @@ function validateContext(value: unknown): KJStrategyContextV1 {
       throw new Error("context schema or mode is unsupported");
     }
     if (candidate.signal.provider !== "BINANCE_SPOT"
-      && candidate.signal.provider !== "POLYMARKET_RTDS_BINANCE") {
+      && candidate.signal.provider !== "POLYMARKET_RTDS_BINANCE"
+      && candidate.signal.provider !== "POLYMARKET_RTDS_CHAINLINK") {
       throw new Error("context signal provider is unsupported");
     }
     const market: PublicBtcFiveMinuteMarket = {

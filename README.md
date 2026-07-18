@@ -130,11 +130,13 @@ two-source comparison must keep its wallets and EWMA state isolated.
 
 `paper:signal-compare-mvp` is the isolated paired runner: it pre-registers one
 matched Binance/Chainlink source pair and starts two normal paper-only K/J
-children at the same next complete five-minute boundary. Each child owns its
-own wallet, journal, EWMA and Gamma settlement path; the runner refuses to
-start within 60 seconds of the boundary. The first planned market start is also
-passed to each child as an explicit lower bound, so an earlier discovery or
-warmup market cannot become a paper session or Gamma-settlement candidate.
+children after a fixed 180-second input-only warmup and at the same complete
+five-minute boundary. Each child owns its own wallet, journal, EWMA and Gamma
+settlement path. Warmup prices are hash-chained `WARMUP_SIGNAL` records; they
+can update EWMA but cannot create a market session, intent, wallet event or
+Gamma-settlement candidate. The first planned market start is passed to each
+child as an explicit lower bound, so an earlier discovery cannot become a paper
+session or settlement candidate.
 
 After both legs independently pass the normal replay report, build the paired
 comparison with `paper:signal-compare-report`. It verifies the frozen compare

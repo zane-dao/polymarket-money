@@ -290,6 +290,14 @@ concurrently, both with the same half-open target window and commit. This
 reuses the hardened wallet, journal, official settlement and recovery path per
 source rather than introducing a mixed-source engine.
 
+Before a plan-bound K/J run, the launcher reserves 180 seconds and the runtime
+records only source-specific `WARMUP_SIGNAL` inputs in the same fsync/hash-chain
+journal. Replay applies them solely to volatility state. The engine refuses a
+warmup after the first market session; the journal also rejects a source-family
+change, so Chainlink warmup cannot influence a Binance leg (or conversely).
+Warmup has no market identity, order-book input, intent, wallet mutation or
+official-settlement candidate. The planned target window remains unchanged.
+
 The current Chainlink RTDS relay is observability only.  A future boundary-based
 preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;
 the proposed evidence/state contract is in

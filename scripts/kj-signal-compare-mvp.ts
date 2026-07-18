@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { buildKJPaperCampaign, campaignArtifact } from "../execution/src/product/kj-paper-campaign.js";
 import { buildKJSignalComparePlan, signalCompareArtifact } from "../execution/src/product/kj-signal-compare.js";
+import { KJ_PAPER_WARMUP_SECONDS } from "../execution/src/product/kj-paper-mvp.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -77,8 +78,7 @@ async function main(): Promise<void> {
   }
   const commit = git(repository, ["rev-parse", "HEAD"]);
   const now = new Date();
-  const first = (Math.floor(now.getTime() / 300_000) + 1) * 300_000;
-  if (first - now.getTime() < 60_000) throw new Error("signal comparison must start at least 60 seconds before the next five-minute boundary");
+  const first = Math.ceil((now.getTime() + KJ_PAPER_WARMUP_SECONDS * 1_000) / 300_000) * 300_000;
   const compareRunId = argument("--compare-run-id") ?? defaultRunId(now);
   const targetMarketCount = positiveInteger(argument("--markets"), "markets", 3);
   const settlementGraceSeconds = positiveInteger(argument("--settlement-grace-seconds"), "settlement-grace-seconds", 600);

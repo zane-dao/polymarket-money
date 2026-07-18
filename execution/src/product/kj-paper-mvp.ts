@@ -4,6 +4,7 @@ import type { KJPaperCampaignBinding, KJPaperCampaignRun } from "./kj-paper-camp
 
 export const KJ_PAPER_MVP_VERSION = "kj-paper-mvp-v1" as const;
 export const KJ_MARKET_INTERVAL_MILLISECONDS = 300_000;
+export const KJ_PAPER_WARMUP_SECONDS = 180;
 
 export interface KJPaperMvpPlanInput {
   readonly nowMilliseconds: number;
@@ -26,6 +27,7 @@ export interface KJPaperMvpPlan {
   readonly captureEnd: string;
   readonly expectedFinishBy: string;
   readonly durationSeconds: number;
+  readonly warmupSeconds: number;
   readonly settlementGraceSeconds: number;
   readonly runDirectory: string;
   readonly metricsDirectory: string;
@@ -73,8 +75,8 @@ export function planKJPaperMvp(input: KJPaperMvpPlanInput): KJPaperMvpPlan {
 
   // Always choose the next boundary. This gives the engine time to observe the
   // opening anchor instead of inventing one for a market already in progress.
-  const nextBoundary = (
-    Math.floor(input.nowMilliseconds / KJ_MARKET_INTERVAL_MILLISECONDS) + 1
+  const nextBoundary = Math.ceil(
+    (input.nowMilliseconds + KJ_PAPER_WARMUP_SECONDS * 1_000) / KJ_MARKET_INTERVAL_MILLISECONDS,
   ) * KJ_MARKET_INTERVAL_MILLISECONDS;
   const campaign = input.campaign;
   const scheduled = input.campaignRun;
@@ -112,6 +114,7 @@ export function planKJPaperMvp(input: KJPaperMvpPlanInput): KJPaperMvpPlan {
     captureEnd: new Date(captureEnd).toISOString(),
     expectedFinishBy: new Date(captureEnd + input.settlementGraceSeconds * 1_000).toISOString(),
     durationSeconds,
+    warmupSeconds: KJ_PAPER_WARMUP_SECONDS,
     settlementGraceSeconds: input.settlementGraceSeconds,
     runDirectory,
     metricsDirectory: join(runDirectory, "metrics"),

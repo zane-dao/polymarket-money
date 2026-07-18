@@ -6,7 +6,7 @@ import {
   planKJPaperMvp,
 } from "../../execution/src/product/kj-paper-mvp.js";
 
-test("MVP plans the next complete market and keeps every artifact outside Git", () => {
+test("MVP reserves a complete 180-second warmup before its first market and keeps artifacts outside Git", () => {
   const now = Date.parse("2026-07-17T12:03:12.345Z");
   const plan = planKJPaperMvp({
     nowMilliseconds: now,
@@ -16,9 +16,10 @@ test("MVP plans the next complete market and keeps every artifact outside Git", 
     repositoryRoot: "/root/projects/polymarket-money",
     runId: "kj-paper-20260717120312-12345678",
   });
-  assert.equal(plan.firstFullMarketStart, "2026-07-17T12:05:00.000Z");
-  assert.equal(plan.captureEnd, "2026-07-17T12:15:00.000Z");
-  assert.equal(plan.expectedFinishBy, "2026-07-17T12:16:30.000Z");
+  assert.equal(plan.firstFullMarketStart, "2026-07-17T12:10:00.000Z");
+  assert.equal(plan.captureEnd, "2026-07-17T12:20:00.000Z");
+  assert.equal(plan.expectedFinishBy, "2026-07-17T12:21:30.000Z");
+  assert.equal(plan.warmupSeconds, 180);
   assert.equal(plan.durationSeconds, Math.ceil((
     Date.parse(plan.captureEnd) - now
   ) / 1_000));
@@ -56,13 +57,13 @@ test("MVP can bind only the imminent, exact pre-registered campaign run", () => 
     campaign: { campaignId: "campaign-test", campaignHash: "a".repeat(64), campaignRunIndex: 1 },
     campaignRun: {
       runIndex: 1, runId: "campaign-test-r001", targetMarketCount: 2, settlementGraceSeconds: 90,
-      firstFullMarketStart: "2026-07-17T12:05:00.000Z", captureEnd: "2026-07-17T12:15:00.000Z",
+      firstFullMarketStart: "2026-07-17T12:10:00.000Z", captureEnd: "2026-07-17T12:20:00.000Z",
     },
   } as const;
   const plan = planKJPaperMvp(input);
   assert.equal(plan.campaign?.campaignId, "campaign-test");
   assert.throws(() => planKJPaperMvp({
     ...input,
-    campaignRun: { ...input.campaignRun, firstFullMarketStart: "2026-07-17T12:10:00.000Z", captureEnd: "2026-07-17T12:20:00.000Z" },
+    campaignRun: { ...input.campaignRun, firstFullMarketStart: "2026-07-17T12:15:00.000Z", captureEnd: "2026-07-17T12:25:00.000Z" },
   }), /next five-minute boundary/u);
 });

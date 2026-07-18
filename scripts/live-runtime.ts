@@ -68,6 +68,7 @@ import {
   type ObserverName,
 } from "../execution/src/runtime/paper.js";
 import { createKJStrategyContext } from "../execution/src/strategy/kj-context.js";
+import { createKJPaperWarmupSignal } from "../execution/src/strategy/kj-warmup.js";
 import {
   KJ_PAPER_ENGINE_VERSION,
   KJPaperEngine,
@@ -102,6 +103,7 @@ interface RuntimeOptions {
   readonly kjSettlementGraceMilliseconds: number;
   readonly kjMarketStartAtMilliseconds: number | null;
   readonly kjMarketStartBeforeMilliseconds: number | null;
+  readonly kjWarmupUntilMilliseconds: number | null;
   readonly kjSignalSource: KJSignalSource;
   readonly json: boolean;
   readonly collectorGitCommit: string;
@@ -335,6 +337,17 @@ async function options(): Promise<RuntimeOptions> {
   )) {
     throw new Error("--kj-market-start-before must be explicit UTC");
   }
+  const warmupUntilValue = argument("--kj-warmup-until");
+  if (warmupUntilValue !== undefined && kjPaperJournalPath === null) {
+    throw new Error("--kj-warmup-until requires --kj-paper-journal");
+  }
+  const warmupUntil = warmupUntilValue === undefined ? null : Date.parse(warmupUntilValue);
+  if (warmupUntilValue !== undefined && (!warmupUntilValue.endsWith("Z") || !Number.isFinite(warmupUntil))) {
+    throw new Error("--kj-warmup-until must be explicit UTC");
+  }
+  if (warmupUntil !== null && marketStartAt !== null && warmupUntil !== marketStartAt) {
+    throw new Error("--kj-warmup-until must equal --kj-market-start-at");
+  }
   return {
     mode,
     durationMilliseconds: durationSeconds * 1_000,
@@ -345,6 +358,7 @@ async function options(): Promise<RuntimeOptions> {
     kjSettlementGraceMilliseconds: settlementGraceSeconds * 1_000,
     kjMarketStartAtMilliseconds: marketStartAt,
     kjMarketStartBeforeMilliseconds: marketStartBefore,
+    kjWarmupUntilMilliseconds: warmupUntil,
     kjSignalSource,
     json: process.argv.includes("--json"),
     collectorGitCommit: commit,
@@ -1398,6 +1412,23 @@ function kjStrategyContext(
   });
 }
 
+function kjWarmupSignal(state: RuntimeState, source: KJSignalSource) {
+  const signal = source === "CHAINLINK" ? state.chainlink : state.spot ?? state.polymarketBinance;
+  if (signal === null) return null;
+  return createKJPaperWarmupSignal({
+    provider: source === "CHAINLINK"
+      ? "POLYMARKET_RTDS_CHAINLINK"
+      : state.spot === signal ? "BINANCE_SPOT" : "POLYMARKET_RTDS_BINANCE",
+    price: signal.value,
+    sourceTime: signal.sourceTime,
+    serverTime: signal.serverTime,
+    receiveTime: signal.receiveTime,
+    receiveStamp: signal.receiveStamp,
+    connectionId: signal.connectionId,
+    inputHash: signal.inputHash,
+  });
+}
+
 function opportunityAudits(value: PaperSnapshot, state: RuntimeState, now: number): readonly PaperAudit[] {
   const market = state.currentMarket;
   const feeRate = market?.takerFeeRate ?? null;
@@ -1520,6 +1551,11 @@ async function dashboardLoop(
     if (bookState === BookState.STALE && previousBookState !== BookState.STALE) state.staleCount += 1;
     previousBookState = bookState;
     const paperSnapshot = snapshot(state);
+    if (config.mode === "paper" && state.kjPaperJournal !== null
+      && config.kjWarmupUntilMilliseconds !== null && Date.now() < config.kjWarmupUntilMilliseconds) {
+      const warmup = kjWarmupSignal(state, config.kjSignalSource);
+      if (warmup !== null) await state.kjPaperJournal.appendWarmupSignal(warmup);
+    }
     const kjContext = kjStrategyContext(state, paperSnapshot, config.kjSignalSource);
     if (config.mode === "paper" && kjContext.ready && state.kjPaperJournal !== null) {
       await state.kjPaperJournal.appendContext(kjContext.context);
@@ -1831,6 +1867,9 @@ async function main(): Promise<void> {
     kjMarketStartAt: config.kjMarketStartAtMilliseconds === null
       ? null
       : new Date(config.kjMarketStartAtMilliseconds).toISOString(),
+    kjWarmupUntil: config.kjWarmupUntilMilliseconds === null
+      ? null
+      : new Date(config.kjWarmupUntilMilliseconds).toISOString(),
     kjMarketStartBefore: config.kjMarketStartBeforeMilliseconds === null
       ? null
       : new Date(config.kjMarketStartBeforeMilliseconds).toISOString(),

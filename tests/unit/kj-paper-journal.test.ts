@@ -12,6 +12,7 @@ import type { GammaResolutionInput } from "../../execution/src/adapters/settleme
 import type { ReceiveStamp } from "../../execution/src/domain/receive-time.js";
 import { KJPaperJournal } from "../../execution/src/storage/kj-paper-journal.js";
 import { createKJStrategyContext, type KJStrategyContextV1 } from "../../execution/src/strategy/kj-context.js";
+import { createKJPaperWarmupSignal } from "../../execution/src/strategy/kj-warmup.js";
 
 const START = Date.parse("2026-07-17T00:00:00.000Z");
 const execFile = promisify(execFileCallback);
@@ -93,6 +94,14 @@ function inputSeries(): readonly KJStrategyContextV1[] {
   return values;
 }
 
+function warmup(offsetSeconds: number, price: string, ordinal: number) {
+  const at = iso(offsetSeconds);
+  return createKJPaperWarmupSignal({
+    provider: "BINANCE_SPOT", price, sourceTime: at, serverTime: null, receiveTime: at,
+    receiveStamp: stamp(at, ordinal), connectionId: "spot-1", inputHash: ordinal.toString(16).padStart(64, "0"),
+  });
+}
+
 function gammaResolution(): GammaResolutionInput {
   const expected = market(1);
   return {
@@ -157,6 +166,27 @@ test("K/J journal hash-binds the MVP run plan before market contexts", async () 
       /before every context/u,
     );
     await legacy.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("K/J journal replays pre-market warmup signals without creating a market session", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-warmup-"));
+  const path = join(directory, "paper-inputs.ndjson");
+  try {
+    const journal = await KJPaperJournal.open(path);
+    await journal.appendRunPlan(RUN_PLAN);
+    assert.equal((await journal.appendWarmupSignal(warmup(0, "100", 1))).appended, true);
+    assert.equal((await journal.appendWarmupSignal(warmup(5, "100.1", 2))).appended, true);
+    assert.equal(journal.engine.snapshot().markets.length, 0);
+    await journal.appendContext(context(10, "100.2", 3));
+    await assert.rejects(journal.appendWarmupSignal(warmup(15, "100.3", 4)), /after a market context/u);
+    await journal.close();
+    const recovered = await KJPaperJournal.open(path);
+    assert.equal(recovered.recoveredInputCount, 4);
+    assert.equal(recovered.engine.snapshot().markets.length, 1);
+    await recovered.close();
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

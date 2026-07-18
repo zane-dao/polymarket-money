@@ -26,6 +26,8 @@ import {
   kjPaperContextIdentity,
   kjPaperSignalFingerprint,
   kjPaperSignalIdentity,
+  kjPaperWarmupSignalFingerprint,
+  kjPaperWarmupSignalIdentity,
   type KJOfficialSettlement,
 } from "../runtime/kj-paper-engine.js";
 import {
@@ -33,11 +35,15 @@ import {
   KJ_STRATEGY_CONTEXT_VERSION,
   type KJStrategyContextV1,
 } from "../strategy/kj-context.js";
+import {
+  validateKJPaperWarmupSignal,
+  type KJPaperWarmupSignalV1,
+} from "../strategy/kj-warmup.js";
 
 export const KJ_PAPER_JOURNAL_VERSION = "kj-paper-input-journal-v2" as const;
 const KJ_PAPER_CHECKPOINT_VERSION = "kj-paper-input-checkpoint-v2" as const;
 
-type JournalPayloadType = "HEADER" | "RUN_PLAN" | "CONTEXT" | "GAMMA_RESOLUTION";
+type JournalPayloadType = "HEADER" | "RUN_PLAN" | "WARMUP_SIGNAL" | "CONTEXT" | "GAMMA_RESOLUTION";
 
 export interface KJPaperRunPlanEvidenceV1 {
   readonly schemaVersion: "kj-paper-run-plan-v1";
@@ -83,6 +89,10 @@ export interface KJPaperJournalAppendReceipt {
 const HASH = /^[0-9a-f]{64}$/u;
 const INTEGER = /^(?:0|[1-9]\d*)$/u;
 let repositoryRootPromise: Promise<string> | undefined;
+
+function signalFamily(provider: KJPaperWarmupSignalV1["signal"]["provider"]): "BINANCE" | "CHAINLINK" {
+  return provider === "POLYMARKET_RTDS_CHAINLINK" ? "CHAINLINK" : "BINANCE";
+}
 
 function object(value: unknown, field: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -463,6 +473,7 @@ function parseRecord(line: string, ordinal: number, previous: string | null): Jo
   if (record.previousRecordHash !== previous) throw new Error("K/J journal hash chain is broken");
   if (record.payloadType !== "HEADER"
     && record.payloadType !== "RUN_PLAN"
+    && record.payloadType !== "WARMUP_SIGNAL"
     && record.payloadType !== "CONTEXT"
     && record.payloadType !== "GAMMA_RESOLUTION") {
     throw new Error("K/J journal payload type is unsupported");
@@ -496,6 +507,7 @@ export class KJPaperJournal {
   readonly #recordHashes: string[] = [];
   #runPlanEvidence: KJPaperRunPlanEvidence | null = null;
   #lastNewSignalReceiveMilliseconds: number | null = null;
+  #signalFamily: "BINANCE" | "CHAINLINK" | null = null;
   #recordCount = 0;
   #recoveredInputCount = 0;
   #lastHash: string | null = null;
@@ -563,6 +575,10 @@ export class KJPaperJournal {
     return this.#serialize(() => this.#appendContext(context));
   }
 
+  appendWarmupSignal(value: KJPaperWarmupSignalV1): Promise<KJPaperJournalAppendReceipt> {
+    return this.#serialize(() => this.#appendWarmupSignal(value));
+  }
+
   appendRunPlan(value: KJPaperRunPlanEvidence): Promise<KJPaperJournalAppendReceipt> {
     return this.#serialize(() => this.#appendRunPlan(value));
   }
@@ -604,6 +620,12 @@ export class KJPaperJournal {
         this.#checkContextRelations(context);
         if (!this.engine.ingest(context)) throw new Error("K/J journal contains a duplicate context record");
         this.#rememberContext(context);
+        this.#recoveredInputCount += 1;
+      } else if (record.payloadType === "WARMUP_SIGNAL") {
+        const warmup = validateKJPaperWarmupSignal(record.payload);
+        this.#checkWarmupRelations(warmup);
+        if (!this.engine.warmup(warmup)) throw new Error("K/J journal contains a duplicate warmup signal record");
+        this.#rememberWarmup(warmup);
         this.#recoveredInputCount += 1;
       } else if (record.payloadType === "RUN_PLAN") {
         if (ordinal !== 1 || this.#runPlanEvidence !== null) {
@@ -657,6 +679,28 @@ export class KJPaperJournal {
     try {
       if (!this.engine.ingest(context)) throw new Error("new journal context was not applied");
       this.#rememberContext(context);
+      return receipt;
+    } catch (error) {
+      this.#state = "FAILED";
+      throw error;
+    }
+  }
+
+  async #appendWarmupSignal(value: KJPaperWarmupSignalV1): Promise<KJPaperJournalAppendReceipt> {
+    this.#requireOpen();
+    const warmup = validateKJPaperWarmupSignal(value);
+    const identity = kjPaperWarmupSignalIdentity(warmup);
+    const fingerprint = kjPaperWarmupSignalFingerprint(warmup);
+    const prior = this.#signalIdentities.get(identity);
+    if (prior !== undefined) {
+      if (prior !== fingerprint) throw new Error("K/J journal warmup signal identity has conflicting content");
+      return this.#duplicateReceipt();
+    }
+    this.#checkWarmupRelations(warmup);
+    const receipt = await this.#appendRaw("WARMUP_SIGNAL", warmup);
+    try {
+      if (!this.engine.warmup(warmup)) throw new Error("new journal warmup signal was not applied");
+      this.#rememberWarmup(warmup);
       return receipt;
     } catch (error) {
       this.#state = "FAILED";
@@ -792,6 +836,9 @@ export class KJPaperJournal {
         throw new Error("K/J journal new signal time reversed");
       }
     }
+    if (this.#signalFamily !== null && this.#signalFamily !== signalFamily(context.signal.provider)) {
+      throw new Error("K/J journal signal source family cannot change within one run");
+    }
     const marketFingerprint = sha256(stableJson(context.market));
     const priorMarket = this.#marketIdentities.get(context.market.marketId);
     if (priorMarket !== undefined && priorMarket !== marketFingerprint) {
@@ -811,6 +858,24 @@ export class KJPaperJournal {
     }
   }
 
+  #checkWarmupRelations(warmup: KJPaperWarmupSignalV1): void {
+    if (this.#marketIdentities.size !== 0) throw new Error("K/J warmup signal appears after a market context");
+    const identity = kjPaperWarmupSignalIdentity(warmup);
+    const fingerprint = kjPaperWarmupSignalFingerprint(warmup);
+    const prior = this.#signalIdentities.get(identity);
+    if (prior !== undefined) {
+      if (prior !== fingerprint) throw new Error("K/J journal warmup signal identity conflict during replay");
+      throw new Error("K/J journal duplicate warmup signal during replay");
+    }
+    const received = Date.parse(warmup.signal.receiveTime);
+    if (this.#lastNewSignalReceiveMilliseconds !== null && received < this.#lastNewSignalReceiveMilliseconds) {
+      throw new Error("K/J journal new signal time reversed");
+    }
+    if (this.#signalFamily !== null && this.#signalFamily !== signalFamily(warmup.signal.provider)) {
+      throw new Error("K/J journal signal source family cannot change within one run");
+    }
+  }
+
   #rememberContext(context: KJStrategyContextV1): void {
     const identity = kjPaperContextIdentity(context);
     const fingerprint = kjPaperContextFingerprint(context);
@@ -819,6 +884,7 @@ export class KJPaperJournal {
     if (!this.#signalIdentities.has(signalIdentity)) {
       this.#signalIdentities.set(signalIdentity, kjPaperSignalFingerprint(context));
       this.#lastNewSignalReceiveMilliseconds = Date.parse(context.signal.receiveTime);
+      this.#signalFamily = signalFamily(context.signal.provider);
     }
     if (!this.#marketIdentities.has(context.market.marketId)) {
       this.#marketIdentities.set(context.market.marketId, sha256(stableJson(context.market)));
@@ -844,6 +910,13 @@ export class KJPaperJournal {
       BigInt(watermark.localMonotonicReceiveNs),
       BigInt(watermark.localReceiveOrdinal),
     ]);
+  }
+
+  #rememberWarmup(warmup: KJPaperWarmupSignalV1): void {
+    const identity = kjPaperWarmupSignalIdentity(warmup);
+    this.#signalIdentities.set(identity, kjPaperWarmupSignalFingerprint(warmup));
+    this.#lastNewSignalReceiveMilliseconds = Date.parse(warmup.signal.receiveTime);
+    this.#signalFamily = signalFamily(warmup.signal.provider);
   }
 
   #publishCurrentCheckpoint(): Promise<void> {

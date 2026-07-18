@@ -1,6 +1,6 @@
 # Batch 06 K/J research and paper MVP completion audit
 
-Audit date: 2026-07-17
+Audit date: 2026-07-18
 
 Code branch: `batch/06-kj-paper-loop`
 
@@ -63,7 +63,7 @@ project goal is not complete.
 
 ```text
 Python: 205 passed
-Node/TypeScript: 136 passed
+Node/TypeScript: 137 passed
 Ruff: passed
 TypeScript typecheck: passed
 git diff --check: passed
@@ -75,6 +75,12 @@ per-market PnL versus final-wallet subtraction. It only accepts an absolute
 residual at or below `1e-60`, and separately requires the accepted result's
 final cash/net PnL to match the wallet. This records finite decimal operation
 ordering dust without weakening the report's accounting gate.
+
+K now has a separate 180-second, journaled input warmup: `WARMUP_SIGNAL`
+records replay into EWMA only and are rejected after a market session starts.
+They cannot create a market, intent, wallet event, or settlement candidate, and
+one journal rejects a Binance/Chainlink source-family change. This replaces the
+invalid practice of using a pre-target market session as implicit K warmup.
 
 Accepted public artifact (pre-plan-binding code):
 

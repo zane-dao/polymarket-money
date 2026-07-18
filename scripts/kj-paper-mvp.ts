@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   planKJPaperMvp,
+  KJ_PAPER_WARMUP_SECONDS,
   type KJPaperMvpPlan,
 } from "../execution/src/product/kj-paper-mvp.js";
 import {
@@ -193,6 +194,7 @@ async function main(): Promise<void> {
     "--kj-paper-journal", plan.journalPath,
     "--settlement-grace-seconds", String(plan.settlementGraceSeconds),
     "--kj-market-start-at", plan.firstFullMarketStart,
+    "--kj-warmup-until", plan.firstFullMarketStart,
     "--kj-market-start-before", plan.captureEnd,
     "--git-commit", commit,
     "--kj-signal-source", selectedSignalSource,
@@ -203,7 +205,7 @@ async function main(): Promise<void> {
   process.once("SIGINT", forward);
   process.once("SIGTERM", forward);
   process.stdout.write(`[MVP] run=${plan.runId} markets=${plan.targetMarketCount}\n`);
-  process.stdout.write(`[MVP] full-market-start=${plan.firstFullMarketStart} expected-finish=${plan.expectedFinishBy}\n`);
+  process.stdout.write(`[MVP] warmup=${KJ_PAPER_WARMUP_SECONDS}s full-market-start=${plan.firstFullMarketStart} expected-finish=${plan.expectedFinishBy}\n`);
   process.stdout.write(`[MVP] artifacts=${plan.runDirectory}\n`);
   const heartbeat = setInterval(() => {
     process.stdout.write(`[MVP] running ${new Date().toISOString()}\n`);

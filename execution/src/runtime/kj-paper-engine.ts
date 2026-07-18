@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { Money, minimumMoney } from "../domain/money.js";
 import type { KJStrategyContextV1 } from "../strategy/kj-context.js";
+import type { KJPaperWarmupSignalV1 } from "../strategy/kj-warmup.js";
 
 export const KJ_PAPER_ENGINE_VERSION = "kj-paper-engine-v2" as const;
 
@@ -394,6 +395,16 @@ export function kjPaperSignalFingerprint(context: KJStrategyContextV1): string {
   return hash(stableJson(context.signal));
 }
 
+export function kjPaperWarmupSignalIdentity(value: KJPaperWarmupSignalV1): string {
+  const signal = value.signal;
+  return hash(signal.provider, signal.connectionId, signal.receiveStamp.clockDomain,
+    signal.receiveStamp.localMonotonicReceiveNs, signal.receiveStamp.localReceiveOrdinal, signal.inputHash);
+}
+
+export function kjPaperWarmupSignalFingerprint(value: KJPaperWarmupSignalV1): string {
+  return hash(stableJson(value.signal));
+}
+
 function sameSettlement(left: KJOfficialSettlement, right: KJOfficialSettlement): boolean {
   return left.settlementId === right.settlementId
     && left.marketId === right.marketId
@@ -466,6 +477,20 @@ export class KJPaperEngine {
     for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) {
       this.#wallets.set(strategy, new PaperWallet(this.#config.initialCash));
     }
+  }
+
+  warmup(value: KJPaperWarmupSignalV1): boolean {
+    if (this.#sessions.size !== 0) throw new Error("K/J warmup inputs are forbidden after a paper market session starts");
+    const identity = kjPaperWarmupSignalIdentity(value);
+    const fingerprint = kjPaperWarmupSignalFingerprint(value);
+    const prior = this.#processedSignalInputs.get(identity);
+    if (prior !== undefined) {
+      if (prior !== fingerprint) throw new Error("warmup signal identity has conflicting content");
+      return false;
+    }
+    this.#volatility.update(value.signal.price, value.signal.receiveTime);
+    this.#processedSignalInputs.set(identity, fingerprint);
+    return true;
   }
 
   ingest(context: KJStrategyContextV1): boolean {

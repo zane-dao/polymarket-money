@@ -40,6 +40,9 @@ K/J public-paper 的验收结果也可在同一界面只读查看。该结论只
 5. 新历史导出只有在三份 sidecar 完整写入、逐文件 SHA-256/size 计算完成后才写入
    `publication.json`。进程中断留下的目录没有该提交清单，不能被未来完整导出校验器误认作
    发布成功；旧结果不追补该文件，也不改写历史产物。
+6. 控制台遇到新格式的 `publication-intent.json` 时，必须复核最终 manifest hash、result hash、
+   三份 sidecar 的名称/大小/SHA-256，任意不符均隐藏。没有 intent 的旧产物只显示
+   `LEGACY_SUMMARY_VERIFIED`；只有全量复核的新产物才显示 `COMPLETE_PUBLICATION_VERIFIED`。
 
 ## 验证命令
 

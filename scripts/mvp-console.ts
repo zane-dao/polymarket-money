@@ -24,7 +24,7 @@ export type MvpResultSummary = {
   resultHash: string | null;
   split: string | null;
   scenario: string | null;
-  summaryIntegrity: "VERIFIED";
+  summaryIntegrity: "COMPLETE_PUBLICATION_VERIFIED" | "LEGACY_SUMMARY_VERIFIED";
   runs: Record<string, {
     netPnl: string | null;
     filledCount: number | null;
@@ -55,6 +55,47 @@ function verifiedHistoricalResultHash(summary: Record<string, unknown>): string 
   delete core.result_hash;
   const actual = createHash("sha256").update(canonicalJson(core), "utf8").digest("hex");
   return actual === resultHash ? resultHash : null;
+}
+
+const HISTORICAL_PUBLICATION_VERSION = "kj-historical-paper-publication-v1";
+const MAX_PUBLICATION_SIDECAR_BYTES = 16 * 1024 * 1024;
+const PUBLICATION_FILES = ["summary.json", "events.ndjson", "trades.csv"] as const;
+
+function jsonObject(path: string): Record<string, unknown> | null {
+  if (!existsSync(path) || statSync(path).size > 1_000_000) return null;
+  try {
+    const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch { return null; }
+}
+
+/** New-format output has an intent before sidecars and a full hash manifest only after they are complete. */
+function historicalPublicationIntegrity(directory: string, resultHash: string): MvpResultSummary["summaryIntegrity"] | null {
+  const intentPath = resolve(directory, "publication-intent.json");
+  if (!existsSync(intentPath)) return "LEGACY_SUMMARY_VERIFIED";
+  const intent = jsonObject(intentPath);
+  const publication = jsonObject(resolve(directory, "publication.json"));
+  if (intent === null || publication === null
+    || intent.schema_version !== HISTORICAL_PUBLICATION_VERSION || intent.result_hash !== resultHash
+    || publication.schema_version !== HISTORICAL_PUBLICATION_VERSION || publication.result_hash !== resultHash) return null;
+  const publicationHash = publication.publication_hash;
+  if (typeof publicationHash !== "string" || !/^[0-9a-f]{64}$/u.test(publicationHash)) return null;
+  const core = { ...publication }; delete core.publication_hash;
+  if (createHash("sha256").update(canonicalJson(core), "utf8").digest("hex") !== publicationHash) return null;
+  const files = publication.files;
+  if (typeof files !== "object" || files === null || Array.isArray(files)
+    || Object.keys(files).sort().join(",") !== [...PUBLICATION_FILES].sort().join(",")) return null;
+  for (const name of PUBLICATION_FILES) {
+    const evidence = (files as Record<string, unknown>)[name];
+    const path = resolve(directory, name);
+    if (typeof evidence !== "object" || evidence === null || Array.isArray(evidence) || !existsSync(path)) return null;
+    const record = evidence as Record<string, unknown>;
+    const size = statSync(path).size;
+    if (!Number.isSafeInteger(record.bytes) || record.bytes !== size || size > MAX_PUBLICATION_SIDECAR_BYTES
+      || typeof record.sha256 !== "string" || !/^[0-9a-f]{64}$/u.test(record.sha256)) return null;
+    if (createHash("sha256").update(readFileSync(path)).digest("hex") !== record.sha256) return null;
+  }
+  return "COMPLETE_PUBLICATION_VERIFIED";
 }
 
 export type MvpPaperSummary = {
@@ -124,6 +165,8 @@ export function listMvpResultSummaries(dataRoot: string): MvpResultSummary[] {
         const summary = value as Record<string, unknown>;
         const resultHash = verifiedHistoricalResultHash(summary);
         if (resultHash === null) return [];
+        const summaryIntegrity = historicalPublicationIntegrity(resolve(root, entry.name), resultHash);
+        if (summaryIntegrity === null) return [];
         const sourceRuns = summary.runs;
         const runs: MvpResultSummary["runs"] = {};
         if (typeof sourceRuns === "object" && sourceRuns !== null && !Array.isArray(sourceRuns)) {
@@ -143,7 +186,7 @@ export function listMvpResultSummaries(dataRoot: string): MvpResultSummary[] {
           resultHash,
           split: typeof summary.split === "string" ? summary.split : null,
           scenario: typeof summary.scenario === "string" ? summary.scenario : null,
-          summaryIntegrity: "VERIFIED",
+          summaryIntegrity,
           runs,
         }];
       } catch { return []; }
@@ -252,7 +295,7 @@ function page(snapshot: MvpConsoleSnapshot, localRunsEnabled: boolean): string {
   const client = `
 const text=(value)=>value===null||value===undefined?'—':String(value);
 const table=(id,headers,rows)=>{const root=document.getElementById(id);root.replaceChildren();if(rows.length===0){root.textContent='暂无已发布结果';return;}const t=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody'),hr=document.createElement('tr');headers.forEach(x=>{const th=document.createElement('th');th.textContent=x;hr.append(th)});head.append(hr);rows.forEach(row=>{const tr=document.createElement('tr');row.forEach(value=>{const td=document.createElement('td');td.textContent=text(value);tr.append(td)});body.append(tr)});t.append(head,body);root.append(t)};
-const renderHistory=()=>fetch('/api/results').then(r=>r.json()).then(items=>{const rows=[];items.forEach(item=>Object.entries(item.runs).forEach(([strategy,run])=>rows.push([item.runId,item.split,item.scenario,item.summaryIntegrity,strategy,run.netPnl,run.maxDrawdown,run.netWithoutBest3Days,run.filledCount])));table('results',['运行','切分','情景','摘要哈希','策略','净 PnL','最大回撤','去最佳三天','成交数'],rows)}).catch(error=>document.getElementById('results').textContent=String(error));
+const renderHistory=()=>fetch('/api/results').then(r=>r.json()).then(items=>{const rows=[];items.forEach(item=>Object.entries(item.runs).forEach(([strategy,run])=>rows.push([item.runId,item.split,item.scenario,item.summaryIntegrity,strategy,run.netPnl,run.maxDrawdown,run.netWithoutBest3Days,run.filledCount])));table('results',['运行','切分','情景','完整性','策略','净 PnL','最大回撤','去最佳三天','成交数'],rows)}).catch(error=>document.getElementById('results').textContent=String(error));
 const renderPaper=()=>fetch('/api/paper-runs').then(r=>r.json()).then(items=>{const rows=items.map(item=>[item.runId,item.accepted,item.planBinding,item.targetMarketCount,item.completedMarketCount,item.strategies.J_FEE_AWARE?.netPnl,item.strategies.K_DUAL_VOL?.netPnl]);table('paper',['运行','验收','计划绑定','目标','完成','J 净 PnL','K 净 PnL'],rows)}).catch(error=>document.getElementById('paper').textContent=String(error));
 const renderJobs=()=>fetch('/api/historical-runs').then(r=>r.json()).then(x=>document.getElementById('jobs').textContent=JSON.stringify(x,null,2));
 const run=kind=>fetch('/api/historical-runs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind})}).then(()=>renderJobs()).then(()=>setTimeout(renderHistory,250));

@@ -1203,6 +1203,18 @@ def export_kj_paper(result: Mapping[str, Any], output: Path) -> None:
     output.mkdir(parents=True, exist_ok=False)
     summary = {key: value for key, value in result.items() if key != "events"}
     _durable_new_text(
+        output / "publication-intent.json",
+        json.dumps(
+            {
+                "schema_version": HISTORICAL_PAPER_PUBLICATION_VERSION,
+                "result_hash": summary["result_hash"],
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        ) + "\n",
+    )
+    _durable_new_text(
         output / "summary.json",
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
     )

@@ -1,6 +1,7 @@
 /** Credential-free local MVP console. It never starts collection or orders. */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { execFileSync, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -23,6 +24,7 @@ export type MvpResultSummary = {
   resultHash: string | null;
   split: string | null;
   scenario: string | null;
+  summaryIntegrity: "VERIFIED";
   runs: Record<string, {
     netPnl: string | null;
     filledCount: number | null;
@@ -30,6 +32,30 @@ export type MvpResultSummary = {
     netWithoutBest3Days: string | null;
   }>;
 };
+
+/** Matches the Python historical result hash contract: sorted JSON keys, compact separators, UTF-8. */
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("historical summary contains a non-finite number");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+  }
+  throw new Error("historical summary contains a non-JSON value");
+}
+
+function verifiedHistoricalResultHash(summary: Record<string, unknown>): string | null {
+  const resultHash = summary.result_hash;
+  if (typeof resultHash !== "string" || !/^[0-9a-f]{64}$/u.test(resultHash)) return null;
+  const core = { ...summary };
+  delete core.result_hash;
+  const actual = createHash("sha256").update(canonicalJson(core), "utf8").digest("hex");
+  return actual === resultHash ? resultHash : null;
+}
 
 export type MvpPaperSummary = {
   runId: string;
@@ -96,6 +122,8 @@ export function listMvpResultSummaries(dataRoot: string): MvpResultSummary[] {
         const value: unknown = JSON.parse(readFileSync(file, "utf8"));
         if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
         const summary = value as Record<string, unknown>;
+        const resultHash = verifiedHistoricalResultHash(summary);
+        if (resultHash === null) return [];
         const sourceRuns = summary.runs;
         const runs: MvpResultSummary["runs"] = {};
         if (typeof sourceRuns === "object" && sourceRuns !== null && !Array.isArray(sourceRuns)) {
@@ -112,9 +140,10 @@ export function listMvpResultSummaries(dataRoot: string): MvpResultSummary[] {
         }
         return [{
           runId: entry.name,
-          resultHash: typeof summary.result_hash === "string" ? summary.result_hash : null,
+          resultHash,
           split: typeof summary.split === "string" ? summary.split : null,
           scenario: typeof summary.scenario === "string" ? summary.scenario : null,
+          summaryIntegrity: "VERIFIED",
           runs,
         }];
       } catch { return []; }
@@ -223,7 +252,7 @@ function page(snapshot: MvpConsoleSnapshot, localRunsEnabled: boolean): string {
   const client = `
 const text=(value)=>value===null||value===undefined?'—':String(value);
 const table=(id,headers,rows)=>{const root=document.getElementById(id);root.replaceChildren();if(rows.length===0){root.textContent='暂无已发布结果';return;}const t=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody'),hr=document.createElement('tr');headers.forEach(x=>{const th=document.createElement('th');th.textContent=x;hr.append(th)});head.append(hr);rows.forEach(row=>{const tr=document.createElement('tr');row.forEach(value=>{const td=document.createElement('td');td.textContent=text(value);tr.append(td)});body.append(tr)});t.append(head,body);root.append(t)};
-const renderHistory=()=>fetch('/api/results').then(r=>r.json()).then(items=>{const rows=[];items.forEach(item=>Object.entries(item.runs).forEach(([strategy,run])=>rows.push([item.runId,item.split,item.scenario,strategy,run.netPnl,run.maxDrawdown,run.netWithoutBest3Days,run.filledCount])));table('results',['运行','切分','情景','策略','净 PnL','最大回撤','去最佳三天','成交数'],rows)}).catch(error=>document.getElementById('results').textContent=String(error));
+const renderHistory=()=>fetch('/api/results').then(r=>r.json()).then(items=>{const rows=[];items.forEach(item=>Object.entries(item.runs).forEach(([strategy,run])=>rows.push([item.runId,item.split,item.scenario,item.summaryIntegrity,strategy,run.netPnl,run.maxDrawdown,run.netWithoutBest3Days,run.filledCount])));table('results',['运行','切分','情景','摘要哈希','策略','净 PnL','最大回撤','去最佳三天','成交数'],rows)}).catch(error=>document.getElementById('results').textContent=String(error));
 const renderPaper=()=>fetch('/api/paper-runs').then(r=>r.json()).then(items=>{const rows=items.map(item=>[item.runId,item.accepted,item.planBinding,item.targetMarketCount,item.completedMarketCount,item.strategies.J_FEE_AWARE?.netPnl,item.strategies.K_DUAL_VOL?.netPnl]);table('paper',['运行','验收','计划绑定','目标','完成','J 净 PnL','K 净 PnL'],rows)}).catch(error=>document.getElementById('paper').textContent=String(error));
 const renderJobs=()=>fetch('/api/historical-runs').then(r=>r.json()).then(x=>document.getElementById('jobs').textContent=JSON.stringify(x,null,2));
 const run=kind=>fetch('/api/historical-runs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind})}).then(()=>renderJobs()).then(()=>setTimeout(renderHistory,250));

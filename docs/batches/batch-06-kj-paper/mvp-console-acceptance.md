@@ -19,7 +19,7 @@ K/J public-paper 的验收结果也可在同一界面只读查看。该结论只
 | 结果导出 | 每次历史运行发布 `summary.json`、`events.ndjson`、`trades.csv`；public-paper 有 hash-bound result/journal/report 路径 | 通过 |
 | 本地产品入口 | `npm run mvp:console -- --data-root /root/polymarket-money-data` 仅绑定 `127.0.0.1` | 通过 |
 | 控制台运行权限 | 默认只读；只有 `--enable-local-history-runs` 才可发起三种固定的离线运行；API 不接受任意命令、路径、参数或网络模式，且一次只允许一个本地子进程 | 通过 |
-| 研究结果可读性 | 历史表显示 net PnL、max drawdown、去最佳三天、fills；paper 表显示 accepted、plan binding、目标完成数及 J/K PnL | 通过 |
+| 研究结果可读性 | 历史表显示 net PnL、max drawdown、去最佳三天、fills；仅显示按 Python canonical JSON 规则复算 `result_hash` 成功的摘要；paper 表显示 accepted、plan binding、目标完成数及 J/K PnL | 通过 |
 | 实时 paper 可见性 | 控制台只读 `paper-mvp/*/result.json` 或 `final-result.json`；网页没有 realtime 启动 API | 通过 |
 | 真实订单安全 | `LIVE_TRADING_ENABLED=false`，无网页实时启动入口、无 private channel、无 signing/order adapter | 通过 |
 
@@ -34,6 +34,9 @@ K/J public-paper 的验收结果也可在同一界面只读查看。该结论只
 3. `/api/paper-runs` 正确读取既有 hash-bound 三市场 paper：
    `kj-paper-20260716225739-48ff7c99`，`accepted=true`，J/K paper net 分别为
    `182.86189715` / `205.272819795`。
+4. `/api/results` 现会复算每份历史 `summary.json` 的 SHA-256；当前三个已发布本地结果均为
+   `VERIFIED`，任何缺失、格式错误或不匹配 hash 的摘要均不显示。此核验只证明展示的
+   summary 内容完整，不替代对 `events.ndjson`、`trades.csv` 或原始行情的独立审计。
 
 ## 验证命令
 

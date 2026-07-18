@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/tests/unit/*.test.js",
     "paper:mvp": "npm run build && node --use-env-proxy dist/scripts/kj-paper-mvp.js",
+    "paper:signal-compare-mvp": "npm run build && node --use-env-proxy dist/scripts/kj-signal-compare-mvp.js",
     "paper:campaign-plan": "npm run build && node dist/scripts/create-kj-paper-campaign.js",
     "paper:finalize": "npm run build && node dist/scripts/finalize-kj-paper-run.js",
     "paper:report": "npm run build && node dist/scripts/report-kj-paper-run.js",

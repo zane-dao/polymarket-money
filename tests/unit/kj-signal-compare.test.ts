@@ -21,8 +21,8 @@ test("signal comparison freezes one matched Binance and Chainlink run pair", () 
   const plan = buildKJSignalComparePlan(input);
   assert.equal(plan.captureEnd, "2026-07-18T05:15:00.000Z");
   assert.deepEqual(plan.sourceRuns, [
-    { source: "BINANCE_SPOT", runId: "kj-compare-20260718-0500-binance" },
-    { source: "POLYMARKET_RTDS_CHAINLINK", runId: "kj-compare-20260718-0500-chainlink" },
+    { source: "BINANCE_SPOT", runId: "kj-compare-20260718-0500-binance-r001" },
+    { source: "POLYMARKET_RTDS_CHAINLINK", runId: "kj-compare-20260718-0500-chainlink-r001" },
   ]);
   assert.match(kjSignalComparePlanHash(plan), /^[0-9a-f]{64}$/u);
   assert.equal(parseKJSignalCompareArtifact(signalCompareArtifact(plan)).plan.compareRunId, plan.compareRunId);

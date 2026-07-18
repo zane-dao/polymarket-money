@@ -284,6 +284,12 @@ It deliberately does not mix two prices into one K/J engine: each source must
 have an independent EWMA/anchor/wallet in the forthcoming paired comparison
 mode, otherwise source attribution and PnL would be invalid.
 
+`kj-signal-compare-v1` freezes a matched two-leg plan. Its supervisor creates
+one ordinary campaign per source and invokes two existing `paper:mvp` children
+concurrently, both with the same half-open target window and commit. This
+reuses the hardened wallet, journal, official settlement and recovery path per
+source rather than introducing a mixed-source engine.
+
 The current Chainlink RTDS relay is observability only.  A future boundary-based
 preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;
 the proposed evidence/state contract is in

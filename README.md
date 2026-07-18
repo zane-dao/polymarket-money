@@ -128,6 +128,12 @@ the provider, receive stamp, connection ID and input hash remain explicit in
 every context. This is a one-source run, not a blended price: a later
 two-source comparison must keep its wallets and EWMA state isolated.
 
+`paper:signal-compare-mvp` is the isolated paired runner: it pre-registers one
+matched Binance/Chainlink source pair and starts two normal paper-only K/J
+children at the same next complete five-minute boundary. Each child owns its
+own wallet, journal, EWMA and Gamma settlement path; the runner refuses to
+start within 60 seconds of the boundary.
+
 For a bounded end-to-end product run, use the single-command MVP:
 
 ```bash

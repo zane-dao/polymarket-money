@@ -79,7 +79,7 @@ function positiveInteger(value: unknown, field: string, maximum: number): number
 }
 
 function sourceRunId(compareRunId: string, suffix: "binance" | "chainlink"): string {
-  const value = `${compareRunId}-${suffix}`;
+  const value = `${compareRunId}-${suffix}-r001`;
   if (!RUN_ID.test(value)) throw new Error("compareRunId cannot form safe source run IDs");
   return value;
 }

@@ -27,6 +27,12 @@ function positiveInteger(value: string, field: string): number {
   return parsed;
 }
 
+function signalSource(value: string | undefined): "binance" | "chainlink" {
+  if (value === undefined || value === "binance") return "binance";
+  if (value === "chainlink") return "chainlink";
+  throw new Error("--kj-signal-source must be binance or chainlink");
+}
+
 function git(repository: string, args: readonly string[]): string {
   const result = spawnSync("git", args, { cwd: repository, encoding: "utf8" });
   if (result.status !== 0 || typeof result.stdout !== "string") {
@@ -106,7 +112,7 @@ async function main(): Promise<void> {
     process.stdout.write([
       "Usage: npm run paper:mvp -- [--markets 1] [--settlement-grace-seconds 600]",
       "       [--output-root /root/polymarket-money-data/paper-mvp]",
-      "       [--campaign-plan /absolute/campaign.json --campaign-run 1]",
+      "       [--campaign-plan /absolute/campaign.json --campaign-run 1] [--kj-signal-source binance|chainlink]",
       "",
       "Runs 1-12 complete BTC five-minute markets with public data and paper-only K/J wallets.",
       "",
@@ -123,6 +129,7 @@ async function main(): Promise<void> {
   if (!/^[0-9a-f]{40,64}$/u.test(commit)) throw new Error("committed collector object ID is invalid");
 
   const now = new Date();
+  const selectedSignalSource = signalSource(argument("--kj-signal-source"));
   const selectedCampaign = await campaignSelection(commit);
   const plan = planKJPaperMvp({
     nowMilliseconds: now.getTime(),
@@ -187,6 +194,7 @@ async function main(): Promise<void> {
     "--settlement-grace-seconds", String(plan.settlementGraceSeconds),
     "--kj-market-start-before", plan.captureEnd,
     "--git-commit", commit,
+    "--kj-signal-source", selectedSignalSource,
     "--json",
   ], { cwd: actualRepository, stdio: ["ignore", "pipe", "pipe"] });
 

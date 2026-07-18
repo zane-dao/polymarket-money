@@ -238,6 +238,20 @@ It requires every scheduled campaign run exactly once and rejects a report
 whose campaign hash, run index, window, market count, or collector commit does
 not match the immutable schedule. It is still descriptive paper evidence only.
 
+For the matching full-campaign execution-quality replay, use:
+
+```bash
+npm run paper:campaign-cohort-observability-report -- \
+  --campaign-plan /absolute/path/to/campaign.json \
+  --input /absolute/path/to/report-one \
+  --input /absolute/path/to/report-two \
+  --output /absolute/path/to/new-campaign-observability-directory
+```
+
+It applies the same all-runs-once campaign check before reopening journals and
+runtime summaries, so PnL and reliability metrics cannot be selected from
+different post-hoc subsets.
+
 To keep operational quality separate from PnL, the offline observability
 cohort command reopens each verified journal and cross-checks its tail, record
 count, runtime summary hash, paper event count, public-stream counters,

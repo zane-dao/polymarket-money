@@ -7,6 +7,11 @@ import {
   kjPaperCohortObservabilityReportHash,
 } from "../../execution/src/product/kj-paper-cohort-observability-report.js";
 import { kjPaperReportArtifactHash } from "../../execution/src/product/kj-paper-report.js";
+import { buildKJPaperCampaign, campaignArtifact } from "../../execution/src/product/kj-paper-campaign.js";
+import {
+  buildKJPaperCampaignCohortObservabilityReport,
+  kjPaperCampaignCohortObservabilityReportHash,
+} from "../../execution/src/product/kj-paper-campaign-cohort-observability-report.js";
 import type { KJPaperEvent } from "../../execution/src/runtime/kj-paper-engine.js";
 
 const COMMIT = "a".repeat(40);
@@ -43,7 +48,13 @@ function streams(events: number): Record<string, { events: number; reconnects: n
   };
 }
 
-function input(runId: string, start: string, end: string, streamEvents: number) {
+function input(
+  runId: string,
+  start: string,
+  end: string,
+  streamEvents: number,
+  campaign?: { campaignId: string; campaignHash: string; campaignRunIndex: number },
+) {
   const journalPath = `/root/polymarket-money-data/${runId}/kj-inputs.ndjson`;
   const settlementTime = new Date(Date.parse(end) + 30_000).toISOString();
   const endedAt = new Date(Date.parse(end) + 60_000).toISOString();
@@ -86,7 +97,7 @@ function input(runId: string, start: string, end: string, streamEvents: number) 
       runId, collectorGitCommit: COMMIT, targetMarketCount: 1,
       firstFullMarketStart: start, captureEnd: end, journalPath,
       journalRecordCount: "10", journalLastRecordHash: JOURNAL_HASH,
-      resultKind: "INITIAL" as const,
+      resultKind: "INITIAL" as const, ...(campaign === undefined ? {} : { campaign }),
     },
     checks: {
       hashChainedRunPlan: true as const, noPendingRisk: true as const,
@@ -167,4 +178,29 @@ test("observability cohort rejects runtime hash and journal-tail conflicts", () 
   assert.throws(() => buildKJPaperCohortObservabilityReport([
     { ...one, journalRecordCount: 9 },
   ]), /runtime summary does not match/u);
+});
+
+test("campaign observability requires the same complete immutable campaign as PnL", () => {
+  const campaign = campaignArtifact(buildKJPaperCampaign({
+    campaignId: "campaign-observe", plannedAt: "2026-07-16T23:00:00.000Z", collectorGitCommit: COMMIT,
+    firstFullMarketStart: "2026-07-17T00:00:00.000Z", runCount: 2, targetMarketCount: 1,
+    settlementGraceSeconds: 60, gapMarketCount: 0,
+  }));
+  const binding = (campaignRunIndex: number) => ({
+    campaignId: campaign.campaign.campaignId, campaignHash: campaign.campaignHash, campaignRunIndex,
+  });
+  const report = buildKJPaperCampaignCohortObservabilityReport({
+    campaignArtifact: campaign,
+    reports: [
+      input("campaign-observe-r001", "2026-07-17T00:00:00.000Z", "2026-07-17T00:05:00.000Z", 10, binding(1)),
+      input("campaign-observe-r002", "2026-07-17T00:05:00.000Z", "2026-07-17T00:10:00.000Z", 20, binding(2)),
+    ],
+  });
+  assert.equal(report.campaignCohort.cohort.runCount, "2");
+  assert.equal(report.observability.aggregate.streams.gamma.eventCount, "30");
+  assert.match(kjPaperCampaignCohortObservabilityReportHash(report), /^[0-9a-f]{64}$/u);
+  assert.throws(() => buildKJPaperCampaignCohortObservabilityReport({
+    campaignArtifact: campaign,
+    reports: [input("campaign-observe-r001", "2026-07-17T00:00:00.000Z", "2026-07-17T00:05:00.000Z", 10, binding(1))],
+  }), /every pre-registered/u);
 });

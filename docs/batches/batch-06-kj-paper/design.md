@@ -270,6 +270,11 @@ accepts a cohort only if it contains every registered run once and every report
 matches the campaign hash/index/window/count/commit. This is an evidence
 selection constraint, not a profitability claim or an execution change.
 
+`paper:campaign-cohort-observability-report` applies that exact same complete
+campaign verification before it reopens journals and runtime summaries. It
+therefore makes the PnL and execution-quality cohort refer to the identical
+immutable run set; neither report may substitute a convenient post-hoc subset.
+
 The current Chainlink RTDS relay is observability only.  A future boundary-based
 preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;
 the proposed evidence/state contract is in

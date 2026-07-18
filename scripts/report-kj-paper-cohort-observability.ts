@@ -9,6 +9,10 @@ import {
   kjPaperCohortObservabilityReportHash,
   type KJPaperCohortObservabilityInput,
 } from "../execution/src/product/kj-paper-cohort-observability-report.js";
+import {
+  buildKJPaperCampaignCohortObservabilityReport,
+  kjPaperCampaignCohortObservabilityReportHash,
+} from "../execution/src/product/kj-paper-campaign-cohort-observability-report.js";
 import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
 
 function inputs(): string[] {
@@ -56,6 +60,16 @@ async function regularDirectory(path: string, field: string): Promise<string> {
   const info = await lstat(resolved);
   if (!info.isDirectory() || info.isSymbolicLink() || await realpath(resolved) !== resolved) {
     throw new Error(`${field} must be a real non-symlink directory`);
+  }
+  return resolved;
+}
+
+async function regularFile(path: string, field: string): Promise<string> {
+  if (!isAbsolute(path)) throw new Error(`${field} must be absolute`);
+  const resolved = resolve(path);
+  const info = await lstat(resolved);
+  if (!info.isFile() || info.isSymbolicLink() || await realpath(resolved) !== resolved) {
+    throw new Error(`${field} must be a real non-symlink file`);
   }
   return resolved;
 }
@@ -139,18 +153,28 @@ async function observabilityInput(reportDirectory: string, repository: string): 
 
 async function main(): Promise<void> {
   if (process.argv.includes("--help")) {
-    process.stdout.write("Usage: npm run paper:cohort-observability-report -- --input /absolute/report-dir [--input /absolute/report-dir] --output /absolute/new-observability-directory\n");
+    const command = process.argv.includes("--require-campaign")
+      ? "paper:campaign-cohort-observability-report"
+      : "paper:cohort-observability-report";
+    const campaign = process.argv.includes("--require-campaign")
+      ? " --campaign-plan /absolute/campaign.json"
+      : " [--campaign-plan /absolute/campaign.json]";
+    process.stdout.write(`Usage: npm run ${command} --${campaign} --input /absolute/report-dir [--input /absolute/report-dir] --output /absolute/new-observability-directory\n`);
     return;
   }
   const sources = inputs();
   const outputInput = argument("--output");
+  const campaignPlanInput = argument("--campaign-plan");
+  const requireCampaign = process.argv.includes("--require-campaign");
   if (sources.length === 0) throw new Error("paper:cohort-observability-report requires at least one --input");
   if (outputInput === undefined || !isAbsolute(outputInput)) {
     throw new Error("paper:cohort-observability-report requires an absolute --output directory");
   }
   const repository = await realpath(resolve(dirname(fileURLToPath(import.meta.url)), "../.."));
+  if (requireCampaign && campaignPlanInput === undefined) throw new Error("campaign observability requires --campaign-plan");
+  const campaignPlan = campaignPlanInput === undefined ? undefined : await regularFile(campaignPlanInput, "campaign plan");
   const reportDirectories = await Promise.all(sources.map((source) => regularDirectory(source, "paper report input")));
-  if (reportDirectories.some((directory) => inside(repository, directory))) {
+  if ((campaignPlan !== undefined && inside(repository, campaignPlan)) || reportDirectories.some((directory) => inside(repository, directory))) {
     throw new Error("paper observability inputs must remain outside Git");
   }
   const outputDirectory = resolve(outputInput);
@@ -161,10 +185,24 @@ async function main(): Promise<void> {
   if (new Set([0x01021997, 0x5346544e, 0x65735546]).has(Number(filesystem.type))) {
     throw new Error("paper observability output requires a Linux-native filesystem");
   }
-  const report = buildKJPaperCohortObservabilityReport(await Promise.all(
+  const reportInputs = await Promise.all(
     reportDirectories.map((directory) => observabilityInput(directory, repository)),
-  ));
-  const reportHash = kjPaperCohortObservabilityReportHash(report);
+  );
+  const report = campaignPlan === undefined
+    ? buildKJPaperCohortObservabilityReport(reportInputs)
+    : buildKJPaperCampaignCohortObservabilityReport({
+      campaignArtifact: (await json(campaignPlan, "campaign plan")).value,
+      reports: reportInputs,
+    });
+  let reportHash: string;
+  let runCount: string;
+  if ("campaignCohort" in report) {
+    reportHash = kjPaperCampaignCohortObservabilityReportHash(report);
+    runCount = report.campaignCohort.cohort.runCount;
+  } else {
+    reportHash = kjPaperCohortObservabilityReportHash(report);
+    runCount = report.pnlCohort.runCount;
+  }
   await mkdir(outputDirectory, { recursive: false, mode: 0o700 });
   await syncDirectory(parent);
   await durableWrite(join(outputDirectory, "summary.json"), `${JSON.stringify({ report, reportHash }, null, 2)}\n`);
@@ -172,7 +210,7 @@ async function main(): Promise<void> {
     accepted: true,
     evidenceStatus: report.evidenceStatus,
     profitabilityClaimEligible: report.profitabilityClaimEligible,
-    runCount: report.pnlCohort.runCount,
+    runCount,
     reportHash,
     outputDirectory,
   })}\n`);

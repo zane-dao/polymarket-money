@@ -67,6 +67,17 @@ npm run mvp:console -- --data-root /root/polymarket-money-data
 
 Open `http://127.0.0.1:4173`.
 
+To allow the page to launch one of its three fixed **offline** historical
+replays (K/J, L V1, or L V2), opt in at process start:
+
+```bash
+npm run mvp:console -- --data-root /root/polymarket-money-data --enable-local-history-runs
+```
+
+The API accepts no arbitrary command, parameter, output path, or network mode;
+it permits only one local historical run at a time. Realtime paper is still not
+available through the page and must remain an explicit terminal command.
+
 ## Historical J/K paper loop
 
 `poly-lab build-kj-ewma` builds a content-addressed point-in-time volatility

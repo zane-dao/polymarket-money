@@ -23,7 +23,12 @@ export type MvpResultSummary = {
   resultHash: string | null;
   split: string | null;
   scenario: string | null;
-  runs: Record<string, { netPnl: string | null; filledCount: number | null }>;
+  runs: Record<string, {
+    netPnl: string | null;
+    filledCount: number | null;
+    maxDrawdown: string | null;
+    netWithoutBest3Days: string | null;
+  }>;
 };
 
 export type MvpPaperSummary = {
@@ -100,6 +105,8 @@ export function listMvpResultSummaries(dataRoot: string): MvpResultSummary[] {
             runs[strategy] = {
               netPnl: typeof record.net_pnl === "string" ? record.net_pnl : null,
               filledCount: typeof record.filled_count === "number" ? record.filled_count : null,
+              maxDrawdown: typeof record.max_drawdown === "string" ? record.max_drawdown : null,
+              netWithoutBest3Days: typeof record.net_without_best_3_days === "string" ? record.net_without_best_3_days : null,
             };
           }
         }
@@ -216,7 +223,7 @@ function page(snapshot: MvpConsoleSnapshot, localRunsEnabled: boolean): string {
   const client = `
 const text=(value)=>value===null||value===undefined?'—':String(value);
 const table=(id,headers,rows)=>{const root=document.getElementById(id);root.replaceChildren();if(rows.length===0){root.textContent='暂无已发布结果';return;}const t=document.createElement('table'),head=document.createElement('thead'),body=document.createElement('tbody'),hr=document.createElement('tr');headers.forEach(x=>{const th=document.createElement('th');th.textContent=x;hr.append(th)});head.append(hr);rows.forEach(row=>{const tr=document.createElement('tr');row.forEach(value=>{const td=document.createElement('td');td.textContent=text(value);tr.append(td)});body.append(tr)});t.append(head,body);root.append(t)};
-const renderHistory=()=>fetch('/api/results').then(r=>r.json()).then(items=>{const rows=[];items.forEach(item=>Object.entries(item.runs).forEach(([strategy,run])=>rows.push([item.runId,item.split,item.scenario,strategy,run.netPnl,run.filledCount])));table('results',['运行','切分','情景','策略','净 PnL','成交数'],rows)}).catch(error=>document.getElementById('results').textContent=String(error));
+const renderHistory=()=>fetch('/api/results').then(r=>r.json()).then(items=>{const rows=[];items.forEach(item=>Object.entries(item.runs).forEach(([strategy,run])=>rows.push([item.runId,item.split,item.scenario,strategy,run.netPnl,run.maxDrawdown,run.netWithoutBest3Days,run.filledCount])));table('results',['运行','切分','情景','策略','净 PnL','最大回撤','去最佳三天','成交数'],rows)}).catch(error=>document.getElementById('results').textContent=String(error));
 const renderPaper=()=>fetch('/api/paper-runs').then(r=>r.json()).then(items=>{const rows=items.map(item=>[item.runId,item.accepted,item.planBinding,item.targetMarketCount,item.completedMarketCount,item.strategies.J_FEE_AWARE?.netPnl,item.strategies.K_DUAL_VOL?.netPnl]);table('paper',['运行','验收','计划绑定','目标','完成','J 净 PnL','K 净 PnL'],rows)}).catch(error=>document.getElementById('paper').textContent=String(error));
 const renderJobs=()=>fetch('/api/historical-runs').then(r=>r.json()).then(x=>document.getElementById('jobs').textContent=JSON.stringify(x,null,2));
 const run=kind=>fetch('/api/historical-runs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind})}).then(()=>renderJobs()).then(()=>setTimeout(renderHistory,250));

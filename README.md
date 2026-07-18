@@ -134,6 +134,14 @@ children at the same next complete five-minute boundary. Each child owns its
 own wallet, journal, EWMA and Gamma settlement path; the runner refuses to
 start within 60 seconds of the boundary.
 
+After both legs independently pass the normal replay report, build the paired
+comparison with `paper:signal-compare-report`. It verifies the frozen compare
+plan, both paper-report artifact hashes, each leg's window/count/commit/run ID,
+and the source declared by its runtime summary before exporting separate J/K
+net-PnL and trade-count differences. It remains descriptive paper evidence;
+the two runtimes have independent public-stream receive clocks and it does not
+claim equivalent inbound event timing or strategy profitability.
+
 For a bounded end-to-end product run, use the single-command MVP:
 
 ```bash

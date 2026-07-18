@@ -63,11 +63,11 @@ project goal is not complete.
 
 ```text
 Python: 205 passed
-Node/TypeScript: 132 passed
+Node/TypeScript: 136 passed
 Ruff: passed
 TypeScript typecheck: passed
 git diff --check: passed
-CLI help: paper:mvp, paper:campaign-plan, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper:campaign-cohort-report, paper:cohort-observability-report, paper:campaign-cohort-observability-report, paper-l-adaptive passed
+CLI help: paper:mvp, paper:signal-compare-mvp, paper:signal-compare-report, paper:campaign-plan, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper:campaign-cohort-report, paper:cohort-observability-report, paper:campaign-cohort-observability-report, paper-l-adaptive passed
 ```
 
 Accepted public artifact (pre-plan-binding code):

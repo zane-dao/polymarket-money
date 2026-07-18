@@ -19,7 +19,7 @@ K/J public-paper 的验收结果也可在同一界面只读查看。该结论只
 | 结果导出 | 每次新的历史运行先写 `summary.json`、`events.ndjson`、`trades.csv`，再以 fsync 的 `publication.json` 提交三份文件的 size/SHA-256/result hash；public-paper 有 hash-bound result/journal/report 路径 | 通过 |
 | 本地产品入口 | `npm run mvp:console -- --data-root /root/polymarket-money-data` 仅绑定 `127.0.0.1` | 通过 |
 | 控制台运行权限 | 默认只读；只有 `--enable-local-history-runs` 才可发起三种固定的离线运行；API 不接受任意命令、路径、参数或网络模式，且一次只允许一个本地子进程 | 通过 |
-| 研究结果可读性 | 历史表显示 net PnL、max drawdown、去最佳三天、fills；仅显示按 Python canonical JSON 规则复算 `result_hash` 成功的摘要；paper 表显示 accepted、plan binding、目标完成数及 J/K PnL | 通过 |
+| 研究结果可读性 | 历史表显示 net PnL、max drawdown、去最佳三天、fills；研究看板显示 Brier、log loss、十档校准曲线、有效波动率/拖累分布、成交/拒单原因与日度 PnL；仅显示按 Python canonical JSON 规则复算 `result_hash` 成功的摘要 | 通过 |
 | 实时 paper 可见性 | 控制台只读 `paper-mvp/*/result.json` 或 `final-result.json`；网页没有 realtime 启动 API | 通过 |
 | 真实订单安全 | `LIVE_TRADING_ENABLED=false`，无网页实时启动入口、无 private channel、无 signing/order adapter | 通过 |
 
@@ -43,6 +43,10 @@ K/J public-paper 的验收结果也可在同一界面只读查看。该结论只
 6. 控制台遇到新格式的 `publication-intent.json` 时，必须复核最终 manifest hash、result hash、
    三份 sidecar 的名称/大小/SHA-256，任意不符均隐藏。没有 intent 的旧产物只显示
    `LEGACY_SUMMARY_VERIFIED`；只有全量复核的新产物才显示 `COMPLETE_PUBLICATION_VERIFIED`。
+7. `/api/research-diagnostics` 只聚合经核验历史输出中的 `summary.json` 与有大小上限的派生
+   `events.ndjson`，不读取 raw/journal。它成功展示 L/J/K 的 Brier、十档 calibration、有效
+   sigma P50/P95/max、L volatility drag、reason counts 和 daily PnL；相同 `result_hash` 的重复
+   发布仅显示一次。
 
 ## 验证命令
 

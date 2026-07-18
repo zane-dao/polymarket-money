@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { commandForHistoricalRun, createMvpConsoleSnapshot, listMvpPaperSummaries, listMvpResultSummaries } from "../../../scripts/mvp-console.js";
+import { commandForHistoricalRun, createMvpConsoleSnapshot, listMvpPaperSummaries, listMvpResearchDiagnostics, listMvpResultSummaries } from "../../../scripts/mvp-console.js";
 
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value === "boolean" || typeof value === "string" || typeof value === "number") return JSON.stringify(value);
@@ -66,6 +66,43 @@ test("MVP console distinguishes legacy summaries from complete manifest-verified
     assert.deepEqual(listMvpResultSummaries(root), []);
     await writeFile(join(published, "summary.json"), `${JSON.stringify({ ...core, result_hash: "0".repeat(64) })}\n`);
     assert.deepEqual(listMvpResultSummaries(root), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("MVP research diagnostics aggregate calibration, volatility, risk and execution fields without raw inputs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mvp-console-diagnostics-"));
+  const published = join(root, "mvp-runs", "diagnostic");
+  const core = {
+    split: "VALIDATION", scenario: "BASE_1S", runs: {
+      TEST: {
+        brier_score: "0.12", log_loss: "0.4", decision_count: 2, filled_count: 1, no_trade_or_unfilled_count: 1,
+        max_drawdown: "3", net_without_best_3_days: "-2", reason_counts: { FILLED: 1, EDGE: 1 }, daily_pnl: { "2026-01-01": "1" },
+      },
+    },
+  };
+  const result_hash = createHash("sha256").update(canonicalJson(core), "utf8").digest("hex");
+  const events = [
+    { strategy: "TEST", probability_up: "0.2", winner: "Down", effective_sigma: "0.1", volatility_drag: "0.01" },
+    { strategy: "TEST", probability_up: "0.8", winner: "Up", effective_sigma: "0.3", volatility_drag: "0.03" },
+  ].map((event) => JSON.stringify(event)).join("\n") + "\n";
+  try {
+    await mkdir(published, { recursive: true });
+    await writeFile(join(published, "summary.json"), `${JSON.stringify({ ...core, result_hash })}\n`);
+    await writeFile(join(published, "events.ndjson"), events);
+    const diagnostic = listMvpResearchDiagnostics(root)[0];
+    assert.equal(diagnostic?.strategy, "TEST");
+    assert.equal(diagnostic?.brierScore, "0.12");
+    assert.deepEqual(diagnostic?.reasonCounts, { FILLED: 1, EDGE: 1 });
+    assert.equal(diagnostic?.calibration.find((bucket) => bucket.from === .2)?.observedUpRate, 0);
+    assert.equal(diagnostic?.calibration.find((bucket) => bucket.from === .8)?.observedUpRate, 1);
+    assert.equal(diagnostic?.volatility.p50, .1);
+    assert.equal(diagnostic?.volatilityDrag.p95, .01);
+    await mkdir(join(root, "mvp-runs", "duplicate"));
+    await writeFile(join(root, "mvp-runs", "duplicate", "summary.json"), `${JSON.stringify({ ...core, result_hash })}\n`);
+    await writeFile(join(root, "mvp-runs", "duplicate", "events.ndjson"), events);
+    assert.equal(listMvpResearchDiagnostics(root).length, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

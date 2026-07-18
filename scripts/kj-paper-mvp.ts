@@ -192,6 +192,7 @@ async function main(): Promise<void> {
     "--summary", plan.summaryPath,
     "--kj-paper-journal", plan.journalPath,
     "--settlement-grace-seconds", String(plan.settlementGraceSeconds),
+    "--kj-market-start-at", plan.firstFullMarketStart,
     "--kj-market-start-before", plan.captureEnd,
     "--git-commit", commit,
     "--kj-signal-source", selectedSignalSource,

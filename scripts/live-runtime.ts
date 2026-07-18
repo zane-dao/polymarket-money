@@ -100,6 +100,7 @@ interface RuntimeOptions {
   readonly summaryPath: string | null;
   readonly kjPaperJournalPath: string | null;
   readonly kjSettlementGraceMilliseconds: number;
+  readonly kjMarketStartAtMilliseconds: number | null;
   readonly kjMarketStartBeforeMilliseconds: number | null;
   readonly kjSignalSource: KJSignalSource;
   readonly json: boolean;
@@ -314,6 +315,14 @@ async function options(): Promise<RuntimeOptions> {
   if (settlementGraceSeconds > 1_800) {
     throw new Error("settlement-grace-seconds must not exceed 1800");
   }
+  const marketStartAtValue = argument("--kj-market-start-at");
+  if (marketStartAtValue !== undefined && kjPaperJournalPath === null) {
+    throw new Error("--kj-market-start-at requires --kj-paper-journal");
+  }
+  const marketStartAt = marketStartAtValue === undefined ? null : Date.parse(marketStartAtValue);
+  if (marketStartAtValue !== undefined && (!marketStartAtValue.endsWith("Z") || !Number.isFinite(marketStartAt))) {
+    throw new Error("--kj-market-start-at must be explicit UTC");
+  }
   const marketStartBeforeValue = argument("--kj-market-start-before");
   if (marketStartBeforeValue !== undefined && kjPaperJournalPath === null) {
     throw new Error("--kj-market-start-before requires --kj-paper-journal");
@@ -334,6 +343,7 @@ async function options(): Promise<RuntimeOptions> {
     summaryPath: argument("--summary") === undefined ? null : resolve(argument("--summary")!),
     kjPaperJournalPath,
     kjSettlementGraceMilliseconds: settlementGraceSeconds * 1_000,
+    kjMarketStartAtMilliseconds: marketStartAt,
     kjMarketStartBeforeMilliseconds: marketStartBefore,
     kjSignalSource,
     json: process.argv.includes("--json"),
@@ -1165,6 +1175,7 @@ function directHandler(
 
 async function marketLoop(
   end: number,
+  marketStartAtMilliseconds: number | null,
   marketStartBeforeMilliseconds: number | null,
   state: RuntimeState,
   recorder: RuntimeRecorder,
@@ -1177,6 +1188,11 @@ async function marketLoop(
     const current = await discover(epoch, recorder, stats.gamma);
     const next = await discover(epoch + 300, recorder, stats.gamma);
     const chosen = current?.collectible === true ? current : next?.collectible === true ? next : null;
+    if (chosen !== null && marketStartAtMilliseconds !== null
+      && Date.parse(chosen.intervalStart) < marketStartAtMilliseconds) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, Math.min(5_000, Math.max(0, Date.parse(chosen.intervalEnd) - Date.now()))));
+      continue;
+    }
     if (chosen !== null && marketStartBeforeMilliseconds !== null
       && Date.parse(chosen.intervalStart) >= marketStartBeforeMilliseconds) {
       break;
@@ -1683,6 +1699,7 @@ async function main(): Promise<void> {
     await Promise.all([
       marketLoop(
         end,
+        config.kjMarketStartAtMilliseconds,
         config.kjMarketStartBeforeMilliseconds,
         state,
         recorder,
@@ -1811,6 +1828,9 @@ async function main(): Promise<void> {
     kjPaperEnabled: state.kjPaperJournal !== null,
     kjSignalSource: state.kjPaperJournal === null ? null : config.kjSignalSource,
     kjSettlementGraceMilliseconds: config.kjSettlementGraceMilliseconds,
+    kjMarketStartAt: config.kjMarketStartAtMilliseconds === null
+      ? null
+      : new Date(config.kjMarketStartAtMilliseconds).toISOString(),
     kjMarketStartBefore: config.kjMarketStartBeforeMilliseconds === null
       ? null
       : new Date(config.kjMarketStartBeforeMilliseconds).toISOString(),

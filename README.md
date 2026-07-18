@@ -52,6 +52,19 @@ frames are retained as quarantine and can never enter the effective BTC stream.
 Batch evidence and the canonical handoff live under `docs/batches/` and
 `reports/batches/`; raw smoke data always remains outside Git.
 
+## Local MVP console
+
+The credential-free local console brings the historical K/J and L replay
+commands plus the bounded realtime-paper command into one localhost page. It
+does not start collection, paper trading, or orders; realtime paper remains an
+explicit operator action.
+
+```bash
+npm run mvp:console -- --data-root /root/polymarket-money-data
+```
+
+Open `http://127.0.0.1:4173`.
+
 ## Historical J/K paper loop
 
 `poly-lab build-kj-ewma` builds a content-addressed point-in-time volatility

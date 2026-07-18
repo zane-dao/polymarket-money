@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build && node --test dist/tests/unit/*.test.js",
+    "test": "npm run build && node --test dist/tests/unit/*.test.js dist/execution/tests/unit/*.test.js",
     "paper:mvp": "npm run build && node --use-env-proxy dist/scripts/kj-paper-mvp.js",
     "paper:signal-compare-mvp": "npm run build && node --use-env-proxy dist/scripts/kj-signal-compare-mvp.js",
     "paper:signal-compare-report": "npm run build && node dist/scripts/report-kj-signal-compare.js",
@@ -22,6 +22,7 @@
     "paper:campaign-cohort-observability-report": "npm run build && node dist/scripts/report-kj-paper-cohort-observability.js --require-campaign",
     "paper:settle": "npm run build && node --use-env-proxy dist/scripts/settle-kj-paper-journal.js",
     "paper:inspect": "npm run build && node dist/scripts/inspect-kj-paper-journal.js",
+    "mvp:console": "npm run build && node dist/scripts/mvp-console.js",
     "smoke:readonly": "npm run build && node --use-env-proxy dist/scripts/smoke-capture.js",
     "runtime:live": "npm run build && node --use-env-proxy dist/scripts/live-runtime.js"
   },

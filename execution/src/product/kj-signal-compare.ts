@@ -21,6 +21,11 @@ export interface KJSignalComparePlanInput {
   readonly firstFullMarketStart: string;
   readonly targetMarketCount: number;
   readonly settlementGraceSeconds: number;
+  /**
+   * Optional source run identities supplied by a pre-registered multi-run
+   * campaign.  The default keeps the standalone one-run naming contract.
+   */
+  readonly sourceRuns?: readonly KJSignalCompareSourceRun[];
 }
 
 export interface KJSignalComparePlan {
@@ -84,6 +89,29 @@ function sourceRunId(compareRunId: string, suffix: "binance" | "chainlink"): str
   return value;
 }
 
+function sourceRuns(
+  compareRunId: string,
+  value: readonly KJSignalCompareSourceRun[] | undefined,
+): readonly KJSignalCompareSourceRun[] {
+  const defaults = [
+    Object.freeze({ source: "BINANCE_SPOT" as const, runId: sourceRunId(compareRunId, "binance") }),
+    Object.freeze({ source: "POLYMARKET_RTDS_CHAINLINK" as const, runId: sourceRunId(compareRunId, "chainlink") }),
+  ];
+  if (value === undefined) return Object.freeze(defaults);
+  if (value.length !== 2) throw new Error("signal compare requires exactly two source runs");
+  const bySource = new Map(value.map((run) => [run.source, run.runId]));
+  const binance = bySource.get("BINANCE_SPOT");
+  const chainlink = bySource.get("POLYMARKET_RTDS_CHAINLINK");
+  if (binance === undefined || chainlink === undefined || binance === chainlink
+    || !RUN_ID.test(binance) || !RUN_ID.test(chainlink)) {
+    throw new Error("signal compare source runs are invalid");
+  }
+  return Object.freeze([
+    Object.freeze({ source: "BINANCE_SPOT" as const, runId: binance }),
+    Object.freeze({ source: "POLYMARKET_RTDS_CHAINLINK" as const, runId: chainlink }),
+  ]);
+}
+
 export function kjSignalComparePlanHash(plan: KJSignalComparePlan): string {
   return createHash("sha256").update(stableJson(plan), "utf8").digest("hex");
 }
@@ -109,10 +137,7 @@ export function buildKJSignalComparePlan(input: KJSignalComparePlanInput): KJSig
     captureEnd: new Date(first + targetMarketCount * MARKET_INTERVAL_MILLISECONDS).toISOString(),
     targetMarketCount,
     settlementGraceSeconds,
-    sourceRuns: Object.freeze([
-      Object.freeze({ source: "BINANCE_SPOT" as const, runId: sourceRunId(compareRunId, "binance") }),
-      Object.freeze({ source: "POLYMARKET_RTDS_CHAINLINK" as const, runId: sourceRunId(compareRunId, "chainlink") }),
-    ]),
+    sourceRuns: sourceRuns(compareRunId, input.sourceRuns),
   });
 }
 
@@ -135,6 +160,14 @@ export function parseKJSignalCompareArtifact(value: unknown): KJSignalCompareArt
     firstFullMarketStart: utc(plan.firstFullMarketStart, "firstFullMarketStart"),
     targetMarketCount: positiveInteger(plan.targetMarketCount, "targetMarketCount", 12),
     settlementGraceSeconds: positiveInteger(plan.settlementGraceSeconds, "settlementGraceSeconds", 1_800),
+    sourceRuns: Array.isArray(plan.sourceRuns) ? plan.sourceRuns.map((run) => {
+      const parsed = object(run, "signal compare source run");
+      const source = parsed.source;
+      if (source !== "BINANCE_SPOT" && source !== "POLYMARKET_RTDS_CHAINLINK") {
+        throw new Error("signal compare source is unsupported");
+      }
+      return { source, runId: text(parsed.runId, "signal compare source runId") };
+    }) : (() => { throw new Error("signal compare sourceRuns must be an array"); })(),
   });
   if (stableJson(plan) !== stableJson(rebuilt)) throw new Error("signal compare plan fields are inconsistent");
   const planHash = text(artifact.planHash, "planHash");

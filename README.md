@@ -149,6 +149,14 @@ net-PnL and trade-count differences. It remains descriptive paper evidence;
 the two runtimes have independent public-stream receive clocks and it does not
 claim equivalent inbound event timing or strategy profitability.
 
+For an evidence campaign, first create one `paper:signal-compare-campaign-plan`
+artifact. It binds the complete matched Binance and Chainlink source campaigns
+and every per-window pair plan under one SHA-256 hash. Start an imminent pair
+only through `paper:signal-compare-mvp -- --compare-campaign-plan ...
+--campaign-run N`; the runner rejects a source-run, commit, window or run-index
+mismatch. This keeps a later source comparison from being assembled from a
+post-hoc subset of standalone runs.
+
 Single-run reports reconcile per-market aggregate PnL to the final wallet with
 an extremely small decimal rounding tolerance. Any non-zero residual inside
 that tolerance is exported as `pnlReconciliationResidual`; a larger residual,

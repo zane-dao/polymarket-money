@@ -290,6 +290,14 @@ concurrently, both with the same half-open target window and commit. This
 reuses the hardened wallet, journal, official settlement and recovery path per
 source rather than introducing a mixed-source engine.
 
+`kj-signal-compare-campaign-artifact-v1` extends that contract across a whole
+pre-registered schedule. One artifact contains both ordinary source campaigns
+and one hash-bound compare plan per scheduled window. A selected runner index
+must be imminent and maps to the matching source campaign index in both legs;
+it cannot substitute a standalone run or a different source's result. This is
+an evidence-selection control only: each child still uses the existing public
+paper engine, durable journal, official Gamma settlement and independent wallet.
+
 Before a plan-bound K/J run, the launcher reserves 180 seconds and the runtime
 records only source-specific `WARMUP_SIGNAL` inputs in the same fsync/hash-chain
 journal. Replay applies them solely to volatility state. The engine refuses a

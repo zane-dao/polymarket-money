@@ -1,5 +1,7 @@
 import { isAbsolute, join, relative, resolve } from "node:path";
 
+import type { KJPaperCampaignBinding, KJPaperCampaignRun } from "./kj-paper-campaign.js";
+
 export const KJ_PAPER_MVP_VERSION = "kj-paper-mvp-v1" as const;
 export const KJ_MARKET_INTERVAL_MILLISECONDS = 300_000;
 
@@ -10,6 +12,9 @@ export interface KJPaperMvpPlanInput {
   readonly outputRoot: string;
   readonly repositoryRoot: string;
   readonly runId: string;
+  /** A selected immutable campaign run; both fields must be supplied together. */
+  readonly campaign?: KJPaperCampaignBinding;
+  readonly campaignRun?: KJPaperCampaignRun;
 }
 
 export interface KJPaperMvpPlan {
@@ -29,6 +34,7 @@ export interface KJPaperMvpPlan {
   readonly runtimeStdoutPath: string;
   readonly runtimeStderrPath: string;
   readonly resultPath: string;
+  readonly campaign?: KJPaperCampaignBinding;
 }
 
 function inside(root: string, candidate: string): boolean {
@@ -67,11 +73,33 @@ export function planKJPaperMvp(input: KJPaperMvpPlanInput): KJPaperMvpPlan {
 
   // Always choose the next boundary. This gives the engine time to observe the
   // opening anchor instead of inventing one for a market already in progress.
-  const firstFullMarketStart = (
+  const nextBoundary = (
     Math.floor(input.nowMilliseconds / KJ_MARKET_INTERVAL_MILLISECONDS) + 1
   ) * KJ_MARKET_INTERVAL_MILLISECONDS;
-  const captureEnd = firstFullMarketStart
-    + input.marketCount * KJ_MARKET_INTERVAL_MILLISECONDS;
+  const campaign = input.campaign;
+  const scheduled = input.campaignRun;
+  if ((campaign === undefined) !== (scheduled === undefined)) {
+    throw new Error("campaign binding and selected campaign run must be supplied together");
+  }
+  if (scheduled !== undefined) {
+    if (campaign!.campaignRunIndex !== scheduled.runIndex || input.runId !== scheduled.runId) {
+      throw new Error("campaign binding conflicts with selected campaign run");
+    }
+    if (input.marketCount !== scheduled.targetMarketCount
+      || input.settlementGraceSeconds !== scheduled.settlementGraceSeconds) {
+      throw new Error("MVP parameters conflict with selected campaign run");
+    }
+    if (Date.parse(scheduled.firstFullMarketStart) !== nextBoundary) {
+      throw new Error("selected campaign run must begin at the next five-minute boundary");
+    }
+  }
+  const firstFullMarketStart = scheduled === undefined ? nextBoundary : Date.parse(scheduled.firstFullMarketStart);
+  const captureEnd = scheduled === undefined
+    ? firstFullMarketStart + input.marketCount * KJ_MARKET_INTERVAL_MILLISECONDS
+    : Date.parse(scheduled.captureEnd);
+  if (captureEnd !== firstFullMarketStart + input.marketCount * KJ_MARKET_INTERVAL_MILLISECONDS) {
+    throw new Error("selected campaign run target window is inconsistent");
+  }
   const durationSeconds = Math.ceil((captureEnd - input.nowMilliseconds) / 1_000);
   const runDirectory = join(outputRoot, input.runId);
 
@@ -92,5 +120,6 @@ export function planKJPaperMvp(input: KJPaperMvpPlanInput): KJPaperMvpPlan {
     runtimeStdoutPath: join(runDirectory, "runtime.ndjson"),
     runtimeStderrPath: join(runDirectory, "runtime.stderr.log"),
     resultPath: join(runDirectory, "result.json"),
+    ...(campaign === undefined ? {} : { campaign }),
   });
 }

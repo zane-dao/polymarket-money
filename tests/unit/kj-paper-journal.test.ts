@@ -162,6 +162,25 @@ test("K/J journal hash-binds the MVP run plan before market contexts", async () 
   }
 });
 
+test("K/J journal preserves the campaign-bound v2 run plan across recovery", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-campaign-"));
+  const path = join(directory, "paper-inputs.ndjson");
+  const campaignPlan = Object.freeze({
+    ...RUN_PLAN, schemaVersion: "kj-paper-run-plan-v2" as const,
+    campaignId: "campaign-test", campaignHash: "b".repeat(64), campaignRunIndex: 1,
+  });
+  try {
+    const journal = await KJPaperJournal.open(path);
+    await journal.appendRunPlan(campaignPlan);
+    await journal.close();
+    const recovered = await KJPaperJournal.open(path);
+    assert.deepEqual(recovered.runPlanEvidence, campaignPlan);
+    await recovered.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("K/J journal durably replays contexts, fills, wallets, and official settlement", async () => {
   const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-replay-"));
   const path = join(directory, "paper-inputs.ndjson");

@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { open, mkdir, readFile, realpath, writeFile, type FileHandle } from "node:fs/promises";
+import { lstat, open, mkdir, readFile, realpath, writeFile, type FileHandle } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,6 +8,11 @@ import {
   planKJPaperMvp,
   type KJPaperMvpPlan,
 } from "../execution/src/product/kj-paper-mvp.js";
+import {
+  campaignBinding,
+  campaignRun,
+  parseKJPaperCampaignArtifact,
+} from "../execution/src/product/kj-paper-campaign.js";
 import { buildKJPaperMvpResult } from "../execution/src/product/kj-paper-mvp-result.js";
 import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
 
@@ -72,11 +77,36 @@ async function inspectResult(plan: KJPaperMvpPlan, exitCode: number | null, comm
   }
 }
 
+async function campaignSelection(commit: string): Promise<{
+  readonly binding: ReturnType<typeof campaignBinding>;
+  readonly run: ReturnType<typeof campaignRun>;
+} | undefined> {
+  const path = argument("--campaign-plan");
+  const index = argument("--campaign-run");
+  if ((path === undefined) !== (index === undefined)) {
+    throw new Error("--campaign-plan and --campaign-run must be supplied together");
+  }
+  if (path === undefined) return undefined;
+  if (!resolve(path).startsWith("/")) throw new Error("--campaign-plan must be an absolute regular file");
+  const info = await lstat(resolve(path));
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error("--campaign-plan must be a regular non-symlink file");
+  const artifact = parseKJPaperCampaignArtifact(JSON.parse(await readFile(resolve(path), "utf8")) as unknown);
+  if (artifact.campaign.collectorGitCommit !== commit) {
+    throw new Error("campaign collectorGitCommit differs from current committed code");
+  }
+  const campaignRunIndex = positiveInteger(index!, "campaign-run");
+  return Object.freeze({
+    binding: campaignBinding(artifact, campaignRunIndex),
+    run: campaignRun(artifact, campaignRunIndex),
+  });
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes("--help")) {
     process.stdout.write([
       "Usage: npm run paper:mvp -- [--markets 1] [--settlement-grace-seconds 600]",
       "       [--output-root /root/polymarket-money-data/paper-mvp]",
+      "       [--campaign-plan /absolute/campaign.json --campaign-run 1]",
       "",
       "Runs 1-12 complete BTC five-minute markets with public data and paper-only K/J wallets.",
       "",
@@ -93,16 +123,21 @@ async function main(): Promise<void> {
   if (!/^[0-9a-f]{40,64}$/u.test(commit)) throw new Error("committed collector object ID is invalid");
 
   const now = new Date();
+  const selectedCampaign = await campaignSelection(commit);
   const plan = planKJPaperMvp({
     nowMilliseconds: now.getTime(),
-    marketCount: positiveInteger(argument("--markets") ?? "1", "markets"),
+    marketCount: positiveInteger(argument("--markets") ?? String(selectedCampaign?.run.targetMarketCount ?? 1), "markets"),
     settlementGraceSeconds: positiveInteger(
-      argument("--settlement-grace-seconds") ?? "600",
+      argument("--settlement-grace-seconds") ?? String(selectedCampaign?.run.settlementGraceSeconds ?? 600),
       "settlement-grace-seconds",
     ),
     outputRoot: resolve(argument("--output-root") ?? "/root/polymarket-money-data/paper-mvp"),
     repositoryRoot: actualRepository,
-    runId: runId(now),
+    runId: selectedCampaign?.run.runId ?? runId(now),
+    ...(selectedCampaign === undefined ? {} : {
+      campaign: selectedCampaign.binding,
+      campaignRun: selectedCampaign.run,
+    }),
   });
 
   await mkdir(dirname(plan.runDirectory), { recursive: true, mode: 0o700 });
@@ -118,13 +153,21 @@ async function main(): Promise<void> {
   );
   const plannedJournal = await KJPaperJournal.open(plan.journalPath);
   try {
-    await plannedJournal.appendRunPlan({
+    await plannedJournal.appendRunPlan(plan.campaign === undefined ? {
       schemaVersion: "kj-paper-run-plan-v1",
       runId: plan.runId,
       targetMarketCount: plan.targetMarketCount,
       firstFullMarketStart: plan.firstFullMarketStart,
       captureEnd: plan.captureEnd,
       collectorGitCommit: commit,
+    } : {
+      schemaVersion: "kj-paper-run-plan-v2",
+      runId: plan.runId,
+      targetMarketCount: plan.targetMarketCount,
+      firstFullMarketStart: plan.firstFullMarketStart,
+      captureEnd: plan.captureEnd,
+      collectorGitCommit: commit,
+      ...plan.campaign,
     });
   } finally {
     await plannedJournal.close();

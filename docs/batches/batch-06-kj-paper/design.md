@@ -261,6 +261,15 @@ keeps the same permanent `DESCRIPTIVE_PAPER_ONLY`/`profitabilityClaimEligible=fa
 boundary. It measures paper execution quality; it does not turn a theoretical
 fill into exchange evidence.
 
+To prevent choosing a convenient subset of completed runs after seeing their
+PnL, `kj-paper-campaign-v1` pre-registers a deterministic sequence of complete
+five-minute windows, market count, settlement grace, run IDs and collector
+commit under a canonical SHA-256 hash. A campaign-selected MVP run writes a
+`kj-paper-run-plan-v2` binding before contexts. `paper:campaign-cohort-report`
+accepts a cohort only if it contains every registered run once and every report
+matches the campaign hash/index/window/count/commit. This is an evidence
+selection constraint, not a profitability claim or an execution change.
+
 The current Chainlink RTDS relay is observability only.  A future boundary-based
 preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;
 the proposed evidence/state contract is in

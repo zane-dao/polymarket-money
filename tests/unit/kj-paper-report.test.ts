@@ -144,6 +144,18 @@ test("paper report verifies target settlements and exact wallet PnL identities",
   }), /^[0-9a-f]{64}$/u);
 });
 
+test("paper report exposes and verifies a campaign-bound v2 run plan", () => {
+  const input = evidence();
+  const campaign = { campaignId: "campaign-test", campaignHash: "c".repeat(64), campaignRunIndex: 1 };
+  const plan = { ...(input.plan as object), campaign };
+  const report = buildKJPaperReport({
+    ...input,
+    plan,
+    journalRunPlan: { ...(input.journalRunPlan as object), schemaVersion: "kj-paper-run-plan-v2", ...campaign },
+  });
+  assert.deepEqual(report.run.campaign, campaign);
+});
+
 test("paper report discloses legacy plans and rejects plan or accounting tampering", () => {
   const legacy = evidence();
   const legacyReport = buildKJPaperReport({ ...legacy, journalRunPlan: null });

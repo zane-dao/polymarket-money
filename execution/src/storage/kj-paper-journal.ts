@@ -39,7 +39,7 @@ const KJ_PAPER_CHECKPOINT_VERSION = "kj-paper-input-checkpoint-v2" as const;
 
 type JournalPayloadType = "HEADER" | "RUN_PLAN" | "CONTEXT" | "GAMMA_RESOLUTION";
 
-export interface KJPaperRunPlanEvidence {
+export interface KJPaperRunPlanEvidenceV1 {
   readonly schemaVersion: "kj-paper-run-plan-v1";
   readonly runId: string;
   readonly targetMarketCount: number;
@@ -47,6 +47,15 @@ export interface KJPaperRunPlanEvidence {
   readonly captureEnd: string;
   readonly collectorGitCommit: string;
 }
+
+export interface KJPaperRunPlanEvidenceV2 extends Omit<KJPaperRunPlanEvidenceV1, "schemaVersion"> {
+  readonly schemaVersion: "kj-paper-run-plan-v2";
+  readonly campaignId: string;
+  readonly campaignHash: string;
+  readonly campaignRunIndex: number;
+}
+
+export type KJPaperRunPlanEvidence = KJPaperRunPlanEvidenceV1 | KJPaperRunPlanEvidenceV2;
 
 interface JournalRecord {
   readonly schemaVersion: typeof KJ_PAPER_JOURNAL_VERSION;
@@ -379,6 +388,7 @@ function headerPayload(): Readonly<Record<string, unknown>> {
 
 function validateRunPlan(value: unknown): KJPaperRunPlanEvidence {
   const candidate = object(value, "K/J run plan");
+  const isCampaignBound = candidate.schemaVersion === "kj-paper-run-plan-v2";
   exactKeys(candidate, [
     "schemaVersion",
     "runId",
@@ -386,8 +396,9 @@ function validateRunPlan(value: unknown): KJPaperRunPlanEvidence {
     "firstFullMarketStart",
     "captureEnd",
     "collectorGitCommit",
+    ...(isCampaignBound ? ["campaignId", "campaignHash", "campaignRunIndex"] : []),
   ], "K/J run plan");
-  if (candidate.schemaVersion !== "kj-paper-run-plan-v1") {
+  if (candidate.schemaVersion !== "kj-paper-run-plan-v1" && !isCampaignBound) {
     throw new Error("K/J run plan schema is unsupported");
   }
   if (!Number.isSafeInteger(candidate.targetMarketCount)
@@ -404,13 +415,27 @@ function validateRunPlan(value: unknown): KJPaperRunPlanEvidence {
   if (!/^[0-9a-f]{40,64}$/u.test(collectorGitCommit)) {
     throw new Error("K/J run plan collectorGitCommit is invalid");
   }
-  return Object.freeze({
-    schemaVersion: "kj-paper-run-plan-v1",
+  const base = {
     runId: nonEmpty(candidate.runId, "runId"),
     targetMarketCount: candidate.targetMarketCount as number,
     firstFullMarketStart,
     captureEnd,
     collectorGitCommit,
+  };
+  if (!isCampaignBound) return Object.freeze({ schemaVersion: "kj-paper-run-plan-v1" as const, ...base });
+  const campaignId = nonEmpty(candidate.campaignId, "campaignId");
+  if (!/^[a-z0-9][a-z0-9-]{2,63}$/u.test(campaignId)) throw new Error("K/J run plan campaignId is invalid");
+  const campaignHash = nonEmpty(candidate.campaignHash, "campaignHash");
+  if (!HASH.test(campaignHash)) throw new Error("K/J run plan campaignHash is invalid");
+  if (!Number.isSafeInteger(candidate.campaignRunIndex) || (candidate.campaignRunIndex as number) <= 0) {
+    throw new Error("K/J run plan campaignRunIndex must be positive");
+  }
+  return Object.freeze({
+    schemaVersion: "kj-paper-run-plan-v2" as const,
+    ...base,
+    campaignId,
+    campaignHash,
+    campaignRunIndex: candidate.campaignRunIndex as number,
   });
 }
 

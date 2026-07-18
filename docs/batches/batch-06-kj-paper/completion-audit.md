@@ -63,11 +63,11 @@ project goal is not complete.
 
 ```text
 Python: 205 passed
-Node/TypeScript: 125 passed
+Node/TypeScript: 131 passed
 Ruff: passed
 TypeScript typecheck: passed
 git diff --check: passed
-CLI help: paper:mvp, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper:cohort-observability-report, paper-l-adaptive passed
+CLI help: paper:mvp, paper:campaign-plan, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper:campaign-cohort-report, paper:cohort-observability-report, paper-l-adaptive passed
 ```
 
 Accepted public artifact (pre-plan-binding code):
@@ -119,6 +119,11 @@ Current descriptive operational cohort:
 - Reopens each journal and cross-checks runtime-summary hashes, tail, record and
   event counts before aggregating public-stream counters, official-settlement
   delay and J/K execution outcomes. It is permanently descriptive paper evidence.
+
+Future formal campaigns must use `paper:campaign-plan`, campaign-bound `paper:mvp`
+runs and `paper:campaign-cohort-report`; no such public campaign has yet been
+collected. The two existing plan-bound runs predate this v2 binding and remain
+descriptive PnL/observability cohorts only.
 
 ## Next evidence gate
 

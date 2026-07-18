@@ -44,3 +44,25 @@ test("MVP rejects unsafe roots and unbounded sessions", () => {
     settlementGraceSeconds: 1_801,
   }), /1 through 1800/u);
 });
+
+test("MVP can bind only the imminent, exact pre-registered campaign run", () => {
+  const input = {
+    nowMilliseconds: Date.parse("2026-07-17T12:03:12.345Z"),
+    marketCount: 2,
+    settlementGraceSeconds: 90,
+    outputRoot: "/tmp/mvp",
+    repositoryRoot: "/root/projects/polymarket-money",
+    runId: "campaign-test-r001",
+    campaign: { campaignId: "campaign-test", campaignHash: "a".repeat(64), campaignRunIndex: 1 },
+    campaignRun: {
+      runIndex: 1, runId: "campaign-test-r001", targetMarketCount: 2, settlementGraceSeconds: 90,
+      firstFullMarketStart: "2026-07-17T12:05:00.000Z", captureEnd: "2026-07-17T12:15:00.000Z",
+    },
+  } as const;
+  const plan = planKJPaperMvp(input);
+  assert.equal(plan.campaign?.campaignId, "campaign-test");
+  assert.throws(() => planKJPaperMvp({
+    ...input,
+    campaignRun: { ...input.campaignRun, firstFullMarketStart: "2026-07-17T12:10:00.000Z", captureEnd: "2026-07-17T12:20:00.000Z" },
+  }), /next five-minute boundary/u);
+});

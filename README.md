@@ -141,6 +141,25 @@ when capture has ended and every registered market has official settlement.
 Before any market context, the MVP also hash-binds its run ID, target count,
 half-open time window, and committed code ID into the journal.
 
+For a new multi-run evidence campaign, create the immutable offline schedule
+first, then launch its selected imminent run. The campaign hash, run index,
+window, count, settlement grace and collector commit are all written into the
+v2 journal run-plan before any context:
+
+```bash
+npm run paper:campaign-plan -- \
+  --campaign-id kj-20260718-a \
+  --first-full-market-start 2026-07-18T12:00:00.000Z \
+  --runs 3 --markets 3 --gap-markets 0 \
+  --output /absolute/path/to/new-campaign.json
+npm run paper:mvp -- --campaign-plan /absolute/path/to/new-campaign.json --campaign-run 1
+```
+
+The selected run must be the next five-minute boundary and must use the exact
+committed code recorded by the campaign. `paper:mvp` without these arguments
+remains available for bounded product checks, but its output cannot become a
+complete pre-registered campaign cohort.
+
 If an official result arrives after the finite run or the process was
 interrupted, resume only the frozen target window without collecting another
 market:
@@ -204,6 +223,20 @@ The cohort command rechecks every input artifact hash, accepts only
 `HASH_CHAINED` descriptive reports, rejects duplicate run IDs and overlapping
 target windows, and writes a no-overwrite hashed summary outside Git.  Its
 `profitabilityClaimEligible` field remains `false` regardless of aggregate PnL.
+
+For formal pre-registered campaign evidence, use the stricter cohort command:
+
+```bash
+npm run paper:campaign-cohort-report -- \
+  --campaign-plan /absolute/path/to/campaign.json \
+  --input /absolute/path/to/report-one \
+  --input /absolute/path/to/report-two \
+  --output /absolute/path/to/new-campaign-cohort-directory
+```
+
+It requires every scheduled campaign run exactly once and rejects a report
+whose campaign hash, run index, window, market count, or collector commit does
+not match the immutable schedule. It is still descriptive paper evidence only.
 
 To keep operational quality separate from PnL, the offline observability
 cohort command reopens each verified journal and cross-checks its tail, record

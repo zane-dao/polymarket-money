@@ -21,6 +21,11 @@ interface ReportPlan {
   readonly captureEnd: string;
   readonly journalPath: string;
   readonly collectorGitCommit: string;
+  readonly campaign?: Readonly<{
+    campaignId: string;
+    campaignHash: string;
+    campaignRunIndex: number;
+  }>;
 }
 
 export interface KJPaperMarketReportRow {
@@ -71,6 +76,11 @@ export interface KJPaperReport {
     journalRecordCount: string;
     journalLastRecordHash: string;
     resultKind: "INITIAL" | "RECOVERED_FINAL" | "LEGACY";
+    campaign?: Readonly<{
+      campaignId: string;
+      campaignHash: string;
+      campaignRunIndex: number;
+    }>;
   }>;
   readonly checks: Readonly<Record<string, true>>;
   readonly strategies: Readonly<Record<KJPaperStrategy, Readonly<{
@@ -179,6 +189,17 @@ function plan(value: unknown): ReportPlan {
   }
   const collectorGitCommit = text(candidate.collectorGitCommit, "collectorGitCommit");
   if (!/^[0-9a-f]{40,64}$/u.test(collectorGitCommit)) throw new Error("collectorGitCommit is invalid");
+  let campaign: ReportPlan["campaign"];
+  if (candidate.campaign !== undefined) {
+    const binding = object(candidate.campaign, "campaign binding");
+    const campaignId = text(binding.campaignId, "campaignId");
+    if (!/^[a-z0-9][a-z0-9-]{2,63}$/u.test(campaignId)) throw new Error("campaignId is invalid");
+    const campaignHash = text(binding.campaignHash, "campaignHash");
+    if (!HASH.test(campaignHash)) throw new Error("campaignHash is invalid");
+    const campaignRunIndex = safeInteger(binding.campaignRunIndex, "campaignRunIndex");
+    if (campaignRunIndex === 0) throw new Error("campaignRunIndex must be positive");
+    campaign = Object.freeze({ campaignId, campaignHash, campaignRunIndex });
+  }
   return Object.freeze({
     runId: text(candidate.runId, "runId"),
     targetMarketCount,
@@ -186,6 +207,7 @@ function plan(value: unknown): ReportPlan {
     captureEnd,
     journalPath: text(candidate.journalPath, "journalPath"),
     collectorGitCommit,
+    ...(campaign === undefined ? {} : { campaign }),
   });
 }
 
@@ -350,12 +372,13 @@ export function buildKJPaperReport(input: BuildKJPaperReportInput): KJPaperRepor
   if (input.journalRunPlan !== null) {
     const chained = object(input.journalRunPlan, "hash-chained run plan");
     const expected = {
-      schemaVersion: "kj-paper-run-plan-v1",
+      schemaVersion: runPlan.campaign === undefined ? "kj-paper-run-plan-v1" : "kj-paper-run-plan-v2",
       runId: runPlan.runId,
       targetMarketCount: runPlan.targetMarketCount,
       firstFullMarketStart: runPlan.firstFullMarketStart,
       captureEnd: runPlan.captureEnd,
       collectorGitCommit: runPlan.collectorGitCommit,
+      ...(runPlan.campaign === undefined ? {} : runPlan.campaign),
     };
     if (stableJson(chained) !== stableJson(expected)) {
       throw new Error("hash-chained run plan conflicts with run-plan.json");
@@ -423,6 +446,7 @@ export function buildKJPaperReport(input: BuildKJPaperReportInput): KJPaperRepor
       journalRecordCount: String(input.journalRecordCount),
       journalLastRecordHash: input.journalLastRecordHash,
       resultKind,
+      ...(runPlan.campaign === undefined ? {} : { campaign: runPlan.campaign }),
     }),
     checks: Object.freeze({
       acceptedMvpResult: true,

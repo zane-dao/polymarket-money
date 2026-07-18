@@ -50,7 +50,13 @@ export function buildKJPaperMvpResult(input: BuildKJPaperMvpResultInput): unknow
     && chainedPlan.targetMarketCount === input.plan.targetMarketCount
     && chainedPlan.firstFullMarketStart === input.plan.firstFullMarketStart
     && chainedPlan.captureEnd === input.plan.captureEnd
-    && chainedPlan.collectorGitCommit === input.collectorGitCommit;
+    && chainedPlan.collectorGitCommit === input.collectorGitCommit
+    && (input.plan.campaign === undefined
+      ? chainedPlan.schemaVersion === "kj-paper-run-plan-v1"
+      : chainedPlan.schemaVersion === "kj-paper-run-plan-v2"
+        && chainedPlan.campaignId === input.plan.campaign.campaignId
+        && chainedPlan.campaignHash === input.plan.campaign.campaignHash
+        && chainedPlan.campaignRunIndex === input.plan.campaign.campaignRunIndex);
   const checks = Object.freeze({
     childExitedCleanly: input.childExitedCleanly,
     noTerminalFailure: summary.terminalFailure === null,

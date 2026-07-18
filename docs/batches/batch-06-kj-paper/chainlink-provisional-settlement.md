@@ -19,6 +19,30 @@ closing boundary.  Until that protocol question is independently verified,
 the only safe name for a derived observation is
 `PRELIMINARY_RELAY_OBSERVED`, not "official Chainlink settlement".
 
+## Current official-source recheck (2026-07-18)
+
+The current BTC five-minute market rule page says that its outcome compares the
+end price with the start price (tie is Up) and names the Chainlink BTC/USD data
+stream as its resolution source. The current Polymarket RTDS documentation also
+documents a public `crypto_prices_chainlink` subscription for `btc/usd`, with a
+millisecond source timestamp and numeric value. These facts justify retaining
+the RTDS Chainlink feed as a valuable low-latency *observability and signal*
+input.
+
+They do **not** prove that an observed RTDS frame is the exact value used at the
+individual market's opening or closing boundary. The market page itself warns
+that live data can be delayed, while Polymarket's resolution documentation
+states that final outcomes are resolved through its resolution process. Thus
+the product decision remains: use the relay for preliminary direction,
+lead/lag/basis research and later agreement metrics, but never for wallet/PnL
+settlement. Gamma's resolved market response stays the only final evidence.
+
+Official references checked on that date:
+
+- https://polymarket.com/event/btc-updown-5m-1778113200
+- https://docs.polymarket.com/market-data/websocket/rtds
+- https://docs.polymarket.com/concepts/resolution
+
 ## Proposed observation state
 
 ```text

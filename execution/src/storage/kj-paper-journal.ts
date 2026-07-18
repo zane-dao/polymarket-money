@@ -508,6 +508,9 @@ export class KJPaperJournal {
   #runPlanEvidence: KJPaperRunPlanEvidence | null = null;
   #lastNewSignalReceiveMilliseconds: number | null = null;
   #signalFamily: "BINANCE" | "CHAINLINK" | null = null;
+  #warmupSignalCount = 0;
+  #firstWarmupReceiveTime: string | null = null;
+  #lastWarmupReceiveTime: string | null = null;
   #recordCount = 0;
   #recoveredInputCount = 0;
   #lastHash: string | null = null;
@@ -564,6 +567,19 @@ export class KJPaperJournal {
   get recoveredInputCount(): number { return this.#recoveredInputCount; }
   get lastRecordHash(): string | null { return this.#lastHash; }
   get runPlanEvidence(): KJPaperRunPlanEvidence | null { return this.#runPlanEvidence; }
+  get warmupEvidence(): Readonly<{
+    signalCount: number;
+    sourceFamily: "BINANCE" | "CHAINLINK" | null;
+    firstReceiveTime: string | null;
+    lastReceiveTime: string | null;
+  }> {
+    return Object.freeze({
+      signalCount: this.#warmupSignalCount,
+      sourceFamily: this.#warmupSignalCount === 0 ? null : this.#signalFamily,
+      firstReceiveTime: this.#firstWarmupReceiveTime,
+      lastReceiveTime: this.#lastWarmupReceiveTime,
+    });
+  }
 
   unsettledMarkets(): readonly PublicBtcFiveMinuteMarket[] {
     return Object.freeze([...this.#markets.values()]
@@ -917,6 +933,9 @@ export class KJPaperJournal {
     this.#signalIdentities.set(identity, kjPaperWarmupSignalFingerprint(warmup));
     this.#lastNewSignalReceiveMilliseconds = Date.parse(warmup.signal.receiveTime);
     this.#signalFamily = signalFamily(warmup.signal.provider);
+    this.#warmupSignalCount += 1;
+    this.#firstWarmupReceiveTime ??= warmup.signal.receiveTime;
+    this.#lastWarmupReceiveTime = warmup.signal.receiveTime;
   }
 
   #publishCurrentCheckpoint(): Promise<void> {

@@ -27,7 +27,7 @@ export interface KJPaperMvpPlan {
   readonly captureEnd: string;
   readonly expectedFinishBy: string;
   readonly durationSeconds: number;
-  readonly warmupSeconds: number;
+  readonly warmupSeconds?: number;
   readonly settlementGraceSeconds: number;
   readonly runDirectory: string;
   readonly metricsDirectory: string;

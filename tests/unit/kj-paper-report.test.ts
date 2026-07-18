@@ -122,6 +122,7 @@ function evidence(): BuildKJPaperReportInput {
     unsettledMarketIds: [],
     snapshot,
     events: [settlement("J_FEE_AWARE"), settlement("K_DUAL_VOL")],
+    warmupEvidence: { signalCount: 0, sourceFamily: null, firstReceiveTime: null, lastReceiveTime: null },
   };
 }
 
@@ -154,6 +155,32 @@ test("paper report exposes and verifies a campaign-bound v2 run plan", () => {
     journalRunPlan: { ...(input.journalRunPlan as object), schemaVersion: "kj-paper-run-plan-v2", ...campaign },
   });
   assert.deepEqual(report.run.campaign, campaign);
+});
+
+test("paper report requires and discloses a configured pre-market warmup", () => {
+  const input = evidence();
+  const plan = { ...(input.plan as object), warmupSeconds: 180 };
+  const runtimeSummary = { ...(input.runtimeSummary as object), kjSignalSource: "BINANCE_SPOT" };
+  const report = buildKJPaperReport({
+    ...input,
+    plan,
+    runtimeSummary,
+    warmupEvidence: {
+      signalCount: 37,
+      sourceFamily: "BINANCE",
+      firstReceiveTime: "2026-07-16T23:56:00.000Z",
+      lastReceiveTime: "2026-07-16T23:59:59.000Z",
+    },
+  });
+  assert.deepEqual(report.run.warmup, {
+    requiredSeconds: 180, signalCount: "37", observedSeconds: "239", sourceFamily: "BINANCE",
+  });
+  assert.throws(() => buildKJPaperReport({
+    ...input,
+    plan,
+    runtimeSummary,
+    warmupEvidence: { signalCount: 1, sourceFamily: "BINANCE", firstReceiveTime: START, lastReceiveTime: START },
+  }), /lacks durable signal evidence/u);
 });
 
 test("paper report discloses legacy plans and rejects plan or accounting tampering", () => {

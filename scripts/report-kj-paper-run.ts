@@ -159,6 +159,7 @@ async function main(): Promise<void> {
       unsettledMarketIds: journal.unsettledMarkets().map((market) => market.marketId),
       snapshot: journal.engine.snapshot(),
       events: journal.engine.events(),
+      warmupEvidence: journal.warmupEvidence,
     });
   } finally {
     await journal.close();

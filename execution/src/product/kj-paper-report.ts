@@ -22,6 +22,7 @@ interface ReportPlan {
   readonly captureEnd: string;
   readonly journalPath: string;
   readonly collectorGitCommit: string;
+  readonly warmupSeconds?: number;
   readonly campaign?: Readonly<{
     campaignId: string;
     campaignHash: string;
@@ -58,6 +59,12 @@ export interface BuildKJPaperReportInput {
   readonly unsettledMarketIds: readonly string[];
   readonly snapshot: KJPaperEngineSnapshot;
   readonly events: readonly KJPaperEvent[];
+  readonly warmupEvidence: Readonly<{
+    signalCount: number;
+    sourceFamily: "BINANCE" | "CHAINLINK" | null;
+    firstReceiveTime: string | null;
+    lastReceiveTime: string | null;
+  }>;
 }
 
 export interface KJPaperReport {
@@ -77,6 +84,12 @@ export interface KJPaperReport {
     journalRecordCount: string;
     journalLastRecordHash: string;
     resultKind: "INITIAL" | "RECOVERED_FINAL" | "LEGACY";
+    warmup?: Readonly<{
+      requiredSeconds: number;
+      signalCount: string;
+      observedSeconds: string;
+      sourceFamily: "BINANCE" | "CHAINLINK";
+    }>;
     campaign?: Readonly<{
       campaignId: string;
       campaignHash: string;
@@ -191,6 +204,10 @@ function plan(value: unknown): ReportPlan {
   }
   const collectorGitCommit = text(candidate.collectorGitCommit, "collectorGitCommit");
   if (!/^[0-9a-f]{40,64}$/u.test(collectorGitCommit)) throw new Error("collectorGitCommit is invalid");
+  const warmupSeconds = candidate.warmupSeconds === undefined
+    ? undefined
+    : safeInteger(candidate.warmupSeconds, "warmupSeconds");
+  if (warmupSeconds !== undefined && warmupSeconds === 0) throw new Error("warmupSeconds must be positive");
   let campaign: ReportPlan["campaign"];
   if (candidate.campaign !== undefined) {
     const binding = object(candidate.campaign, "campaign binding");
@@ -209,6 +226,7 @@ function plan(value: unknown): ReportPlan {
     captureEnd,
     journalPath: text(candidate.journalPath, "journalPath"),
     collectorGitCommit,
+    ...(warmupSeconds === undefined ? {} : { warmupSeconds }),
     ...(campaign === undefined ? {} : { campaign }),
   });
 }
@@ -255,6 +273,34 @@ function requireSafeRuntime(value: unknown, expected: ReportPlan): void {
     || summary.kjMarketStartBefore !== expected.captureEnd) {
     throw new Error("runtime summary identity or target cutoff conflicts with the plan");
   }
+}
+
+function verifyWarmup(
+  expected: ReportPlan,
+  evidence: BuildKJPaperReportInput["warmupEvidence"],
+  runtime: unknown,
+): KJPaperReport["run"]["warmup"] | undefined {
+  if (expected.warmupSeconds === undefined) return undefined;
+  if (evidence.signalCount < 2 || evidence.sourceFamily === null
+    || evidence.firstReceiveTime === null || evidence.lastReceiveTime === null) {
+    throw new Error("planned K warmup lacks durable signal evidence");
+  }
+  const first = Date.parse(evidence.firstReceiveTime);
+  const last = Date.parse(evidence.lastReceiveTime);
+  const start = Date.parse(expected.firstFullMarketStart);
+  if (!Number.isFinite(first) || !Number.isFinite(last) || first >= last || last >= start
+    || last - first < expected.warmupSeconds * 1_000) {
+    throw new Error("planned K warmup duration is incomplete or crosses the first market boundary");
+  }
+  const source = object(runtime, "runtime summary").kjSignalSource;
+  const expectedFamily = source === "BINANCE_SPOT" ? "BINANCE" : source === "CHAINLINK" ? "CHAINLINK" : null;
+  if (expectedFamily !== evidence.sourceFamily) throw new Error("warmup signal source family conflicts with runtime source");
+  return Object.freeze({
+    requiredSeconds: expected.warmupSeconds,
+    signalCount: String(evidence.signalCount),
+    observedSeconds: String((last - first) / 1_000),
+    sourceFamily: evidence.sourceFamily,
+  });
 }
 
 function settlementRow(
@@ -372,6 +418,7 @@ export function buildKJPaperReport(input: BuildKJPaperReportInput): KJPaperRepor
     ? result.resultKind
     : "LEGACY";
   requireSafeRuntime(input.runtimeSummary, runPlan);
+  const warmup = verifyWarmup(runPlan, input.warmupEvidence, input.runtimeSummary);
   let planBinding: KJPaperReport["planBinding"] = "LEGACY_UNBOUND";
   if (input.journalRunPlan !== null) {
     const chained = object(input.journalRunPlan, "hash-chained run plan");
@@ -450,6 +497,7 @@ export function buildKJPaperReport(input: BuildKJPaperReportInput): KJPaperRepor
       journalRecordCount: String(input.journalRecordCount),
       journalLastRecordHash: input.journalLastRecordHash,
       resultKind,
+      ...(warmup === undefined ? {} : { warmup }),
       ...(runPlan.campaign === undefined ? {} : { campaign: runPlan.campaign }),
     }),
     checks: Object.freeze({

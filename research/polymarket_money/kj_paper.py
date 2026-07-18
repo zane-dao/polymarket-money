@@ -16,10 +16,11 @@ from hashlib import sha256
 import csv
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .historical_adapter import HistoricalDatasetReceipt, canonical_json
+from .historical_adapter import HistoricalDatasetReceipt, canonical_json, file_sha256
 from .kj_ewma import KJEwmaArtifact, SIGNAL_FIDELITY as EWMA_SIGNAL_FIDELITY
 
 
@@ -1181,18 +1182,36 @@ def run_l_adaptive_paper(
     }
 
 
+HISTORICAL_PAPER_PUBLICATION_VERSION = "kj-historical-paper-publication-v1"
+
+
+def _durable_new_text(path: Path, value: str) -> None:
+    """Write one new small artifact durably; never replace an existing file."""
+    with path.open("x", encoding="utf-8") as handle:
+        handle.write(value)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
 def export_kj_paper(result: Mapping[str, Any], output: Path) -> None:
-    """Atomically publish summary JSON, append-only-style NDJSON events, and trade CSV."""
+    """Publish result sidecars, then commit their complete set with a durable manifest.
+
+    A process interruption can leave the reserved directory and early sidecars behind, but
+    it cannot create ``publication.json``.  Readers that need a complete export therefore
+    require that manifest rather than treating an early ``summary.json`` as publication.
+    """
     output.mkdir(parents=True, exist_ok=False)
     summary = {key: value for key, value in result.items() if key != "events"}
-    (output / "summary.json").write_text(
+    _durable_new_text(
+        output / "summary.json",
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
     )
     events = result["events"]
     with (output / "events.ndjson").open("x", encoding="utf-8") as handle:
         for event in events:
             handle.write(canonical_json(event) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
     columns = (
         "sequence", "market_id", "slug", "strategy", "scenario", "decision_time",
         "status", "reason", "side", "probability_up", "effective_sigma", "edge",
@@ -1205,3 +1224,25 @@ def export_kj_paper(result: Mapping[str, Any], output: Path) -> None:
         writer = csv.DictWriter(handle, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(events)
+        handle.flush()
+        os.fsync(handle.fileno())
+    files = {
+        name: {
+            "bytes": (output / name).stat().st_size,
+            "sha256": file_sha256(output / name),
+        }
+        for name in ("summary.json", "events.ndjson", "trades.csv")
+    }
+    core = {
+        "schema_version": HISTORICAL_PAPER_PUBLICATION_VERSION,
+        "result_hash": summary["result_hash"],
+        "files": files,
+    }
+    publication = {
+        **core,
+        "publication_hash": sha256(canonical_json(core).encode("utf-8")).hexdigest(),
+    }
+    _durable_new_text(
+        output / "publication.json",
+        json.dumps(publication, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 import json
@@ -18,6 +19,7 @@ from research.polymarket_money.kj_paper import (
     PaperScenario,
     SIGNAL_FIDELITY,
     export_kj_paper,
+    HISTORICAL_PAPER_PUBLICATION_VERSION,
     run_l_adaptive_paper,
     run_kj_paper,
     simulate_decision,
@@ -472,6 +474,18 @@ class KJPaperTest(unittest.TestCase):
             export_kj_paper(result, output)
             self.assertTrue((output / "summary.json").is_file())
             self.assertTrue((output / "trades.csv").is_file())
+            publication = json.loads((output / "publication.json").read_text(encoding="utf-8"))
+            self.assertEqual(publication["schema_version"], HISTORICAL_PAPER_PUBLICATION_VERSION)
+            self.assertEqual(publication["result_hash"], result["result_hash"])
+            self.assertEqual(set(publication["files"]), {"summary.json", "events.ndjson", "trades.csv"})
+            self.assertTrue(all(item["bytes"] > 0 and len(item["sha256"]) == 64 for item in publication["files"].values()))
+            for name, evidence in publication["files"].items():
+                self.assertEqual(evidence["sha256"], sha256((output / name).read_bytes()).hexdigest())
+            publication_core = {key: value for key, value in publication.items() if key != "publication_hash"}
+            self.assertEqual(
+                publication["publication_hash"],
+                sha256(json.dumps(publication_core, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")).hexdigest(),
+            )
             lines = (output / "events.ndjson").read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 4)
             self.assertTrue(all(json.loads(line)["strategy"] for line in lines))

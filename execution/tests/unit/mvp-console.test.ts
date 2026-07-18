@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createMvpConsoleSnapshot, listMvpResultSummaries } from "../../../scripts/mvp-console.js";
+import { createMvpConsoleSnapshot, listMvpPaperSummaries, listMvpResultSummaries } from "../../../scripts/mvp-console.js";
 
 test("MVP console exposes explicit paper-only commands", () => {
   const snapshot = createMvpConsoleSnapshot("/tmp/polymarket-money-console-test");
@@ -13,4 +13,5 @@ test("MVP console exposes explicit paper-only commands", () => {
 
 test("MVP result listing is empty when no locally published run exists", () => {
   assert.deepEqual(listMvpResultSummaries("/tmp/polymarket-money-console-test"), []);
+  assert.deepEqual(listMvpPaperSummaries("/tmp/polymarket-money-console-test"), []);
 });

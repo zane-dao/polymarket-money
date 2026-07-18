@@ -78,6 +78,11 @@ The API accepts no arbitrary command, parameter, output path, or network mode;
 it permits only one local historical run at a time. Realtime paper is still not
 available through the page and must remain an explicit terminal command.
 
+The same page also reads existing compact `paper-mvp/*/result.json` or recovered
+`final-result.json` files and displays their acceptance state, plan binding,
+target counts, and per-strategy paper PnL. It never reads a paper journal or
+starts a realtime process.
+
 ## Historical J/K paper loop
 
 `poly-lab build-kj-ewma` builds a content-addressed point-in-time volatility

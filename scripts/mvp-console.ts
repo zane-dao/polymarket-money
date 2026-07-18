@@ -26,6 +26,16 @@ export type MvpResultSummary = {
   runs: Record<string, { netPnl: string | null; filledCount: number | null }>;
 };
 
+export type MvpPaperSummary = {
+  runId: string;
+  accepted: boolean | null;
+  resultKind: string | null;
+  planBinding: string | null;
+  targetMarketCount: number | null;
+  completedMarketCount: number | null;
+  strategies: Record<string, { finalCash: string | null; netPnl: string | null }>;
+};
+
 type HistoricalRunKind = "kj" | "l-v1" | "l-v2";
 type HistoricalRun = {
   id: string;
@@ -102,6 +112,46 @@ export function listMvpResultSummaries(dataRoot: string): MvpResultSummary[] {
     });
 }
 
+/** Read only compact paper acceptance results, never journals, inputs, or metrics. */
+export function listMvpPaperSummaries(dataRoot: string): MvpPaperSummary[] {
+  const root = resolve(dataRoot, "paper-mvp");
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .sort((left, right) => right.name.localeCompare(left.name))
+    .flatMap((entry): MvpPaperSummary[] => {
+      const normal = resolve(root, entry.name, "result.json");
+      const recovered = resolve(root, entry.name, "final-result.json");
+      const file = existsSync(recovered) ? recovered : normal;
+      if (!existsSync(file) || statSync(file).size > 1_000_000) return [];
+      try {
+        const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+        if (typeof value !== "object" || value === null || Array.isArray(value)) return [];
+        const result = value as Record<string, unknown>;
+        const strategies: MvpPaperSummary["strategies"] = {};
+        if (typeof result.strategies === "object" && result.strategies !== null && !Array.isArray(result.strategies)) {
+          for (const [name, candidate] of Object.entries(result.strategies)) {
+            if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) continue;
+            const strategy = candidate as Record<string, unknown>;
+            strategies[name] = {
+              finalCash: typeof strategy.finalCash === "string" ? strategy.finalCash : null,
+              netPnl: typeof strategy.netPnl === "string" ? strategy.netPnl : null,
+            };
+          }
+        }
+        return [{
+          runId: typeof result.runId === "string" ? result.runId : entry.name,
+          accepted: typeof result.accepted === "boolean" ? result.accepted : null,
+          resultKind: typeof result.resultKind === "string" ? result.resultKind : null,
+          planBinding: typeof result.planBinding === "string" ? result.planBinding : null,
+          targetMarketCount: typeof result.targetMarketCount === "number" ? result.targetMarketCount : null,
+          completedMarketCount: typeof result.completedMarketCount === "number" ? result.completedMarketCount : null,
+          strategies,
+        }];
+      } catch { return []; }
+    });
+}
+
 function commandForHistoricalRun(dataRoot: string, kind: HistoricalRunKind, output: string): string[] {
   const dataset = resolve(dataRoot, DATASET);
   const base = ["--dataset", dataset, "--dataset-hash", DATASET_HASH, "--horizon", "30", "--scenario", "BASE_1S"];
@@ -160,7 +210,7 @@ class HistoricalRunController {
 function page(snapshot: MvpConsoleSnapshot, localRunsEnabled: boolean): string {
   const commands = Object.entries(snapshot.commands).map(([name, command]) => `<section><h2>${name}</h2><pre>${command}</pre></section>`).join("\n");
   const actions = localRunsEnabled ? `<section><h2>离线历史回测</h2><p>仅启动固定、离线的策略配置；不支持任意命令或网络操作。</p><button onclick="run('kj')">运行 K/J</button> <button onclick="run('l-v1')">运行 L V1</button> <button onclick="run('l-v2')">运行 L V2</button><pre id="jobs">加载中…</pre></section>` : `<section><h2>离线历史回测</h2><p>默认只读。使用 <code>--enable-local-history-runs</code> 显式启用固定回测按钮。</p></section>`;
-  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Polymarket Money MVP</title><style>body{max-width:960px;margin:32px auto;padding:0 18px;font:16px system-ui;background:#f7f8fb;color:#18212f}section{background:#fff;border:1px solid #dce1ea;border-radius:8px;margin:14px 0;padding:14px}.warn{background:#fff2dd;border-left:4px solid #db8414;padding:12px}pre{white-space:pre-wrap;word-break:break-all;background:#101827;color:#e7edf7;padding:12px;border-radius:6px}button{padding:8px;margin-right:8px}</style><h1>Polymarket Money MVP</h1><p class="warn">不会自动联网、启动 realtime paper、读取凭据或提交真实订单。</p><section><h2>状态</h2><ul><li>LIVE_TRADING_ENABLED: false</li><li>代码: ${snapshot.gitCommit}</li><li>数据: ${snapshot.datasetAvailable ? "可用" : "缺失"}</li><li>EWMA: ${snapshot.ewmaArtifactAvailable ? "可用" : "缺失"}</li><li>已有 paper 目录: ${snapshot.completedPaperRunDirectories}</li></ul></section>${actions}<section><h2>本控制台产生的历史结果</h2><pre id="results">加载中…</pre></section>${commands}<p>实时 paper 必须由操作者显式复制并运行；真实下单功能不存在。</p><script>const show=(id,url)=>fetch(url).then(r=>r.json()).then(x=>document.getElementById(id).textContent=JSON.stringify(x,null,2)).catch(e=>document.getElementById(id).textContent=String(e));const run=k=>fetch('/api/historical-runs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:k})}).then(r=>r.json()).then(()=>show('jobs','/api/historical-runs'));show('results','/api/results');${localRunsEnabled ? "setInterval(()=>show('jobs','/api/historical-runs'),1000);show('jobs','/api/historical-runs');" : ""}</script></html>`;
+  return `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Polymarket Money MVP</title><style>body{max-width:960px;margin:32px auto;padding:0 18px;font:16px system-ui;background:#f7f8fb;color:#18212f}section{background:#fff;border:1px solid #dce1ea;border-radius:8px;margin:14px 0;padding:14px}.warn{background:#fff2dd;border-left:4px solid #db8414;padding:12px}pre{white-space:pre-wrap;word-break:break-all;background:#101827;color:#e7edf7;padding:12px;border-radius:6px}button{padding:8px;margin-right:8px}</style><h1>Polymarket Money MVP</h1><p class="warn">不会自动联网、启动 realtime paper、读取凭据或提交真实订单。</p><section><h2>状态</h2><ul><li>LIVE_TRADING_ENABLED: false</li><li>代码: ${snapshot.gitCommit}</li><li>数据: ${snapshot.datasetAvailable ? "可用" : "缺失"}</li><li>EWMA: ${snapshot.ewmaArtifactAvailable ? "可用" : "缺失"}</li><li>已有 paper 目录: ${snapshot.completedPaperRunDirectories}</li></ul></section>${actions}<section><h2>本控制台产生的历史结果</h2><pre id="results">加载中…</pre></section><section><h2>既有 K/J paper 验收结果</h2><pre id="paper">加载中…</pre></section>${commands}<p>实时 paper 必须由操作者显式复制并运行；真实下单功能不存在。</p><script>const show=(id,url)=>fetch(url).then(r=>r.json()).then(x=>document.getElementById(id).textContent=JSON.stringify(x,null,2)).catch(e=>document.getElementById(id).textContent=String(e));const run=k=>fetch('/api/historical-runs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind:k})}).then(r=>r.json()).then(()=>show('jobs','/api/historical-runs'));show('results','/api/results');show('paper','/api/paper-runs');${localRunsEnabled ? "setInterval(()=>show('jobs','/api/historical-runs'),1000);show('jobs','/api/historical-runs');" : ""}</script></html>`;
 }
 
 function handler(options: ConsoleOptions, controller: HistoricalRunController, request: IncomingMessage, response: ServerResponse): void {
@@ -176,6 +226,7 @@ function handler(options: ConsoleOptions, controller: HistoricalRunController, r
   if (request.method !== "GET") { response.writeHead(405, { allow: "GET, POST" }); response.end(); return; }
   if (request.url === "/api/status") { response.writeHead(200, { "content-type": "application/json; charset=utf-8" }); response.end(`${JSON.stringify(snapshot, null, 2)}\n`); return; }
   if (request.url === "/api/results") { response.writeHead(200, { "content-type": "application/json; charset=utf-8" }); response.end(`${JSON.stringify(listMvpResultSummaries(options.dataRoot), null, 2)}\n`); return; }
+  if (request.url === "/api/paper-runs") { response.writeHead(200, { "content-type": "application/json; charset=utf-8" }); response.end(`${JSON.stringify(listMvpPaperSummaries(options.dataRoot), null, 2)}\n`); return; }
   if (request.url === "/api/historical-runs") { response.writeHead(200, { "content-type": "application/json; charset=utf-8" }); response.end(`${JSON.stringify(controller.list(), null, 2)}\n`); return; }
   if (request.url === "/") { response.writeHead(200, { "content-type": "text/html; charset=utf-8" }); response.end(page(snapshot, options.enableLocalHistoryRuns)); return; }
   response.writeHead(404); response.end("not found\n");

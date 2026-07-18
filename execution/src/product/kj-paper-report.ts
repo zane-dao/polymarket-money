@@ -423,13 +423,17 @@ export function buildKJPaperReport(input: BuildKJPaperReportInput): KJPaperRepor
   if (input.journalRunPlan !== null) {
     const chained = object(input.journalRunPlan, "hash-chained run plan");
     const expected = {
-      schemaVersion: runPlan.campaign === undefined ? "kj-paper-run-plan-v1" : "kj-paper-run-plan-v2",
+      schemaVersion: runPlan.warmupSeconds === undefined
+        ? runPlan.campaign === undefined ? "kj-paper-run-plan-v1" : "kj-paper-run-plan-v2"
+        : "kj-paper-run-plan-v3",
       runId: runPlan.runId,
       targetMarketCount: runPlan.targetMarketCount,
       firstFullMarketStart: runPlan.firstFullMarketStart,
       captureEnd: runPlan.captureEnd,
       collectorGitCommit: runPlan.collectorGitCommit,
-      ...(runPlan.campaign === undefined ? {} : runPlan.campaign),
+      ...(runPlan.warmupSeconds === undefined
+        ? runPlan.campaign === undefined ? {} : runPlan.campaign
+        : { warmupSeconds: runPlan.warmupSeconds, ...(runPlan.campaign === undefined ? {} : { campaign: runPlan.campaign }) }),
     };
     if (stableJson(chained) !== stableJson(expected)) {
       throw new Error("hash-chained run plan conflicts with run-plan.json");

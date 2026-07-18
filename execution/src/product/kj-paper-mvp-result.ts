@@ -51,9 +51,17 @@ export function buildKJPaperMvpResult(input: BuildKJPaperMvpResultInput): unknow
     && chainedPlan.firstFullMarketStart === input.plan.firstFullMarketStart
     && chainedPlan.captureEnd === input.plan.captureEnd
     && chainedPlan.collectorGitCommit === input.collectorGitCommit
-    && (input.plan.campaign === undefined
-      ? chainedPlan.schemaVersion === "kj-paper-run-plan-v1"
-      : chainedPlan.schemaVersion === "kj-paper-run-plan-v2"
+    && (input.plan.warmupSeconds !== undefined
+      ? chainedPlan.schemaVersion === "kj-paper-run-plan-v3"
+        && chainedPlan.warmupSeconds === input.plan.warmupSeconds
+        && (input.plan.campaign === undefined
+          ? chainedPlan.campaign === undefined
+          : chainedPlan.campaign?.campaignId === input.plan.campaign.campaignId
+            && chainedPlan.campaign?.campaignHash === input.plan.campaign.campaignHash
+            && chainedPlan.campaign?.campaignRunIndex === input.plan.campaign.campaignRunIndex)
+      : input.plan.campaign === undefined
+        ? chainedPlan.schemaVersion === "kj-paper-run-plan-v1"
+        : chainedPlan.schemaVersion === "kj-paper-run-plan-v2"
         && chainedPlan.campaignId === input.plan.campaign.campaignId
         && chainedPlan.campaignHash === input.plan.campaign.campaignHash
         && chainedPlan.campaignRunIndex === input.plan.campaign.campaignRunIndex);

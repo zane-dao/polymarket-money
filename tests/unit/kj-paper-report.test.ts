@@ -165,6 +165,7 @@ test("paper report requires and discloses a configured pre-market warmup", () =>
     ...input,
     plan,
     runtimeSummary,
+    journalRunPlan: { ...(input.journalRunPlan as object), schemaVersion: "kj-paper-run-plan-v3", warmupSeconds: 180 },
     warmupEvidence: {
       signalCount: 37,
       sourceFamily: "BINANCE",

@@ -161,7 +161,16 @@ async function main(): Promise<void> {
   );
   const plannedJournal = await KJPaperJournal.open(plan.journalPath);
   try {
-    await plannedJournal.appendRunPlan(plan.campaign === undefined ? {
+    await plannedJournal.appendRunPlan(plan.warmupSeconds !== undefined ? {
+      schemaVersion: "kj-paper-run-plan-v3",
+      runId: plan.runId,
+      targetMarketCount: plan.targetMarketCount,
+      firstFullMarketStart: plan.firstFullMarketStart,
+      captureEnd: plan.captureEnd,
+      collectorGitCommit: commit,
+      warmupSeconds: plan.warmupSeconds,
+      ...(plan.campaign === undefined ? {} : { campaign: plan.campaign }),
+    } : plan.campaign === undefined ? {
       schemaVersion: "kj-paper-run-plan-v1",
       runId: plan.runId,
       targetMarketCount: plan.targetMarketCount,

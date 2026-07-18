@@ -211,6 +211,25 @@ test("K/J journal preserves the campaign-bound v2 run plan across recovery", asy
   }
 });
 
+test("K/J journal preserves a warmup-bound v3 campaign plan across recovery", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-warmup-plan-"));
+  const path = join(directory, "paper-inputs.ndjson");
+  const warmupPlan = Object.freeze({
+    ...RUN_PLAN, schemaVersion: "kj-paper-run-plan-v3" as const, warmupSeconds: 180,
+    campaign: { campaignId: "campaign-test", campaignHash: "b".repeat(64), campaignRunIndex: 1 },
+  });
+  try {
+    const journal = await KJPaperJournal.open(path);
+    await journal.appendRunPlan(warmupPlan);
+    await journal.close();
+    const recovered = await KJPaperJournal.open(path);
+    assert.deepEqual(recovered.runPlanEvidence, warmupPlan);
+    await recovered.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("K/J journal durably replays contexts, fills, wallets, and official settlement", async () => {
   const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-replay-"));
   const path = join(directory, "paper-inputs.ndjson");

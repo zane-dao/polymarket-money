@@ -9,4 +9,4 @@
 - [当前架构](architecture/ARCHITECTURE.md)
 - [项目规范](spec/PROJECT-SPEC.md)
 - [长期决定](decisions/DECISIONS.md)
-- [Batch 报告](../reports/INDEX.md)
+- [Batch 报告说明](reports.md)

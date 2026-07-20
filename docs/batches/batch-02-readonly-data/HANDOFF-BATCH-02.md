@@ -67,9 +67,9 @@ identity/quality/replay、脱敏 fixtures、smoke/verify scripts、离线与 rep
 - `docs/batches/batch-02-readonly-data/data-contract.md`
 - `docs/batches/batch-02-readonly-data/market-identity.md`
 - `docs/batches/batch-02-readonly-data/raw-storage.md`
-- `docs/batches/batch-02-readonly-data/data-quality.md`
+- `docs/batches/batch-02-readonly-data/BATCH-02-DATA-QUALITY.md`
 - `docs/batches/batch-02-readonly-data/data-provenance.md`
 - `reports/batches/batch-02/BATCH-2-VERDICT.md`
 - `reports/batches/batch-02/TEST-RESULTS-BATCH-2.md`
 - `reports/batches/batch-02/SMOKE-CAPTURE-QUALITY.md`
-- `reports/batches/batch-02/UNRESOLVED-ISSUES.md`
+- `reports/batches/batch-02/UNRESOLVED-ISSUES-BATCH-02.md`

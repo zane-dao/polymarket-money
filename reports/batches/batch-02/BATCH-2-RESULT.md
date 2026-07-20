@@ -101,7 +101,7 @@ Git、handoff 或 review pack。
 4. 没有长期重连 supervisor、跨进程 writer lease、DrvFS durability 证明或运维部署。
 5. 没有 point-in-time 规范化数据集、特征、手续费、成交模拟、回测、策略或真实执行。
 
-完整分级见 `reports/batches/batch-02/UNRESOLVED-ISSUES.md`。
+完整分级见 `reports/batches/batch-02/UNRESOLVED-ISSUES-BATCH-02.md`。
 
 ## 完成标准判断
 

@@ -7,6 +7,16 @@
 
 所有决定均按最新在上的顺序排列。新增决定必须插入本节最上方，使用 `YYYY-MM-DD HH:MM 时区` 时间，并说明决定、原因、适用范围和例外。历史记录若缺少具体时刻，明确标注为“历史记录；具体时刻未记录”，不补造时间。
 
+## D-041 文档按唯一权威来源和全局唯一文档名治理
+
+**时间：2026-07-20 20:42 Asia/Singapore**
+
+项目文档采用确定性检索：`docs/INDEX.md` 是唯一阅读入口，`CURRENT.md` 只保存当前状态，
+Batch 设计与报告分居 `docs/batches/` 和 `reports/batches/`，历史过程进入 `docs/archive/`。
+仓库自有 Markdown/MDX 文档必须全局文件名唯一，只有 `docs/INDEX.md` 可名为 `INDEX.md`；
+报告、Batch 和归档入口使用带职责的名称。Python `__init__.py`、TypeScript `index.ts`、
+`.gitkeep` 等非文档语言/目录约定不属于此文档命名规则。
+
 ## D-040 决策与会话摘要采用最新在上的时间顺序
 
 **时间：2026-07-20 15:00 Asia/Singapore**

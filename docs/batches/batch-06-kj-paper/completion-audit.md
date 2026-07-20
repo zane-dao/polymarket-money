@@ -17,7 +17,7 @@
 | 要求 | 结论 | 证据与剩余限制 |
 |---|---|---|
 | 唯一主项目 | 已证明 | 新代码与工程文档均在本仓；D-022 将 workbench 和参考仓标为只读。旧产品仍作历史参考。 |
-| 旧 K/J 路径与复用决策 | 已证明（可得来源范围） | `docs/current-project-audit.md`、`module-inventory.md`、`reuse-register.md` 和 `engine-review.md` 记录职责、来源与许可证边界；仍缺旧 live tick、K USD conversion、`vol_epoch`。 |
+| 旧 K/J 路径与复用决策 | 已证明（可得来源范围） | `docs/archive/reference-audits/legacy-project-deep-audit.md`、`docs/archive/reference-audits/legacy-module-inventory.md`、`docs/batches/batch-04b-multi-edge/reuse-register.md` 和 `docs/archive/reference-audits/open-source-engine-review.md` 记录职责、来源与许可证边界；仍缺旧 live tick、K USD conversion、`vol_epoch`。 |
 | 历史/公开数据进入 K/J | 已证明 | `build-kj-ewma`、`paper-kj` 和 public runtime 均有 hash/identity 约束；Python 与 runtime 是代表性契约一致，不是逐字节等价。 |
 | market identity 与官方结算 | 已证明 | adapter 验证 slug/condition/time/token；精确 Gamma response 进入 journal 并在 replay 重验。上游没有可证明 gap-free cursor。 |
 | paper execution 与会计 | 已证明为理论 paper 模型 | 冻结 intent、一秒 latency、slippage guard、partial/no-fill、独立 J/K wallet、reservation、position、fee/PnL identity 均有测试；没有 queue、hidden liquidity 或真实成交证明。 |

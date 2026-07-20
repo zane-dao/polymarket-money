@@ -66,7 +66,7 @@
 - M `docs/target-architecture.md`
 - A `docs/batches/batch-02-readonly-data/data-contract.md`
 - A `docs/batches/batch-02-readonly-data/data-provenance.md`
-- A `docs/batches/batch-02-readonly-data/data-quality.md`
+- A `docs/batches/batch-02-readonly-data/BATCH-02-DATA-QUALITY.md`
 - A `docs/batches/batch-02-readonly-data/market-identity.md`
 - A `docs/batches/batch-02-readonly-data/raw-storage.md`
 - A `docs/batches/batch-02-readonly-data/batch-2-result.md`
@@ -76,13 +76,13 @@
 
 - A `reports/batches/batch-02/BATCH-2-VERDICT.md`
 - A `reports/batches/batch-02/ENVIRONMENT-BATCH-2.md`
-- A `reports/batches/batch-02/FAIL-FIRST-EVIDENCE.md`
+- A `reports/batches/batch-02/FAIL-FIRST-EVIDENCE-BATCH-02.md`
 - A `reports/batches/batch-02/FILE-LIST.md`
 - A `reports/batches/batch-02/GIT-DIFF-BATCH-2.md`
 - A `reports/batches/batch-02/SECURITY-SCAN-BATCH-2.md`
 - A `reports/batches/batch-02/SMOKE-CAPTURE-QUALITY.md`
 - A `reports/batches/batch-02/TEST-RESULTS-BATCH-2.md`
-- A `reports/batches/batch-02/UNRESOLVED-ISSUES.md`
+- A `reports/batches/batch-02/UNRESOLVED-ISSUES-BATCH-02.md`
 - A `reports/batches/batch-02/dataset-manifest.example.json`
 
 未进入 Git：任何 raw smoke segment、真实 manifest、`.partial`、日志、凭据、数据库、

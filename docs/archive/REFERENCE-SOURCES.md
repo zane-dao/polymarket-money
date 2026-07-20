@@ -10,4 +10,4 @@
 | `/root/projects/olymarket-trade-engine` | 开源工程参考 |
 | `/mnt/d/polymarket-learn` | GARCH、HMM、VaR/CVaR 等学习材料 |
 
-旧系统的审计结论见 `docs/current-project-audit.md`、`docs/engine-review.md` 和 `docs/module-inventory.md`。协议、费用、SDK 和 endpoint 有时效性，执行前必须重新核对官方资料。
+旧系统的审计结论见 `docs/archive/reference-audits/legacy-project-deep-audit.md`、`docs/archive/reference-audits/open-source-engine-review.md` 和 `docs/archive/reference-audits/legacy-module-inventory.md`。协议、费用、SDK 和 endpoint 有时效性，执行前必须重新核对官方资料。

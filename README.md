@@ -2,7 +2,8 @@
 
 `polymarket-money` 是面向 Polymarket BTC 五分钟市场的 clean-room 研究与 paper 系统。它包含确定性策略逻辑、风险边界、离线回放、公开行情适配和可重放的 paper 执行抽象；没有用户频道、签名客户端或真实下单路径。
 
-完整项目上下文、当前计划、规范和决策均位于 [docs/INDEX.md](docs/INDEX.md)。实质任务必须按该索引渐进阅读；本仓是唯一主项目。
+人和 AI 都从 [项目文档索引](docs/INDEX.md) 渐进读取；当前状态只看
+[CURRENT.md](docs/plan/CURRENT.md)。本仓是唯一主项目。
 
 ## 安全默认值
 

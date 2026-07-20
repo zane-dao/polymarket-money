@@ -3,7 +3,7 @@ site_description: Polymarket BTC 五分钟研究与 Paper 系统文档
 site_url: https://github.com/zane-dao/polymarket-money
 repo_url: https://github.com/zane-dao/polymarket-money
 repo_name: zane-dao/polymarket-money
-docs_dir: .
+docs_dir: docs
 site_dir: ../polymarket-money-site
 
 theme:
@@ -11,22 +11,22 @@ theme:
   language: zh
 
 nav:
-  - 首页: docs/index.md
-  - 项目入口: docs/INDEX.md
+  - 首页: index.md
+  - 项目入口: INDEX.md
   - 当前计划:
-      - 当前状态: docs/plan/CURRENT.md
-      - 路线图: docs/plan/ROADMAP.md
-      - Backlog: docs/plan/BACKLOG.md
+      - 当前状态: plan/CURRENT.md
+      - 路线图: plan/ROADMAP.md
+      - Backlog: plan/BACKLOG.md
   - 架构与规范:
-      - 当前架构: docs/architecture/ARCHITECTURE.md
-      - 项目规范: docs/spec/PROJECT-SPEC.md
-      - 项目目标: docs/goals/PROJECT-GOALS.md
-      - 子目标: docs/goals/SUBGOALS.md
-  - 长期决定: docs/decisions/DECISIONS.md
-  - Batch 设计: docs/batches/
-  - Batch 报告: reports/INDEX.md
+      - 当前架构: architecture/ARCHITECTURE.md
+      - 项目规范: spec/PROJECT-SPEC.md
+      - 项目目标: goals/PROJECT-GOALS.md
+      - 子目标: goals/SUBGOALS.md
+  - 长期决定: decisions/DECISIONS.md
+  - Batch 设计: batches/
+  - Batch 报告说明: reports.md
   - 运维:
-      - 设置: docs/operations/SETUP.md
-      - 运行手册: docs/operations/RUNBOOK.md
-      - 文档维护: docs/operations/MAINTENANCE.md
-  - 历史归档: docs/archive/
+      - 设置: operations/SETUP.md
+      - 运行手册: operations/RUNBOOK.md
+      - 文档维护: operations/MAINTENANCE.md
+  - 历史归档: archive/

@@ -1,6 +1,6 @@
 # YYYY-MM-DD HH:MM 时区｜会话主题
 
-新增摘要文件按时间命名，并在 `docs/archive/sessions/INDEX.md` 表格最上方登记；旧摘要不重排。
+新增摘要文件按时间命名，并在 `docs/archive/sessions/INDEX.md` 表格最上方登记。历史摘要也按可追溯日期倒序排列；具体时刻缺失时须明确标注，不补造时间。
 
 ## 目标
 

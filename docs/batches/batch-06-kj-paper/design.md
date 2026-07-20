@@ -1,47 +1,26 @@
-# Batch 06: K/J historical paper loop design
+# Batch 06：K/J 历史 Paper 闭环设计
 
-## Purpose
+## 目的与安全边界
 
-Create the shortest useful research loop inside `polymarket-money` without
-adopting the legacy runtime: verified historical data → J/K probability →
-fee-aware intent → delayed theoretical fill → position/cash → official
-settlement → gross/fee/net PnL → deterministic JSON/NDJSON/CSV export.
+本批在不采用 legacy runtime 的前提下建立最短可用研究闭环：已验证历史数据 → J/K 概率 → 含费 intent → 延迟理论成交 → 仓位/现金 → 官方结算 → gross/fee/net PnL → 确定性 JSON/NDJSON/CSV 导出。
 
-This is offline paper research only.  It has no network, credential, private
-channel, signing, order, or cancellation path and keeps
-`LIVE_TRADING_ENABLED=false`.
+历史路径仅限离线 paper：没有网络、凭据、私有频道、签名、下单或撤单路径，并持续保持 `LIVE_TRADING_ENABLED=false`。
 
-## Reviewed source and provenance
+## 来源与重建原则
 
-The legacy source is read-only commit
-`d08ba3e591617e45b2463777afc6ec64a3ad1a46` under
-`/mnt/c/Users/seeta/Desktop/hello-world`:
+审查对象是只读 legacy commit `d08ba3e591617e45b2463777afc6ec64a3ad1a46`（`/mnt/c/Users/seeta/Desktop/hello-world`）：
 
-- `config.toml`: J fee-aware and K dual-vol parameters;
-- `polymarket_paper/strategy/signal.py`: zero-drift normal-CDF probability and
-  dual-vol floor definition;
-- `polymarket_paper/order/trader.py`: fee-aware edge, critical band, Kelly,
-  stake/depth gates, and PnL rules;
-- `polymarket_paper/strategy/main.py`: variant routing and per-strategy pools;
-- `polymarket_paper/strategy/settlement.py` and `core/storage.py`: official
-  outcome and pool settlement flow.
+- `config.toml`：J fee-aware 与 K dual-vol 参数；
+- `strategy/signal.py`：零漂移 normal-CDF 概率和 dual-vol floor；
+- `order/trader.py`：fee-aware edge、critical band、Kelly、stake/depth gate 与 PnL 规则；
+- `strategy/main.py`：variant 路由和逐策略资金池；
+- `strategy/settlement.py`、`core/storage.py`：官方 outcome 与资金池结算。
 
-No legacy runtime file is copied or imported.  Rules were re-expressed behind
-the new repository's immutable historical receipt and Decimal-based paper
-accounting boundary.
+不复制或导入 legacy runtime。规则通过不可变 historical receipt 和 `Decimal` paper 会计边界重新表达。开源引擎仅提供 market lifecycle、StrategyContext、wallet reservation、recovery 和 NDJSON 的后续设计输入；其 `number` 会计、进程内幂等、token 数组位置映射、简化 fill 与恢复实现不采用。
 
-The open-source engine at `/root/projects/olymarket-trade-engine` remains
-read-only.  Its market lifecycle, StrategyContext, user-event buffering,
-wallet reservations, recovery, and NDJSON ideas are retained as later design
-inputs; its `number` accounting, in-memory idempotency, token array-position
-mapping, simplified fills, and recovery implementation are not used here.
+## 输入与 EWMA 产物
 
-## Input contract
-
-The runner accepts only an `ExternalHistoricalDatasetAdapter.load()` receipt.
-That loader verifies the manifest content hash, decision-sample hash, label
-evidence hash, row counts, and version directory.  The first accepted dataset
-is:
+runner 只接受 `ExternalHistoricalDatasetAdapter.load()` receipt。加载器验证 manifest 内容 hash、decision-sample hash、label-evidence hash、行数和版本目录。首个接受数据集为：
 
 ```text
 dataset_hash = a27d9d1bf4dc5276c7ae5b11abd64250b6e6dc17f01fd432ab0dc10e4425cafc
@@ -52,67 +31,36 @@ Binance decision-point coverage = 100%
 continuity = UNVERIFIED
 ```
 
-The paper command additionally pins split, horizon, execution scenario,
-initial cash, and the full K/J parameter mapping in the result hash.
+paper 命令还将 split、horizon、execution scenario、初始现金和完整 K/J 参数映射固定进 result hash。
 
-## Point-in-time EWMA artifact
-
-`poly-lab build-kj-ewma` verifies all 21 Binance zip hashes and checksum-file
-hashes pinned by the historical receipt, then streams 1,814,400 consecutive
-one-second closes.  It applies the reviewed legacy equations on a canonical
-five-second phase and publishes 16,797 decision-point rows under a
-content-addressed directory.  The manifest records source gaps, parameters,
-builder code hash, output hash, and fidelity limits.  The observed source has
-zero missing seconds.
-
-Artifact hash:
+`poly-lab build-kj-ewma` 验证历史 receipt 固定的 21 个 Binance zip hash 和 checksum-file hash，连续读取 1,814,400 个一秒 close，在 canonical 五秒 phase 上应用审查后的 legacy 方程，并在 content-addressed 目录发布 16,797 条 decision-point。manifest 记录来源 gap、参数、builder code hash、output hash 和 fidelity 限制；本来源没有缺失秒。
 
 ```text
-387201c1eacbbe54f81d4519407bdb4acf50c9f6ce9f46a2bdb6f924796265da
+artifact_hash = 387201c1eacbbe54f81d4519407bdb4acf50c9f6ce9f46a2bdb6f924796265da
 ```
 
-The paper result also pins the running engine code digest.  An implementation
-change can therefore no longer silently retain the same result identity.
+结果同时固定运行引擎 code digest，因此实现变更不能静默继承同一结果身份。
 
-## Strategy reconstruction
+## J/K 重建
 
-Both variants use the old normal-CDF mapping, a 5 percentage-point base edge,
-official market-static fee, half-overround buffer, $10 critical band, 25%
-fractional Kelly, 2% per-trade cash cap, $400 absolute cap, 50% visible-depth
-participation, and $1 minimum stake.
+两个 variant 都使用 legacy normal-CDF、5 个百分点 base edge、官方 market-static fee、half-overround buffer、\$10 critical band、25% fractional Kelly、每笔现金 2% 上限、\$400 绝对上限、可见深度 50% participation 和 \$1 最小 stake。
 
-- J uses the canonical five-second EWMA with 100-second half-life and
-  `0.00002` floor.
-- K uses the same stream for 180-second fast and 2,700-second slow EWMA, waits
-  180 seconds, then applies `max(fast, 0.4 * slow, 0.000012)`.
+- J：canonical 五秒 EWMA、100 秒 half-life、`0.00002` floor。
+- K：同一流的 180 秒 fast 与 2,700 秒 slow EWMA，等待 180 秒后使用 `max(fast, 0.4 * slow, 0.000012)`。
 
-Every authoritative event and summary carries
-`signal_fidelity=CANONICAL_5S_EWMA_OFFICIAL_BINANCE_1S_CLOSE`.  This is stronger
-than the initial realized-volatility proxy but still not Strict legacy
-equivalence: one-second kline closes are not live trade ticks, BTCUSDT is not
-K's historical `binance_usd` conversion, and the archive start fixes a
-canonical phase instead of recovering an old process `vol_epoch`.
+每份事件和汇总均标记 `signal_fidelity=CANONICAL_5S_EWMA_OFFICIAL_BINANCE_1S_CLOSE`。这不等于 Strict legacy：一秒 kline close 不是 live trade tick，BTCUSDT 不是 K 的历史 `binance_usd` 换算，归档起点也只能固定 canonical phase，不能恢复旧进程 `vol_epoch`。
 
-## L_ADAPTIVE_EXECUTION (separate, pre-registered research strategy)
+## L_ADAPTIVE_EXECUTION：独立预注册研究
 
-`L_ADAPTIVE_EXECUTION` is a new offline Python strategy; it does not alter the
-frozen J/K enum, `paper-kj` CLI, TypeScript runtime, or any current public
-paper configuration. It is intentionally a separate invocation:
+`L_ADAPTIVE_EXECUTION` 是独立的 offline Python 策略，不修改冻结 J/K enum、`paper-kj` CLI、TypeScript runtime 或公开 paper 配置：
 
 ```text
 poly-lab paper-l-adaptive --split TRAIN|VALIDATION ...
 ```
 
-`FINAL_TEST` is not an accepted CLI/API value. The immutable configuration is
-`l-adaptive-execution-v1-preregistered`; it is an execution-risk specification,
-not a set of values selected against FINAL_TEST. The protocol records
-`TRAIN_FIXED_CONFIGURATION_AUDIT` and then
-`VALIDATION_PRE_REGISTERED_CONFIGURATION`. Opening the untouched final split
-requires a later explicit decision after the train/validation outcome is
-recorded.
+CLI/API 不接受 `FINAL_TEST`。不可变配置为 `l-adaptive-execution-v1-preregistered`：先记录 `TRAIN_FIXED_CONFIGURATION_AUDIT`，再记录 `VALIDATION_PRE_REGISTERED_CONFIGURATION`；只有记录 train/validation 结果后，经明确决定才能打开 untouched final split。
 
-L has no absolute base edge. For the selected outcome at decision time its
-required edge is the sum of these separately exported terms:
+L 没有绝对 base edge。选中 outcome 的 required edge 由以下逐项导出值相加：
 
 ```text
 official taker fee per share
@@ -120,197 +68,45 @@ official taker fee per share
 + latency tick/slippage budget
 + Binance log-price speed × latency budget
 + current top-of-book spread reprice-risk proxy × latency budget
-+ smoothed sigma × sqrt(remaining time) uncertainty budget
++ smoothed sigma × sqrt(remaining) uncertainty budget
 + visible-depth / permitted-participation pressure budget
 ```
 
-The order size is still bounded by fractional Kelly, cash, absolute cash cap,
-and permitted visible ask depth; the depth term does not claim that a single
-top-of-book level reveals the whole L2 curve.
+订单规模仍受 fractional Kelly、现金、绝对上限和允许 visible ask depth 共同限制。L 对 30/60/120 秒 realised volatility 采用 50%/30%/20% 加权 RMS，加 variance-space floor，再施加连续 divergence shock multiplier；normal-CDF 概率也会按 `sigma * sqrt(remaining)` 的有界函数连续拉向 0.5，显式表示 volatility drag。
 
-Instead of K's `max(fast, 0.4*slow, floor)`, L combines the receipt's causal
-30/60/120-second realised volatilities as a weighted RMS (50%/30%/20%), adds a
-small variance-space numerical floor, then applies a continuous short-vs-medium
-and medium-vs-long divergence shock multiplier. The normal-CDF probability is
-also pulled continuously toward 0.5 using a bounded function of
-`sigma * sqrt(remaining)`. This is an explicit volatility drag rather than
-assuming that wider uncertainty alone is sufficient.
+L 不使用固定 \$10 critical band，而在 dynamic opening-anchor ambiguity band 中 fail closed。历史 receipt 没有可用的先前 quote sequence，所以必须记录 `market_quote_velocity_available=false`，只使用 `CURRENT_TOP_OF_BOOK_SPREAD_PROXY_1HZ`，绝不利用后续 execution book 伪造速度。历史行也没有 point-in-time Chainlink price，不能推得 Binance--Chainlink basis；两者都是未来 realtime L context 的前提，而不是本研究假设的 alpha。
 
-The fixed `$10` K/J critical band is not used. L fails closed in a dynamic
-opening-anchor ambiguity band:
+## Paper 成交与会计
 
-```text
-current BTC price × sqrt((1 bp noise)^2
-                         + (0.35 × sigma × sqrt(remaining))^2)
-```
+- signal 和 intent 使用 point-in-time decision book；base execution 使用一秒后记录的 ask/visible ask size，stress execution 再加一个 \$0.01 不利 tick。
+- intent quantity 在 decision time 由 fractional Kelly、现金/绝对上限和 decision ask size 的 50% 固定；后续 visible size 只能缩减它，未来价格不得创建或重算 intent。
+- fee 为 `rate * price * (1-price) * quantity`，并与 gross/net PnL 分开保存。
+- 每条 fill 保存稳定 intent/fill/settlement ID、fill 后现金、fill 前后与 settlement 后仓位、payout 和 settlement 后 bankroll。
+- 各策略拥有独立现金路径；unknown fee、critical band、无效 book、无深度、最低 stake、现金不足、stale-quote edge 与 weak edge 都 fail closed。
 
-The historical receipt contains one point-in-time top of book per decision and
-one one-second-later execution book. It does **not** contain a prior quote
-sequence suitable for CLOB quote velocity. L therefore records
-`market_quote_velocity_available=false` and uses only the current bid/ask
-width as `CURRENT_TOP_OF_BOOK_SPREAD_PROXY_1HZ`; it never uses the later
-execution book to manufacture a speed measurement. Historical rows also lack
-a point-in-time Chainlink price, so Binance--Chainlink basis is unavailable in
-this study. Both are prerequisites for a later real-time L context, not
-assumed alpha here.
+输出目录 no-overwrite，包含 `summary.json`（hash、安全标记、总额、现金、gross/fee/net PnL、drawdown、原因计数）、`events.ndjson`（逐策略 decision audit）和 `trades.csv`（含 decision/fill 会计字段的平面导出）。同一 core mapping 必须产生同一 SHA-256 result hash。
 
-## Paper execution and accounting
+## Public runtime、journal 与结算
 
-- Signal and intent use the point-in-time decision book.
-- Base execution uses the recorded 1-second-later ask and visible ask size.
-- Stress execution adds one $0.01 adverse tick.
-- Intent quantity is frozen at decision time from fractional Kelly, cash cap,
-  absolute cap, and 50% of decision ask size.  Execution may only reduce it
-  against later visible size; future price cannot create or resize an intent.
-- Fee is `rate * price * (1-price) * quantity` and remains separate from gross
-  and net PnL.
-- Each filled record includes stable intent/fill/settlement IDs, cash after
-  fill, position before/after fill/after settlement, payout, and bankroll after
-  settlement.
-- Each strategy owns an independent cash path.  This historical slice uses one
-  decision per market, so a position settles before the next selected market's
-  decision.
-- Unknown fee, critical band, missing/invalid book, no depth, minimum stake,
-  insufficient cash, stale-quote edge, and weak edge all fail closed.
+TypeScript public runtime 输出 paper-only K/J StrategyContext，包含 market/token identity、top-of-book、fee evidence、signal source/receive time、connection/input hash 与 receive stamp。stale、crossed、missing-fee、mixed-clock、future-time 和非运行市场输入均 fail closed。详见 [live-context.md](live-context.md)。
 
-## Output contract
+提供显式 `--kj-paper-journal` 时，runtime 只将 ready context 交给 `kj-paper-engine-v2`；否则只输出 context evidence，禁用 K/J wallet mutation。engine 拥有独立 J/K wallet、五秒 EWMA、冻结 intent、worst-case reservation、一秒 fill latency、maximum-slippage/no-visible-size 拒绝、partial fill、position 与 `INIT -> RUNNING -> STOPPING -> DONE` market state。身份幂等，冲突重用 fail closed；后续 context 只能减少冻结 quantity。
 
-The output directory is created with no-overwrite semantics and contains:
+每个应用的 context 或 Gamma resolution response 都先 fsync 到 append-only NDJSON input journal。record 带连续 sequence 与 SHA-256 chain，独立原子 checkpoint 锚定 tail；MVP journal 在任何 context 前写入 `RUN_PLAN`，绑定 target interval 与 collector commit。recovery 验证字段、context reconstruction、engine version/config、identity、精确 public settlement body、clock watermark、hash chain 与 checkpoint 后再确定性 replay。只有 closed Gamma market、`umaResolutionStatus=resolved` 和唯一精确 1/0 outcome 才转为 official settlement evidence；不完整行、被修改 record、缺 checkpoint 或 tail truncation 都 fail closed。journal 必须 Linux-native、非 symlink 且 Git 外；`paper:inspect` 可重放状态。
 
-- `summary.json`: dataset/config/result hashes, safety flags, totals, cash,
-  gross/fee/net PnL, drawdown, and reason counts;
-- `events.ndjson`: one canonical audit record per strategy decision;
-- `trades.csv`: flat research export containing decisions and all filled
-  accounting fields.
+TypeScript normal-CDF 使用确定性 Abramowitz-Stegun approximation，Python 使用平台 `erf`；不宣称逐字节等价。shared probability golden 将代表性及 clamp-tail z-score 的绝对误差限制在 `0.0000002`。runtime 在 interval end 后轮询 public Gamma endpoint；`paper:mvp` 对齐完整 interval，`paper:settle` 只恢复冻结 half-open target window，`paper:finalize` 用推进 journal 重跑 acceptance contract 并写入 `RECOVERED_FINAL`，`paper:report` 复核 source/snapshot/safety/settlement/PnL identity 后导出带 hash 的描述性报告。
 
-The same core mapping always produces the same SHA-256 result hash.
+## Cohort、Campaign 与双信号比较
 
-## Public runtime input boundary
+`paper:cohort-report` 仅离线聚合已完成 report：重验 artifact hash，只接受 `HASH_CHAINED` `DESCRIPTIVE_PAPER_ONLY` report，拒绝重复 run ID 和重叠 target window，并永久保持 `profitabilityClaimEligible=false`。它不改变参数，也不产生 fill、alpha、shadow 或 live 证据。
 
-The public TypeScript runtime now exposes a paper-only K/J StrategyContext with
-full market/token identity, top-of-book, fee evidence, signal source/receive
-times, connection/input hashes, and receive stamps.  It fails closed for stale,
-crossed, missing-fee, mixed-clock, future-time, and non-running market inputs.
-See `live-context.md`.  This does not yet execute the Python strategy or mutate
-a real-money portfolio.
+`paper:cohort-observability-report` 与 PnL cohort 分离：重算 runtime summary hash，重开 durable journal，核对 record/tail/event count，并报告 public-stream event/reconnect/quarantine、Gamma settlement delay 和 J/K intent/fill/partial/no-fill/reason 分布。它衡量 paper 执行质量，不把理论 fill 变成 exchange evidence。
 
-With an explicit `--kj-paper-journal`, the TypeScript runtime passes only ready
-contexts to `kj-paper-engine-v2`.  Without that option it emits context evidence
-but disables K/J wallet mutation.  The engine owns independent J/K wallets,
-five-second EWMA state, frozen intents, worst-case cash reservations, one-second
-fill latency, maximum-slippage/no-visible-size rejection, partial fills,
-positions, and `INIT -> RUNNING -> STOPPING -> DONE` market state.  Context,
-signal-input, intent, and settlement identities are idempotent and conflicting
-reuse fails closed.  A later context can reduce a frozen quantity but cannot
-recompute it from a future price.
+`kj-paper-campaign-v1` 在 canonical SHA-256 下预注册完整窗口、market count、settlement grace、run ID 和 collector commit。campaign cohort 只在每个注册 run 恰好一次、每份 report 的 hash/index/window/count/commit 都匹配时接受；campaign observability 使用同一不可变 run 集。delayed-settlement 的 `paper:finalize` 也验证可选 campaign binding，恢复不得降级为 unbound plan。
 
-Every applied context or Gamma resolution response is first fsynced to a strict
-append-only NDJSON input journal.  Records carry contiguous sequence numbers and
-a SHA-256 chain; a separately atomically published checkpoint anchors the tail.
-New MVP journals place a `RUN_PLAN` record before all contexts so the selected
-target interval and collector commit cannot be silently changed during later
-reporting.
-Recovery validates exact fields, context reconstruction, engine version/config,
-market/signal/context identity, the exact public settlement body, per-clock
-watermarks, the hash chain, and the checkpoint before deterministic replay.
-Only a matching closed Gamma market with `umaResolutionStatus=resolved` and a
-unique exact 1/0 result is converted to official settlement evidence.  A
-durable journal record ahead of its checkpoint is healed; an incomplete line,
-modified record, missing checkpoint, or tail truncation fails closed.  Journals
-are Linux-native, non-symlinked, and outside Git.  `paper:inspect` replays one
-journal and exports the full wallet, position, market-ledger, pending-intent,
-and event-count snapshot.
+`--kj-signal-source` 可选择 Binance spot 或单独标识的 public Chainlink relay，但不得混入同一 K/J engine；paired comparison 中每个来源必须有独立 EWMA/anchor/wallet。
 
-This real-time path is not claimed byte-equivalent to the Python historical
-runner: TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
-approximation, while Python uses its platform `erf`.  The runtime polls the
-public Gamma market endpoint after interval end and keeps the exact response as
-replayable settlement evidence.  The bounded `paper:mvp` wrapper aligns capture
-to the next complete interval, prevents the following market from entering the
-run, adds a finite settlement grace window, and emits a machine-readable
-acceptance result.  `paper:settle` can resume a frozen half-open target window
-when official resolution is delayed beyond that bound, and `paper:finalize`
-re-runs the same acceptance contract against the advanced journal before
-writing `RECOVERED_FINAL`.  `paper:report` replays
-the journal, verifies source/snapshot/safety/settlement/PnL identities, and
-exports a hashed descriptive summary plus per-market CSV.  A shared probability
-golden bounds the TypeScript approximation to `0.0000002` absolute error against
-Python `erf` at representative and clamped-tail z-scores.  A second shared
-golden feeds both languages the same five-second price path, final book, fee,
-delayed fill and official Up settlement.  It verifies J's fee-threshold
-rejection and K's EWMA/probability/edge/intent quantity/fill/fee/position/PnL
-path within explicit tolerances.  This is a representative contract, not
-exhaustive parity over every book, timing, no-fill and lifecycle branch.
+`kj-signal-compare-v1` 固定 matched two-leg plan，并发启动两个既有 `paper:mvp` child，使用同一 half-open target window 与 commit。扩展版本 `kj-signal-compare-campaign-artifact-v1` 将两条 ordinary source campaign 和逐窗口 hash-bound compare plan 放进同一 artifact；漏窗不可平移、重试或替换。每条腿复用既有 wallet、journal、official Gamma settlement 和 recovery path。
 
-`paper:cohort-report` is an offline-only aggregation layer over completed
-single-run report directories.  It rechecks each artifact hash, accepts only
-`HASH_CHAINED` `DESCRIPTIVE_PAPER_ONLY` reports, rejects duplicate run IDs and
-overlapping target windows, and publishes a no-overwrite cohort hash.  It
-aggregates per-strategy market/trade/PnL and per-run sign counts but permanently
-retains `profitabilityClaimEligible=false`; it neither changes parameters nor
-creates fill, alpha, shadow, or live evidence.
+计划绑定 run 前预留 180 秒，runtime 只记录 source-specific `WARMUP_SIGNAL`。replay 仅将它用于 volatility state；warmup 不含 market identity、order-book input、intent、wallet mutation 或 settlement candidate，且不得跨 source family。当前 Chainlink RTDS relay 仅用于 observability，不能结算 wallet 或替代 Gamma/UMA final evidence；详见 [chainlink-provisional-settlement.md](chainlink-provisional-settlement.md)。
 
-`paper:cohort-observability-report` is deliberately a second, offline-only
-layer rather than a change to the PnL cohort. For every accepted report it
-re-hashes the referenced runtime summary, strictly reopens the durable journal,
-checks record count/tail/event count against both the report and runtime
-summary, then reports the six public-stream event/reconnect/quarantine counters,
-target-market Gamma official-settlement delay, and J/K intent/fill/partial/no-
-fill/reason distribution. It rejects runtime safety/identity/tail conflicts and
-keeps the same permanent `DESCRIPTIVE_PAPER_ONLY`/`profitabilityClaimEligible=false`
-boundary. It measures paper execution quality; it does not turn a theoretical
-fill into exchange evidence.
-
-To prevent choosing a convenient subset of completed runs after seeing their
-PnL, `kj-paper-campaign-v1` pre-registers a deterministic sequence of complete
-five-minute windows, market count, settlement grace, run IDs and collector
-commit under a canonical SHA-256 hash. A campaign-selected MVP run writes a
-`kj-paper-run-plan-v2` binding before contexts. `paper:campaign-cohort-report`
-accepts a cohort only if it contains every registered run once and every report
-matches the campaign hash/index/window/count/commit. This is an evidence
-selection constraint, not a profitability claim or an execution change.
-
-`paper:campaign-cohort-observability-report` applies that exact same complete
-campaign verification before it reopens journals and runtime summaries. It
-therefore makes the PnL and execution-quality cohort refer to the identical
-immutable run set; neither report may substitute a convenient post-hoc subset.
-The delayed-settlement `paper:finalize` path separately validates the optional
-campaign binding in `run-plan.json` before rebuilding its result, so recovery
-cannot silently downgrade a v2 journal run-plan to an unbound plan.
-
-The runtime's `--kj-signal-source` selector now permits either the existing
-Binance spot signal or a separately identified public Chainlink relay context.
-It deliberately does not mix two prices into one K/J engine: each source must
-have an independent EWMA/anchor/wallet in the forthcoming paired comparison
-mode, otherwise source attribution and PnL would be invalid.
-
-`kj-signal-compare-v1` freezes a matched two-leg plan. Its supervisor creates
-one ordinary campaign per source and invokes two existing `paper:mvp` children
-concurrently, both with the same half-open target window and commit. This
-reuses the hardened wallet, journal, official settlement and recovery path per
-source rather than introducing a mixed-source engine.
-
-`kj-signal-compare-campaign-artifact-v1` extends that contract across a whole
-pre-registered schedule. One artifact contains both ordinary source campaigns
-and one hash-bound compare plan per scheduled window. A selected runner index
-must be imminent and maps to the matching source campaign index in both legs;
-it cannot substitute a standalone run or a different source's result. This is
-an evidence-selection control only: each child still uses the existing public
-paper engine, durable journal, official Gamma settlement and independent wallet.
-The campaign launcher waits for each fixed pre-warmup timestamp, may overlap a
-prior run's Gamma wait with a later run's capture, and writes an immutable exit
-summary only after every scheduled child ends. It never moves a missed window
-to a later market; any missed/failed run remains visible to the eventual cohort.
-
-Before a plan-bound K/J run, the launcher reserves 180 seconds and the runtime
-records only source-specific `WARMUP_SIGNAL` inputs in the same fsync/hash-chain
-journal. Replay applies them solely to volatility state. The engine refuses a
-warmup after the first market session; the journal also rejects a source-family
-change, so Chainlink warmup cannot influence a Binance leg (or conversely).
-Warmup has no market identity, order-book input, intent, wallet mutation or
-official-settlement candidate. The planned target window remains unchanged.
-
-The current Chainlink RTDS relay is observability only.  A future boundary-based
-preliminary outcome must not settle wallets or replace Gamma/UMA final evidence;
-the proposed evidence/state contract is in
-[`chainlink-provisional-settlement.md`](chainlink-provisional-settlement.md).

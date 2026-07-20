@@ -1,39 +1,28 @@
 # polymarket-money
 
-`polymarket-money` is a clean-room workspace for research, deterministic strategy
-logic, risk controls, and execution abstractions for Polymarket-related systems.
-This repository contains contracts, a clean-room Python reference for domain
-rules and replay, and credential-free public market-data adapters. Network use
-is limited to an explicitly bounded read-only smoke capture; the project has no
-user channel, signing client, or order submission path.
+`polymarket-money` 是面向 Polymarket BTC 五分钟市场的 clean-room 研究与 paper 系统。它包含确定性策略逻辑、风险边界、离线回放、公开行情适配和可重放的 paper 执行抽象；没有用户频道、签名客户端或真实下单路径。
 
-## Safety defaults
+完整项目上下文、当前计划、规范和决策均位于 [docs/INDEX.md](docs/INDEX.md)。实质任务必须按该索引渐进阅读；本仓是唯一主项目。
 
-- `LIVE_TRADING_ENABLED=false` is the required default.
-- Never commit private keys, seed phrases, API keys, cookies, or account data.
-- Strategy code is pure and deterministic. I/O belongs behind adapters.
-- No legacy runtime or open-source engine module is imported.  The historical
-  J/K paper study is a reviewed clean-room reconstruction of explicit legacy
-  rules and records its remaining signal-fidelity limit in every result.
+## 安全默认值
 
-## Layout
+- `LIVE_TRADING_ENABLED=false` 必须持续有效。
+- 不提交私钥、助记词、API Key、cookie 或账户数据。
+- 策略代码保持纯函数和确定性；外部 I/O 只能位于 adapter。
+- 不导入旧运行时或开源引擎模块。历史 J/K paper 研究是经审查的 clean-room 重建，并在每份结果中记录信号忠实度限制。
 
-- `research/`: notebooks, datasets, feature studies, backtests, and reports.
-- `research/polymarket_money/`: vendor-neutral Python domain, rules, safety,
-  and offline fill accounting.
-- `execution/src/domain/`: shared domain contracts.
-- `execution/src/adapters/`: external-system interfaces.
-- `contracts/`: language-neutral, versioned wire contracts.
-- `execution/src/strategy/`: pure strategy contracts.
-- `execution/src/risk/`: risk policy configuration and decisions.
-- `data/`: local data, deterministic fixtures, and golden outputs.
-- `tests/`: unit, integration, replay, golden, and shadow test suites.
-- `docs/batches/`: batch-scoped design and result documents.
-- `reports/batches/`: test, environment, Git, and verification evidence.
+## 目录
 
-## Development
+- `research/`：notebook、数据集、特征研究、回测和研究报告。
+- `research/polymarket_money/`：供应商无关的 Python 领域规则、安全逻辑和离线成交会计。
+- `execution/src/domain/`：共享领域契约；`adapters/`：外部系统接口；`strategy/`：纯策略契约；`risk/`：风控配置和决定。
+- `data/`：本地数据、确定性 fixture 和 golden 输出；`tests/`：unit、integration、replay、golden 与 shadow 测试。
+- `docs/batches/`：Batch 设计、范围和验收要求；`reports/batches/`：测试、环境和验证证据。
+- `docs/plan/`：当前计划、路线和 backlog；`docs/spec/`、`docs/goals/`、`docs/decisions/`：稳定边界、目标和长期决定。
 
-Requirements: Python 3.11+ and Node.js 24+.
+## 开发与验证
+
+需要 Python 3.11+ 和 Node.js 24+：
 
 ```bash
 npm ci
@@ -41,107 +30,46 @@ npm test
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-`npm test` compiles TypeScript and runs Node runtime tests. The bounded public
-smoke command requires an absolute `POLY_DATA_ROOT` outside the repository; no
-test or script enables live trading.
+`npm test` 会编译 TypeScript 并运行 Node 运行时测试。公开 smoke 必须使用仓外的绝对 `POLY_DATA_ROOT`；任何测试或脚本均不得启用真实交易。
 
-The default Binance transport is the exact public `btcusdt` filter. A bounded,
-explicit `--binance-transport all-symbols-quarantine` option exists only for
-protocol smoke validation when that provider-side filter is silent; non-BTC
-frames are retained as quarantine and can never enter the effective BTC stream.
-Batch evidence and the canonical handoff live under `docs/batches/` and
-`reports/batches/`; raw smoke data always remains outside Git.
+默认 Binance transport 使用精确的公开 `btcusdt` 过滤。`--binance-transport all-symbols-quarantine` 仅用于上游过滤静默时的有界协议 smoke；非 BTC 帧只能进入 quarantine，不能进入有效 BTC 流。原始 smoke 数据始终位于 Git 仓外。
 
-## Local MVP console
+## 本地 MVP Console
 
-The credential-free local console brings the historical K/J and L replay
-commands plus the bounded realtime-paper command into one localhost page. It
-does not start collection, paper trading, or orders; realtime paper remains an
-explicit operator action. It also lists small published `summary.json` files
-under `<data-root>/mvp-runs`, so the offline research loop is visible without
-opening raw capture or journal data.
+无凭据的本地 console 将历史 K/J、L 回放和有界 realtime-paper 命令呈现在同一 localhost 页面。它不会自动启动采集、paper 或订单，并只读取 `<data-root>/mvp-runs` 下的小型已发布 `summary.json`，不会读取原始采集或 journal。
 
 ```bash
 npm run mvp:console -- --data-root /root/polymarket-money-data
 ```
 
-Open `http://127.0.0.1:4173`.
-
-To allow the page to launch one of its three fixed **offline** historical
-replays (K/J, L V1, or L V2), opt in at process start:
+打开 `http://127.0.0.1:4173`。若要允许页面启动三种固定的**离线**历史回放（K/J、L V1、L V2），在启动时显式加入：
 
 ```bash
 npm run mvp:console -- --data-root /root/polymarket-money-data --enable-local-history-runs
 ```
 
-The API accepts no arbitrary command, parameter, output path, or network mode;
-it permits only one local historical run at a time. Realtime paper is still not
-available through the page and must remain an explicit terminal command.
+API 不接受任意命令、参数、输出路径或网络模式；一次只允许一个本地历史运行。页面也可以显示已有 `paper-mvp/*/result.json` 或恢复后的 `final-result.json` 的验收状态、计划绑定、目标数量和逐策略 paper PnL，但不会读取 journal 或启动 realtime 进程。验收证据见 [MVP Console 验收](docs/batches/batch-06-kj-paper/mvp-console-acceptance.md)。
 
-The same page also reads existing compact `paper-mvp/*/result.json` or recovered
-`final-result.json` files and displays their acceptance state, plan binding,
-target counts, and per-strategy paper PnL in tables. It never reads a paper
-journal or starts a realtime process.
+## 历史 K/J 与 L 研究
 
-The evidence, verified paths, and remaining non-live boundaries are recorded in
-[`docs/batches/batch-06-kj-paper/mvp-console-acceptance.md`](docs/batches/batch-06-kj-paper/mvp-console-acceptance.md).
-
-## Historical J/K paper loop
-
-`poly-lab build-kj-ewma` builds a content-addressed point-in-time volatility
-artifact from the official Binance one-second archives pinned by Batch 3B.
-`poly-lab paper-kj` then runs a credential-free, deterministic J/K
-reconstruction over the hash-verified historical dataset.  It exports `summary.json`,
-`events.ndjson`, and `trades.csv` with signal, intent, theoretical fill,
-position, cash, fee, settlement, and PnL fields.  The current frozen dataset
-can now use canonical 5-second J/K EWMA derived from 1-second closes.  Results
-are explicitly classified `CANONICAL_5S_EWMA_OFFICIAL_BINANCE_1S_CLOSE`, not
-strict tick-for-tick legacy reproduction or live-profit evidence: the source is
-not the old live trade stream, K's USD conversion is unavailable, and the
-canonical archive phase is not a recovered legacy `vol_epoch`.
+`poly-lab build-kj-ewma` 从 Batch 3B 固定的官方 Binance 一秒归档构建 content-addressed、point-in-time 波动率产物；`poly-lab paper-kj` 在 hash 验证后的历史数据上进行无凭据、确定性的 J/K 重建，并输出 `summary.json`、`events.ndjson` 与 `trades.csv`。当前结果的忠实度只能标为 `CANONICAL_5S_EWMA_OFFICIAL_BINANCE_1S_CLOSE`：它不是逐 tick legacy 重现，也不是 live 盈利证据，因为缺旧实时成交流、K 的 USD 换算和 legacy `vol_epoch`。
 
 ```bash
 .venv/bin/poly-lab paper-kj \
-  --dataset /root/polymarket-money-data/external-research/normalized/\
-dataset_id=btc-5m-primary-v2-baseline-samples/\
-version=a27d9d1bf4dc5276c7ae5b11abd64250b6e6dc17f01fd432ab0dc10e4425cafc \
-  --dataset-hash a27d9d1bf4dc5276c7ae5b11abd64250b6e6dc17f01fd432ab0dc10e4425cafc \
-  --ewma-artifact /root/polymarket-money-data/external-research/kj-ewma/\
-artifact=387201c1eacbbe54f81d4519407bdb4acf50c9f6ce9f46a2bdb6f924796265da \
+  --dataset /root/polymarket-money-data/external-research/normalized/<已验证数据集> \
+  --dataset-hash <数据集哈希> \
+  --ewma-artifact /root/polymarket-money-data/external-research/kj-ewma/<产物目录> \
   --strategy both --split FINAL_TEST --horizon 30 --scenario BASE_1S \
   --output /root/polymarket-money-data/paper-runs/my-kj-run
 ```
 
-The output directory must not already exist.  This prevents an earlier run
-from being silently overwritten.
+输出目录不得已存在，防止静默覆盖。
 
-`L_ADAPTIVE_EXECUTION` is intentionally separate from the frozen J/K command.
-It is a Python-only, research-only dynamic-edge experiment: no fixed base edge
-or fixed $10 critical band, a smooth 30/60/120-second volatility blend and
-explicit probability drag, plus individually exported fee, overround, latency,
-depth and reprice-risk terms. It accepts only `TRAIN` or `VALIDATION`; the CLI
-and API reject `FINAL_TEST`, and it has no TypeScript runtime/paper-MVP route.
-The current frozen V1 failed its independent validation and is not eligible for
-real-time paper, shadow, or live use; see the Batch 06 result document.
+`L_ADAPTIVE_EXECUTION` 与冻结的 J/K 命令刻意隔离：它是 Python-only、research-only 的动态 edge 实验，使用平滑 30/60/120 秒波动混合、概率拖累及独立导出的费用、overround、延迟、深度和 reprice-risk 项。它只接受 `TRAIN` 或 `VALIDATION`，CLI/API 都拒绝 `FINAL_TEST`，不存在 TypeScript runtime 或 paper-MVP 路径。冻结 V1 未通过独立验证，不能进入 realtime paper、shadow 或 live。
 
-```bash
-.venv/bin/poly-lab paper-l-adaptive \
-  --dataset /root/polymarket-money-data/external-research/normalized/\
-dataset_id=btc-5m-primary-v2-baseline-samples/\
-version=a27d9d1bf4dc5276c7ae5b11abd64250b6e6dc17f01fd432ab0dc10e4425cafc \
-  --dataset-hash a27d9d1bf4dc5276c7ae5b11abd64250b6e6dc17f01fd432ab0dc10e4425cafc \
-  --split TRAIN --horizon 30 --scenario BASE_1S \
-  --output /root/polymarket-money-data/experiments/my-l-train-run
-```
+## 公开 Paper 运行边界
 
-The TypeScript public runtime also emits a paper-only
-`kjStrategyContextReady/reason/context` envelope.  It binds verified Up/Down
-token IDs, fee evidence, book and signal receive stamps, freshness, and source
-identity.  In `paper` mode, `kj-paper-engine-v2` consumes only ready contexts
-and emits versioned decision, intent, delayed fill/no-fill, wallet, position,
-market-state, and explicit official-settlement events only when an explicit
-durable journal is supplied.  Without `--kj-paper-journal`, the runtime still
-emits StrategyContext evidence but K/J wallet mutation is disabled.
+TypeScript public runtime 输出 paper-only 的 `kjStrategyContextReady/reason/context` envelope，其中绑定已验证的 Up/Down token ID、fee 证据、book/signal receive stamp、freshness 与来源身份。仅在 `paper` 模式且提供 `--kj-paper-journal` 时，`kj-paper-engine-v2` 才会消费 ready context 并产生 versioned decision、intent、延迟 fill/no-fill、wallet、position、market-state 和官方结算事件；未提供 journal 时，runtime 只输出 StrategyContext 证据，J/K wallet 不会改变。
 
 ```bash
 npm run runtime:live -- paper \
@@ -150,223 +78,16 @@ npm run runtime:live -- paper \
   --kj-paper-journal /root/polymarket-money-data/paper-runtime/kj-inputs.ndjson
 ```
 
-The journal must be absolute, Linux-native, non-symlinked, and outside Git.  It
-fsyncs every accepted input, chains record hashes, maintains an independent
-tail checkpoint, and strictly replays contexts, fills, reservations, wallets,
-positions, and settlements after restart.  Inspect it offline with
-`npm run paper:inspect -- /absolute/path/to/kj-inputs.ndjson`.
+journal 必须是 Git 仓外、Linux-native、绝对路径且不是 symlink；每个接受输入均 fsync，记录 hash 链和独立 tail checkpoint，并可在重启后严格回放 context、fill、reservation、wallet、position 和 settlement。使用 `npm run paper:inspect -- /absolute/path/to/kj-inputs.ndjson` 离线检查。
 
-K/J's default fast signal is Binance spot. A bounded paper runtime may instead
-select the public Polymarket Chainlink relay with `--kj-signal-source chainlink`;
-the provider, receive stamp, connection ID and input hash remain explicit in
-every context. This is a one-source run, not a blended price: a later
-two-source comparison must keep its wallets and EWMA state isolated.
+K/J 默认快速信号是 Binance spot；有界 paper runtime 可使用 `--kj-signal-source chainlink` 选择公开 Polymarket Chainlink relay。每个 context 都保留 provider、receive stamp、connection ID 和 input hash。这是单一来源运行，不是混合价格；双来源比较必须隔离 wallet 与 EWMA。
 
-`paper:signal-compare-mvp` is the isolated paired runner: it pre-registers one
-matched Binance/Chainlink source pair and starts two normal paper-only K/J
-children after a fixed 180-second input-only warmup and at the same complete
-five-minute boundary. Each child owns its own wallet, journal, EWMA and Gamma
-settlement path. Warmup prices are hash-chained `WARMUP_SIGNAL` records; they
-can update EWMA but cannot create a market session, intent, wallet event or
-Gamma-settlement candidate. The first planned market start is passed to each
-child as an explicit lower bound, so an earlier discovery cannot become a paper
-session or settlement candidate. The journal's pre-context run plan is v3 for
-these warmed runs and hash-binds `warmupSeconds` (plus campaign identity when
-present); a later report rejects a v1/v2 plan that did not pre-register that
-warmup requirement.
+完整的 paired/campaign、warmup、结算恢复、replay report、cohort 和 observability 命令、前置条件及 fail-closed 规则见 [Batch 06 设计](docs/batches/batch-06-kj-paper/design.md) 与 [受控 Paper 协议](docs/batches/batch-06-kj-paper/next-controlled-paper-protocol.md)。
 
-After both legs independently pass the normal replay report, build the paired
-comparison with `paper:signal-compare-report`. It verifies the frozen compare
-plan, both paper-report artifact hashes, each leg's window/count/commit/run ID,
-and the source declared by its runtime summary before exporting separate J/K
-net-PnL and trade-count differences. It remains descriptive paper evidence;
-the two runtimes have independent public-stream receive clocks and it does not
-claim equivalent inbound event timing or strategy profitability.
-
-For an evidence campaign, first create one `paper:signal-compare-campaign-plan`
-artifact. It binds the complete matched Binance and Chainlink source campaigns
-and every per-window pair plan under one SHA-256 hash. Start an imminent pair
-only through `paper:signal-compare-mvp -- --compare-campaign-plan ...
---campaign-run N`; the runner rejects a source-run, commit, window or run-index
-mismatch. This keeps a later source comparison from being assembled from a
-post-hoc subset of standalone runs. `paper:signal-compare-campaign-run` is the
-bounded launcher for the whole artifact: it starts each pair 210 seconds before
-its fixed boundary, fails closed if any launch window has already passed, and
-never shifts, retries, or replaces a scheduled run.
-
-Single-run reports reconcile per-market aggregate PnL to the final wallet with
-an extremely small decimal rounding tolerance. Any non-zero residual inside
-that tolerance is exported as `pnlReconciliationResidual`; a larger residual,
-or a mismatch with the accepted result, still rejects the report.
-
-For plans that declare the default 180-second K warmup, the replay report also
-requires durable pre-market `WARMUP_SIGNAL` evidence: at least two inputs, a
-full 180-second observed span ending before the first target market, and the
-same Binance-or-Chainlink source family as the runtime. It exports the observed
-count, duration and source family with the run instead of treating warmup as an
-implicit condition.
-
-For a bounded end-to-end product run, use the single-command MVP:
+最小端到端 product run：
 
 ```bash
 npm run paper:mvp -- --markets 1
 ```
 
-It waits for the next complete five-minute market, runs K and J with independent
-paper wallets, polls the public Gamma market endpoint for the resolved outcome,
-revalidates and journals the exact response, and writes a final `result.json`
-below `/root/polymarket-money-data/paper-mvp`.  It accepts 1 through 12 markets,
-refuses dirty tracked runtime code, never overwrites a run, and marks the run
-accepted only after every target market is settled with no pending intents,
-terminal failure, credential access, live client, user channel, or real order.
-The default settlement grace is ten minutes and the target interval cutoff
-prevents the next market from leaking into the run.  The process exits early
-when capture has ended and every registered market has official settlement.
-Before any market context, the MVP also hash-binds its run ID, target count,
-half-open time window, committed code ID, and, when used, the warmup duration
-into the journal.
-
-For a new multi-run evidence campaign, create the immutable offline schedule
-first, then launch its selected imminent run. The campaign hash, run index,
-window, count, settlement grace and collector commit are all written into the
-v3 journal run-plan before any context (including warmup duration when the
-campaign declares one):
-
-```bash
-npm run paper:campaign-plan -- \
-  --campaign-id kj-20260718-a \
-  --first-full-market-start 2026-07-18T12:00:00.000Z \
-  --runs 3 --markets 3 --gap-markets 0 \
-  --output /absolute/path/to/new-campaign.json
-npm run paper:mvp -- --campaign-plan /absolute/path/to/new-campaign.json --campaign-run 1
-```
-
-The selected run must be the next five-minute boundary and must use the exact
-committed code recorded by the campaign. `paper:mvp` without these arguments
-remains available for bounded product checks, but its output cannot become a
-complete pre-registered campaign cohort.
-
-If an official result arrives after the finite run or the process was
-interrupted, resume only the frozen target window without collecting another
-market:
-
-```bash
-npm run paper:settle -- /absolute/path/to/kj-inputs.ndjson \
-  --start-at 2026-07-17T12:00:00.000Z \
-  --start-before 2026-07-17T12:05:00.000Z \
-  --wait-seconds 600 --output /absolute/path/to/recovery-result.json
-```
-
-Recovery reopens and validates the hash-chained journal, polls only ended
-markets in that half-open interval, and appends the exact official response.  A
-still-open result remains pending rather than being inferred from price.
-
-For a plan-bound run whose original result was unaccepted only because official
-resolution arrived after its finite window, complete the local acceptance step:
-
-```bash
-npm run paper:finalize -- /absolute/path/to/mvp-run
-```
-
-Finalization normally checks the original result's clean child exit. If an
-outer wrapper was interrupted before it wrote `result.json`, recovery is still
-possible only when the durable runtime summary independently proves a normal
-duration stop, no terminal failure, matching plan/commit/journal identity, and
-zero live/private/order safety counters. It then reuses the same acceptance
-builder as `paper:mvp` to check the hash-chained plan, exact target count,
-current journal tail, settlement, and pending risk. It writes a no-overwrite
-`final-result.json` with `resultKind=RECOVERED_FINAL`; it cannot legitimize a
-partial capture, legacy unbound plan, or runtime safety failure.
-
-After an accepted run, generate a replay-verified research report:
-
-```bash
-npm run paper:report -- /absolute/path/to/mvp-run \
-  --output /absolute/path/to/new-report-directory
-```
-
-The report refuses failed runs, pending risk, snapshot drift, target-window
-drift, non-paper safety counters, missing settlement pairs, or broken per-market
-and aggregate PnL identities.  It writes a no-overwrite `summary.json` and
-`markets.csv`, with source-file hashes, CSV hash, and an artifact hash.  Reports
-from runs created before journal plan binding are explicitly labeled
-`LEGACY_UNBOUND` and remain descriptive only.  All reports set
-`profitabilityClaimEligible=false`; multiple paper markets are still not live
-fill evidence.  When `final-result.json` exists, `paper:report` validates and
-uses it in preference to the original timed-out result.
-
-To aggregate only independently precommitted, replay-verified reports without
-turning a short sample into a profitability claim:
-
-```bash
-npm run paper:cohort-report -- \
-  --input /absolute/path/to/report-one \
-  --input /absolute/path/to/report-two \
-  --output /absolute/path/to/new-cohort-directory
-```
-
-The cohort command rechecks every input artifact hash, accepts only
-`HASH_CHAINED` descriptive reports, rejects duplicate run IDs and overlapping
-target windows, and writes a no-overwrite hashed summary outside Git.  Its
-`profitabilityClaimEligible` field remains `false` regardless of aggregate PnL.
-
-For formal pre-registered campaign evidence, use the stricter cohort command:
-
-```bash
-npm run paper:campaign-cohort-report -- \
-  --campaign-plan /absolute/path/to/campaign.json \
-  --input /absolute/path/to/report-one \
-  --input /absolute/path/to/report-two \
-  --output /absolute/path/to/new-campaign-cohort-directory
-```
-
-It requires every scheduled campaign run exactly once and rejects a report
-whose campaign hash, run index, window, market count, or collector commit does
-not match the immutable schedule. It is still descriptive paper evidence only.
-
-For the matching full-campaign execution-quality replay, use:
-
-```bash
-npm run paper:campaign-cohort-observability-report -- \
-  --campaign-plan /absolute/path/to/campaign.json \
-  --input /absolute/path/to/report-one \
-  --input /absolute/path/to/report-two \
-  --output /absolute/path/to/new-campaign-observability-directory
-```
-
-It applies the same all-runs-once campaign check before reopening journals and
-runtime summaries, so PnL and reliability metrics cannot be selected from
-different post-hoc subsets.
-
-To keep operational quality separate from PnL, the offline observability
-cohort command reopens each verified journal and cross-checks its tail, record
-count, runtime summary hash, paper event count, public-stream counters,
-official-settlement delay, and target-market intent/fill/no-fill events:
-
-```bash
-npm run paper:cohort-observability-report -- \
-  --input /absolute/path/to/report-one \
-  --input /absolute/path/to/report-two \
-  --output /absolute/path/to/new-observability-directory
-```
-
-It accepts the same non-overlapping `HASH_CHAINED` reports as the PnL cohort,
-but additionally rejects a runtime/journal mismatch. It reports public-stream
-events/reconnects/quarantines, Gamma official-settlement-delay distribution and
-J/K intent, fill, partial-fill and no-fill-reason counts. It remains strictly
-`DESCRIPTIVE_PAPER_ONLY` with `profitabilityClaimEligible=false`.
-
-`data/golden/batch-06/kj-ewma-intent-parity-v1.json` feeds the same five-second
-price path, book, fee, delayed fill, and official settlement to Python and
-TypeScript.  It verifies a representative J no-trade and K
-intent-to-settlement path within explicit numeric tolerances.
-
-The real-time paper engine completes its public-data loop without becoming a
-live-trading system.  Only a closed Gamma market with matching market/token/time
-identity, `umaResolutionStatus=resolved`, and a unique exact 1/0 outcome can
-create `OFFICIAL_RESOLUTION`; unresolved, ambiguous, premature, or conflicting
-evidence fails closed.  `monitor` mode never mutates K/J wallets, and neither
-mode has an order-submission path.  See
-`docs/batches/batch-06-kj-paper/live-context.md` for the exact boundary and
-`docs/batches/batch-06-kj-paper/completion-audit.md` for the requirement-by-
-requirement completion status and next evidence gate.
+它等待下一个完整五分钟市场，以独立 paper wallet 运行 K/J，轮询公开 Gamma 结算结果并记录精确响应。只有所有目标市场已结算、无 pending intent、无 terminal failure、无凭据访问、无 live client、无用户频道且无真实订单时才可能被接受。描述性 paper PnL 不构成盈利、真实成交、shadow 或 live 证据。

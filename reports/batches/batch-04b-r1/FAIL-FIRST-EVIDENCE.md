@@ -1,211 +1,47 @@
-# Batch 4B-R1 fail-first evidence
+# Batch 4B-R1：fail-first 证据
 
-每节记录实现前的真实失败。后续实现提交不得删除这些失败证据。
+每节记录实现前的真实失败；后续实现提交不得删除这些失败证据。
 
-## Group 1 — ReceiveStamp and raw-event-v2
+## Group 1：ReceiveStamp 与 raw-event-v2
 
-Fail-first commit input: `tests/unit/receive-time-r1.test.ts`。
+fail-first 输入为 `tests/unit/receive-time-r1.test.ts`，命令 `npm test`。基线报错显示缺少 `receive-time.js`、`createEnvelopeDraftV2` 和 `requireSubsecondReceiveStamp`。这证明审查基线没有可比的 ReceiveStamp 契约、没有启用的 raw-event-v2 constructor，也没有阻止 v1 record 进入 subsecond 工作。
 
-Command:
+## Group 2：RuntimeIncident 与 terminal fallback
 
-```text
-npm test
-```
+`tests/unit/runtime-incidents-r1.test.ts` 要求 structured incident contract、fail-closed runtime controller 和 one-shot emergency receipt path。基线没有 `runtime/incidents.js`，编译还暴露未标注类型的 callback parameter，故实现前必须失败。
 
-Expected failure observed:
+## Group 3：Decimal 复用与统一 fee/edge
 
-```text
-tests/unit/receive-time-r1.test.ts(9,8): error TS2307: Cannot find module '../../execution/src/domain/receive-time.js' or its corresponding type declarations.
-tests/unit/receive-time-r1.test.ts(11,3): error TS2724: '"../../execution/src/domain/raw-event.js"' has no exported member named 'createEnvelopeDraftV2'. Did you mean 'createEnvelopeDraft'?
-tests/unit/receive-time-r1.test.ts(13,3): error TS2305: Module '"../../execution/src/domain/raw-event.js"' has no exported member 'requireSubsecondReceiveStamp'.
-```
+共享 `fee-edge-v1.json` fixture 与 TypeScript/Python contract test 要求 `decimal.js`、私有 `MoneyDecimal`、单一 `FeeEdgeCalculator` 和 Python fee evidence/status field。基线缺 `decimal.js`、`fee-edge.js`、`money.js` 和 `FeeEvidenceStatus`，两种语言测试均按预期失败。
 
-This proves the reviewed baseline had no comparable ReceiveStamp contract, no active raw-event-v2
-constructor, and no guard preventing v1 records from entering subsecond work.
+## Group 4：Opportunity observation 与 route evaluation 分离
 
-## Group 2 — RuntimeIncident and terminal fallback
+`opportunity-observation-r1.test.ts` 要求不可变、versioned、canonical-hashed 的 `OpportunityObservationV1` fact contract，以及独立的 `RouteEvaluationV1` aggregate；当前唯一决策应是 `DATA_INSUFFICIENT`。基线只有 mutable-shallow 的临时 record，缺少该 module。后续加强测试还要求显式 `git_commit`、`session_id`、fee evidence、continuity、eligibility、rejection 与 `observation_id`；不得把必填 schema field 藏在 generic facts。
 
-Fail-first input: `tests/unit/runtime-incidents-r1.test.ts`。The test requires a structured incident
-contract, a fail-closed runtime controller, and a one-shot emergency receipt path. These symbols do
-not exist on the reviewed baseline; `npm test` must fail at TypeScript compilation before the
-implementation commit.
+兼容的 `observeCompleteSet` 过去会从单条 quote 返回 `RESEARCH_CANDIDATE`，违反冻结契约；加强后的 legacy test 要求 `OBSERVED_NOT_EXECUTABLE`，直到移除 route-level label 才通过。
 
-Observed failure:
+## Group 5：跨 venue lead-lag 因果契约
 
-```text
-tests/unit/runtime-incidents-r1.test.ts(10,8): error TS2307: Cannot find module '../../execution/src/runtime/incidents.js' or its corresponding type declarations.
-tests/unit/runtime-incidents-r1.test.ts(43,36): error TS7006: Parameter 'receipt' implicitly has an 'any' type.
-tests/unit/runtime-incidents-r1.test.ts(44,19): error TS7006: Parameter 'line' implicitly has an 'any' type.
-tests/unit/runtime-incidents-r1.test.ts(45,19): error TS7006: Parameter 'code' implicitly has an 'any' type.
-tests/unit/runtime-incidents-r1.test.ts(65,19): error TS7006: Parameter 'line' implicitly has an 'any' type.
-tests/unit/runtime-incidents-r1.test.ts(66,19): error TS7006: Parameter 'code' implicitly has an 'any' type.
-```
+`lead-lag-r1.test.ts` 要求冻结四来源 252-cell grid、严格 ReceiveStamp baseline、fixed-horizon as-of query、外部与 Polymarket connection identity、reconnect censoring、独立 next-update metric、quality gate、replay/runtime equivalence 和 versioned 500ms episode。基线没有 `LeadLagEngine` 或 `EpisodeTracker`，只在 display loop 比较相邻 spot value。
 
-## Group 3 — Decimal reuse and unified fee/edge
+## Group 6：活跃 ReceiveClock 与 raw-event-v2 接线
 
-Fail-first inputs are the shared `fee-edge-v1.json` fixture plus TypeScript and Python contract
-tests. The reviewed baseline has no `decimal.js` dependency, no private MoneyDecimal wrapper, no
-single FeeEdgeCalculator, and no Python fee evidence/status fields. Both language suites must fail
-before implementation.
+`runtime-wiring-r1.test.ts` 要求 HTTP/WS receive boundary 共享 `ReceiveClock`，active `RawSegmentWriter` 只接收 v2 draft，v1 只读。基线 runtime 缺 `receiveClock`/`receiveStamp`，writer 只为 v1 类型化，因此 v2 draft 不能赋值。
 
-Observed failures:
+## Group 7：runtime 集成与显式错误处置
 
-```text
-tests/unit/fee-edge-r1.test.ts(5,21): error TS2307: Cannot find module 'decimal.js' or its corresponding type declarations.
-tests/unit/fee-edge-r1.test.ts(9,8): error TS2307: Cannot find module '../../execution/src/runtime/fee-edge.js' or its corresponding type declarations.
-tests/unit/fee-edge-r1.test.ts(10,64): error TS2307: Cannot find module '../../execution/src/domain/money.js' or its corresponding type declarations.
+`runtime-integration-r1.test.ts` 静态防止退回到 adjacent-spot 5bp observer、重复算术、将 provider-time 标成 receive latency 和空 catch。它还要求 active runtime 引用冻结的 lead-lag、精确 fee、不可变 observation 和 fail-closed incident contract；基线不引用这些 R1 contract。
 
-ImportError: cannot import name 'FeeEvidenceStatus' from 'research.polymarket_money.backtest'
-```
+## Second Sol Critical 后续
 
-## Group 4 — Opportunity observation and route evaluation separation
+read-only re-review 发现初版没有把 horizon record 做成自包含 causal artifact：缺 input lineage watermark，rejected frame 后未使既有 Polymarket state 失效，A -> B -> A market transition 可错误复活 A episode，也没有 versioned runtime config binding。加强测试要求 `input_hash`、`external_event_id`、`notePolymarketQualityFailure`、`opportunity-config.js`、`grossEdge`、canonical-string-only Gamma fee、真实 lead-lag observation 与 trigger output。
 
-Fail-first input: `tests/unit/opportunity-observation-r1.test.ts`. It requires the immutable,
-versioned and canonically hashed `OpportunityObservationV1` fact contract plus a separate
-`RouteEvaluationV1` aggregate whose only current decision is `DATA_INSUFFICIENT`. The reviewed
-baseline has only mutable-shallow ad-hoc opportunity records and no such module, so TypeScript
-compilation must fail before implementation.
+offline Python truth chain 原先只导入 `RawEventEnvelopeV1`，导致 collector 产生的 raw-event-v2 segment 无法通过 manifest/replay/normalization。跨语言 fixture 还冻结：缺 fee 必须返回 `None`/`MISSING_FEE_EVIDENCE`，价格高于一必须 fail closed，不能使用 `Decimal("0")`/`UNKNOWN_FEE`。
 
-Observed failure:
+horizon contract 进一步分开 trigger-time 与 horizon-state 的 Polymarket lineage：成功 50ms markout 必须命名 640ms state input，rejected frame 的 censor 必须命名对应 raw input。fractional-millisecond duration 在进入 facts 前必须序列化为 canonical non-exponent decimal string；safe integer count 保持 JSON number。
 
-```text
-tests/unit/opportunity-observation-r1.test.ts(9,8): error TS2307: Cannot find module '../../execution/src/domain/opportunity-observation.js' or its corresponding type declarations.
-```
+offline raw-v2 验证必须拒绝 cross-domain 或非递增 segment ReceiveStamp；同纳秒允许 ordinal 1 再 2，反序必须在 `RawReplay` 暴露前失败。CLOB integration 只允许成功应用的 `book`/`price_change` mutation 刷新 lead-lag book ReceiveStamp；`last_trade_price` 仅 raw-preserved，失败 mutation 必须使旧 state 失效。
 
-## Group 5 — Cross-venue lead-lag causal contract
+post-implementation review 还发现 v2 ReceiveStamp loop 将局部 `ordinal` 复用并覆盖 manifest segment ordinal。multi-segment test 要求保存 `[0, 1]` 并按 `segment-0`、`segment-1` replay，而不是 receive ordinal `[1, 2]`。data-quality report 也不得将 provider-clock 与 local-wall delta 标为 `receive_latency`；必须使用 `provider_source_to_local_wall_delta_ms` 或 `provider_server_to_local_wall_delta_ms`。
 
-Fail-first input: `tests/unit/lead-lag-r1.test.ts`. It requires the frozen four-source 252-cell grid,
-strict ReceiveStamp baseline and fixed-horizon as-of queries, explicit external and Polymarket
-connection identities, reconnect censoring, a separate next-update metric, quality gates,
-replay/runtime equivalence, and versioned 500ms episodes. The reviewed baseline has no common
-`LeadLagEngine` or `EpisodeTracker`; it only compares adjacent spot values in the display loop.
-
-Observed failure:
-
-```text
-tests/unit/lead-lag-r1.test.ts(12,8): error TS2307: Cannot find module '../../execution/src/runtime/lead-lag.js' or its corresponding type declarations.
-tests/unit/lead-lag-r1.test.ts(128,36): error TS7006: Parameter 'item' implicitly has an 'any' type.
-tests/unit/lead-lag-r1.test.ts(243,45): error TS7006: Parameter 'item' implicitly has an 'any' type.
-```
-
-## Group 6 — Active ReceiveClock and raw-event-v2 wiring
-
-Fail-first input: `tests/unit/runtime-wiring-r1.test.ts`. It requires HTTP and WebSocket receive
-boundaries to expose stamps from one shared `ReceiveClock`, and requires the active
-`RawSegmentWriter` to accept only v2 drafts while v1 remains read-only. The baseline public runtime
-has no `receiveClock`/`receiveStamp`, and the writer is typed exclusively for v1.
-
-Observed failures include:
-
-```text
-tests/unit/runtime-wiring-r1.test.ts(45,5): error TS2353: 'receiveClock' does not exist in type 'PublicSocketRuntime'.
-tests/unit/runtime-wiring-r1.test.ts(75,25): error TS2339: Property 'receiveStamp' does not exist on type 'PublicHttpResponse'.
-tests/unit/runtime-wiring-r1.test.ts(95,25): error TS2345: Argument of type 'RawEventEnvelopeDraftV2' is not assignable to parameter of type 'RawEventEnvelopeDraftV1'.
-```
-
-## Group 7 — Runtime contract integration and explicit error disposition
-
-Fail-first input: `tests/unit/runtime-integration-r1.test.ts`. It statically guards the active
-runtime boundary against regressions to the adjacent-spot 5bp observer, duplicate arithmetic,
-provider-time "receive latency" labels, and empty catch blocks. It also requires the actual runtime
-to reference the frozen lead-lag, exact fee, immutable observation and fail-closed incident
-contracts. The baseline runtime does not reference any of these R1 contracts.
-
-Observed test failures:
-
-```text
-not ok - live runtime is wired to the frozen R1 contracts (missing LeadLagEngine)
-not ok - legacy observers delegate exact money and fee calculations (missing FeeEdgeCalculator)
-not ok - active capture and runtime paths contain no empty catch disposition (scripts/live-runtime.ts)
-```
-
-### Group 4 follow-up — explicit provenance and eligibility fields
-
-The final frozen-contract audit found that the first Group 4 test proved generic provenance but did
-not require explicit `git_commit`, `session_id`, fee evidence, continuity, eligibility and rejection
-fields. The strengthened test is committed before the schema hardening; against the prior
-`OpportunityObservationV1` interface it fails TypeScript excess/missing-field checks and has no
-`observation_id` member. The implementation commit must make those fields schema-required rather
-than hiding them in the generic facts object.
-
-### Group 4 follow-up — legacy single-record route label
-
-The final unique-path audit also found that the compatibility `observeCompleteSet` export still
-returned `RESEARCH_CANDIDATE` from one quote. Although the R1 live runtime no longer imports that
-module, an exported single-record route conclusion violates the frozen contract. The strengthened
-legacy test requires `OBSERVED_NOT_EXECUTABLE`; it fails against the prior implementation until the
-route-level label is removed.
-
-## Second Sol Critical follow-up A — causal runtime evidence
-
-The read-only re-review found that the first implementation did not yet make the horizon record a
-self-contained causal artifact, did not invalidate a previous good Polymarket state after a later
-rejected frame, could revive an A episode after an A -> B -> A market transition, and did not bind
-opportunity output to a versioned runtime configuration. The strengthened tests also require causal
-input-lineage watermarks, canonical-string-only Gamma fee rates, explicit gross edge, real
-lead-lag observations, and trigger output.
-
-Observed fail-first TypeScript errors include:
-
-```text
-tests/unit/lead-lag-r1.test.ts: 'input_hash' does not exist in type 'ExternalPriceState'
-tests/unit/lead-lag-r1.test.ts: Property 'external_event_id' does not exist on type 'HorizonObservation'
-tests/unit/lead-lag-r1.test.ts: Property 'notePolymarketQualityFailure' does not exist on type 'LeadLagEngine'
-tests/unit/opportunity-config-r1.test.ts: Cannot find module '../../execution/src/runtime/opportunity-config.js'
-tests/unit/runtime-paper.test.ts: Property 'grossEdge' does not exist on type 'PaperAudit'
-```
-
-## Second Sol Critical follow-up B — offline raw-v2 and fee parity
-
-The offline Python truth chain still imported only `RawEventEnvelopeV1`, so a collector-produced
-raw-event-v2 segment could not pass manifest verification, replay, or normalization. A new
-cross-language fixture boundary also freezes missing-fee and price-above-one behavior.
-
-Observed fail-first Python collection failure:
-
-```text
-ImportError: cannot import name 'RawEventEnvelopeV2' from 'research.polymarket_money.raw_events'
-```
-
-Once collection reaches the fee test, the prior Python behavior also conflicts with the fixture:
-it returns `Decimal("0")` / `UNKNOWN_FEE` for missing evidence and accepts a price above one,
-whereas the frozen shared result is `None` / `MISSING_FEE_EVIDENCE` and fail-closed price bounds.
-
-The reviewer then strengthened the horizon fail-first contract one step further: trigger-time
-Polymarket lineage and horizon-state lineage are distinct named fields. A successful 50ms markout
-must name the 640ms state input rather than only the 590ms trigger snapshot; a censor caused by a
-rejected frame must name that rejected raw input. This prevents one ambiguous `polymarket_parent`
-field from conflating two causal instants.
-
-The live-artifact test also freezes serialization of fractional millisecond durations: safe integer
-counts remain JSON numbers, while non-integer durations become canonical non-exponent decimal
-strings before entering `facts`. Without this boundary a real sub-millisecond horizon age would
-throw during observation hashing.
-
-Offline raw-v2 verification is also required to reject cross-domain or non-increasing segment
-ReceiveStamp order. The accepted same-nanosecond case is ordinal 1 then 2; reversing those lines
-must fail before `RawReplay` can expose them.
-
-The CLOB integration test finally freezes that only a successfully applied `book` or
-`price_change` mutation can refresh the lead-lag book ReceiveStamp. Informational frames such as
-`last_trade_price` must be raw-preserved but ignored for book freshness; a failed attempted book
-mutation invalidates the previous state. The fail-first module did not exist before this guard.
-
-## Second Sol Critical follow-up C — segment ordinal shadowing
-
-The post-implementation read-only review found that the v2 ReceiveStamp loop reused the local name
-`ordinal`, overwriting the manifest segment ordinal before `VerifiedSegment` construction. The
-multi-segment fail-first test requires stored segment ordinals `[0, 1]` and replay order
-`segment-0`, `segment-1`; the buggy implementation instead stores receive ordinals `[1, 2]`.
-
-The same review found the offline data-quality report still labeled provider-clock minus local-wall
-deltas as `receive_latency`. The v2 fail-first test requires explicit
-`provider_source_to_local_wall_delta_ms` / `provider_server_to_local_wall_delta_ms` fields and
-forbids the two legacy latency names; provider clocks cannot prove transport latency.
-
-## Second Sol Critical follow-up D — single complete-set calculator path
-
-The reviewer found that unknown-fee branches in `paper.ts` and `opportunities.ts` bypassed
-`FeeEdgeCalculator` and hand-wrote gross edge. The fail-first guards forbid the helper/fallback,
-require `MISSING` evidence in both modules, and use visible size 2 to prove the legacy opportunity
-gross amount is `0.08` rather than the unscaled per-unit `0.04`.
+最后，unknown-fee branch 曾在 `paper.ts` 和 `opportunities.ts` 绕过 `FeeEdgeCalculator` 并手写 gross edge。fail-first guard 禁止该 fallback，要求两处均输出 `MISSING` evidence，并以 visible size 2 验证 legacy opportunity gross amount 为 `0.08`，而不是未按数量缩放的 `0.04`。

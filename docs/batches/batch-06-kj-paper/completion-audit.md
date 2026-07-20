@@ -1,67 +1,33 @@
-# Batch 06 K/J research and paper MVP completion audit
+# Batch 06：K/J 研究与 Paper MVP 完成度审计
 
-Audit date: 2026-07-18
+审计日期：2026-07-18
+代码分支：`batch/06-kj-paper-loop`
+审计基线：`a7f6231`。下列 L 研究边界、恢复加固和本地 MVP 结果发布均已在当前工作树验证。
 
-Code branch: `batch/06-kj-paper-loop`
+## 决定
 
-Audited baseline: `a7f6231`; the L research boundary, recovery hardening and
-local MVP result-publication verification below were verified in the current
-working tree.
+当前工程 MVP 可运行且可 replay 验证，但项目总目标尚未完成。
 
-## Decision
+- `MVP_ENGINEERING_COMPLETE`：历史 K/J 研究和有界 public-data paper loop 已连接 market identity、signal、intent、延迟理论 fill、wallet reservation、token position、官方 settlement、PnL、durable journal、recovery、finalization 和 report export。
+- `CURRENT_PLAN_BOUND_MULTI_MARKET_EVIDENCE_COMPLETE`：两次获批的三市场非重叠 public run 均在 context 前记录 `RUN_PLAN`，返回 `accepted=true`，并生成 replay-verified 的 `DESCRIPTIVE_PAPER_ONLY` report；这只是产品路径证据。
+- `NOT_SHADOW_OR_LIVE_READY`：public CLOB continuity 仍为 `UNVERIFIED`，fill 仍是理论模型，历史 K/J 不具 strict legacy signal fidelity，且没有稳定的独立样本正 edge。
 
-The current engineering MVP is runnable and replay-verifiable, but the broader
-project goal is not complete.
+## 逐项证据与限制
 
-- `MVP_ENGINEERING_COMPLETE`: historical K/J research and a bounded public-data
-  paper loop connect market identity, signal, intent, delayed theoretical fill,
-  wallet reservation, token position, official settlement, PnL, durable journal,
-  recovery, finalization, and report export.
-- `CURRENT_PLAN_BOUND_MULTI_MARKET_EVIDENCE_COMPLETE`: two approved bounded
-  public runs, each with three non-overlapping targets, recorded `RUN_PLAN`
-  before context, returned `accepted=true`, and produced replay-verified
-  `DESCRIPTIVE_PAPER_ONLY` reports.  This is product-path evidence only, not
-  profitability evidence.
-- `NOT_SHADOW_OR_LIVE_READY`: public CLOB continuity remains `UNVERIFIED`, fills
-  are theoretical, historical K/J does not have strict legacy signal fidelity,
-  and K/J has no stable independent-sample positive edge.
+| 要求 | 结论 | 证据与剩余限制 |
+|---|---|---|
+| 唯一主项目 | 已证明 | 新代码与工程文档均在本仓；D-022 将 workbench 和参考仓标为只读。旧产品仍作历史参考。 |
+| 旧 K/J 路径与复用决策 | 已证明（可得来源范围） | `docs/current-project-audit.md`、`module-inventory.md`、`reuse-register.md` 和 `engine-review.md` 记录职责、来源与许可证边界；仍缺旧 live tick、K USD conversion、`vol_epoch`。 |
+| 历史/公开数据进入 K/J | 已证明 | `build-kj-ewma`、`paper-kj` 和 public runtime 均有 hash/identity 约束；Python 与 runtime 是代表性契约一致，不是逐字节等价。 |
+| market identity 与官方结算 | 已证明 | adapter 验证 slug/condition/time/token；精确 Gamma response 进入 journal 并在 replay 重验。上游没有可证明 gap-free cursor。 |
+| paper execution 与会计 | 已证明为理论 paper 模型 | 冻结 intent、一秒 latency、slippage guard、partial/no-fill、独立 J/K wallet、reservation、position、fee/PnL identity 均有测试；没有 queue、hidden liquidity 或真实成交证明。 |
+| durable restart 与篡改检测 | 已证明为 paper input | fsync、sequence/hash chain、checkpoint、replay、plan binding、tamper/truncation/symlink 测试通过；不是 exchange open-order reconciliation。 |
+| delayed settlement recovery | 已证明离线闭环 | `paper:settle -> paper:finalize -> paper:report -> paper:cohort-observability-report` 复用同一 acceptance contract；计划绑定后的真实公开 delayed case 尚未发生。 |
+| 本地研究产品面 | 已证明 | localhost-only `mvp:console` 只显示固定 offline K/J、L V1/L V2 研究，不启动 public paper 或订单。 |
+| 策略盈利 | 未证明 | Final Test 中 J BASE 微正但 stress/集中度移除后为负；K 两种 scenario 均负。不得用 Final Test 调参，也不进入 shadow/live。 |
+| L adaptive | 历史 gate 拒绝 | Python-only V1 的 TRAIN 为 -20.66、冻结 VALIDATION 为 -1287.05；缺连续 quote velocity 与 point-in-time Chainlink boundary，Final Test 保持关闭。 |
 
-## Requirement-by-requirement evidence
-
-| Requirement | Status | Authoritative evidence | Residual limit |
-|---|---|---|---|
-| `polymarket-money` is the only future main project | Proven current | Repository contains all new code and engineering docs; project decision D-022 marks the workbench and reference repositories read-only | Old products remain historical references and are not deleted |
-| Understand old K/J and the complete legacy path | Proven for the available source | `docs/current-project-audit.md`, `docs/module-inventory.md`, and Batch 06 design identify config, signal, sizing, fill, storage, and settlement responsibilities | Missing old live tick stream, K USD conversion, and recovered `vol_epoch` prevent strict tick equivalence |
-| Decide reuse/adapt/rewrite/abandon | Proven current | `docs/reuse-register.md` and `docs/engine-review.md` record per-module decisions, provenance, and license boundaries | Decisions must be revisited if a future live adapter is authorized |
-| Historical or public data reaches K/J signals | Proven | `build-kj-ewma` plus `paper-kj` consume hash-pinned historical inputs; public runtime builds immutable `StrategyContext` from Gamma, CLOB, and Binance evidence | Runtime and Python historical paths are representative-contract aligned, not byte-identical |
-| Market identity and Up/Down mapping are verified | Proven | Public market adapter validates slug/condition/time and maps labels to token IDs; settlement adapter checks the same identity again | Upstream has no gap-free public cursor |
-| Five-minute lifecycle isolation | Proven | `kj-paper-engine-v2` implements `INIT -> RUNNING -> STOPPING -> DONE`; target cutoff prevents the following market entering an MVP run; the 2026-07-16 run completed exactly three planned targets | One bounded run is not long-run reliability evidence |
-| Delayed, partial, no-fill paper execution | Proven as a paper model | Frozen intent, one-second latency, slippage guard, visible-size partial fill, reservation release, and deterministic tests | No queue position, hidden liquidity, or proof a live order would fill |
-| Independent wallet, position, fee, and PnL | Proven | Decimal `Money`, independent J/K wallets, reservations, token positions, settlement events, golden tests, and report identities | Not exchange reconciliation; no private account truth is read |
-| Official resolution only | Proven | Exact Gamma response is journaled and revalidated; market/token/time, closed/status, and unique exact 1/0 winner must agree | Ambiguous or delayed results remain pending and are never inferred from last price |
-| Durable restart and tamper detection | Proven for paper inputs | fsync append, sequence/hash chain, checkpoint, replay, plan binding, tamper/truncation/symlink tests | This is not future exchange open-order reconciliation |
-| Delayed resolution recovery closes the product workflow | Proven offline end to end | `paper:settle -> paper:finalize -> paper:report -> paper:cohort-observability-report`; one integration test covers initial pending, recovered acceptance, final-result selection, report export, runtime/journal observability replay, no-overwrite, and a missing outer `result.json` only when the durable runtime summary proves clean paper-only completion | A post-plan-binding delayed-resolution public case has not occurred yet |
-| Logs and research exports | Proven | Runtime NDJSON/metrics, journal, result JSON, `paper:inspect`, `paper:report` summary/per-market CSV, PnL-only `paper:cohort-report`, and replay-verified `paper:cohort-observability-report` for stream/settlement/execution quality | Static dashboards are offline snapshots; all cohort results remain descriptive |
-| Local research product surface | Proven | localhost-only `mvp:console` exposes only fixed offline K/J, L V1 and L V2 studies; result display recomputes historical summary hashes, and new historical exports require a committed sidecar manifest before they are shown as complete | Existing pre-manifest exports remain explicitly `LEGACY_SUMMARY_VERIFIED`; the console never starts public paper or orders |
-| Target selection cannot be silently changed during reporting | Proven in current code and one public run | `RUN_PLAN` is the first post-header journal record and binds run ID, target count/window, and collector commit; report compares it to artifacts; the 2026-07-16 run replayed 479 records with a matching plan and journal tail | The earlier accepted public run is explicitly `LEGACY_UNBOUND` |
-| No credentials or real orders | Proven structurally and at runtime | No `ExecutionEngine` implementation exists; runtime safety counters are all false/zero and acceptance verifies them | The domain keeps a future `ExecutionEngine` interface, which is not an executable adapter |
-| Strategy profitability | Not proven | Final Test: J is only slightly positive in base and negative under stress/concentration removal; K is negative in base and stress | No tuning on Final Test; no shadow/live promotion |
-| L adaptive research candidate | Rejected at historical gate | Separate Python-only V1 has dynamic execution edge, volatility drag, dynamic anchor band and depth/reprice-risk proxies; TRAIN is -20.66 and frozen VALIDATION is -1,287.05 | No verified historical Chainlink boundary series or continuous CLOB quote velocity; L does not enter real-time paper/shadow/live and leaves Final Test closed |
-
-## Reference-engine lessons: adopted versus deferred
-
-| Reference lesson | Current disposition |
-|---|---|
-| Per-market lifecycle state machine | Adapted in `kj-paper-engine-v2` |
-| Unified strategy context | Adapted with explicit market, book, signal, fee, and receive-time evidence |
-| Wallet balance/position/order reservation | Adapted for independent paper wallets |
-| Append-only NDJSON and dashboard loop | Adapted as runtime NDJSON, durable journal, inspection, and report CLI |
-| Crash recovery that stops risk expansion | Adapted for paper inputs and pending intent release |
-| Private user-order channel and exchange reconciliation | Deliberately deferred; there is no private channel or live adapter |
-| JavaScript number money and `Date.now` as the only clock | Rejected; exact decimal money and ReceiveStamp/source/server/receive/decision times are used |
-| Array-position outcome mapping, unofficial result, unbounded retry | Rejected; label/token identity, official exact response, and bounded loops are required |
-
-## Current verification
+## 当前验证
 
 ```text
 Python: 200 passed
@@ -69,110 +35,12 @@ Node/TypeScript: 146 passed
 Ruff: passed
 TypeScript typecheck: passed
 git diff --check: passed
-CLI help: paper:mvp, paper:signal-compare-mvp, paper:signal-compare-report, paper:campaign-plan, paper:settle, paper:finalize, paper:report, paper:cohort-report, paper:campaign-cohort-report, paper:cohort-observability-report, paper:campaign-cohort-observability-report, paper-l-adaptive passed
 ```
 
-The report keeps an explicit `pnlReconciliationResidual` for the aggregate
-per-market PnL versus final-wallet subtraction. It only accepts an absolute
-residual at or below `1e-60`, and separately requires the accepted result's
-final cash/net PnL to match the wallet. This records finite decimal operation
-ordering dust without weakening the report's accounting gate.
+`pnlReconciliationResidual` 只允许绝对值不超过 `1e-60`，且 accepted result 的 final cash/net PnL 仍必须与 wallet 严格匹配。K 的 180 秒 journaled `WARMUP_SIGNAL` 只更新 EWMA，不能创建 market、intent、wallet event 或 settlement candidate；来源 family 不可混用。
 
-K now has a separate 180-second, journaled input warmup: `WARMUP_SIGNAL`
-records replay into EWMA only and are rejected after a market session starts.
-They cannot create a market, intent, wallet event, or settlement candidate, and
-one journal rejects a Binance/Chainlink source-family change. This replaces the
-invalid practice of using a pre-target market session as implicit K warmup.
-The replay report now independently verifies its durable count, source family
-and elapsed span before the first target boundary; missing or cross-source
-warmup fails the report.
+两次 plan-bound 三市场 run 和其 cohort 均为 `DESCRIPTIVE_PAPER_ONLY`，`profitabilityClaimEligible=false`。后续正式 campaign 必须使用 `paper:campaign-plan`、campaign-bound `paper:mvp`、`paper:campaign-cohort-report` 与 `paper:campaign-cohort-observability-report`；任一缺窗、失败或身份/安全冲突不得补跑或择优汇总。
 
-Accepted public artifact (pre-plan-binding code):
+## 下一证据门
 
-- Run: `/root/polymarket-money-data/paper-mvp/kj-paper-20260716194322-59e2d360`
-- Runtime collector commit: `476f21f2ea62091decb194add3a8737aeb63e7cd`
-- Result: `accepted=true`, one target market, zero credentials/private channel/orders
-- Replay report: `/root/polymarket-money-data/kj-paper-report-20260716194322-v3`
-- Report artifact hash: `ea4d4b952a0835c988e12d97c0a1c7954119023277cf27cf30cf9dcf9fc98a02`
-- Evidence status: `DESCRIPTIVE_PAPER_ONLY_LEGACY_UNBOUND_PLAN`
-
-Accepted public artifact (plan-bound multi-market code):
-
-- Run: `/root/polymarket-money-data/paper-mvp/kj-paper-20260716225739-48ff7c99`
-- Runtime collector commit: `76131eb4b09af4509266d6bb9db8e0f409631ad2`
-- Plan: 3 targets, 2026-07-16 23:00--23:15 UTC, hash-chained before contexts
-- Result: `INITIAL`, `accepted=true`, `planBinding=HASH_CHAINED`, 3/3 targets
-  settled, 479 journal records, no pending risk, and zero credentials/private
-  channel/orders
-- Replay report: `/root/polymarket-money-data/kj-paper-report-20260716225739-48ff7c99`
-- Report: `DESCRIPTIVE_PAPER_ONLY`, `profitabilityClaimEligible=false`, artifact
-  hash `6fb04978225a1680c5e747d8b8b2544111e650fafc197e4b163525608d38d775`
-
-Accepted public artifact (second plan-bound multi-market code):
-
-- Run: `/root/polymarket-money-data/paper-mvp/kj-paper-20260717011239-edcb5933`
-- Runtime collector commit: `e6b27806a7ced5f2748bf4ff89b76797e65d76d1`
-- Plan: 3 targets, 2026-07-17 01:15--01:30 UTC, hash-chained before contexts
-- Result: `INITIAL`, `accepted=true`, `planBinding=HASH_CHAINED`, 3/3 targets
-  settled, 505 journal records, no pending risk, terminal failure, credentials,
-  private channel, or real orders
-- Replay report: `/root/polymarket-money-data/kj-paper-report-20260717011239-edcb5933`
-- Report: `DESCRIPTIVE_PAPER_ONLY`, `profitabilityClaimEligible=false`, artifact
-  hash `15f776e2e972401cff33a3030889b728738018ac08232f0b3e260d307c061c30`
-
-Current descriptive cohort:
-
-- `/root/polymarket-money-data/kj-paper-cohort-two-runs-20260717`
-- 2 non-overlapping plan-bound runs, 6 markets; cohort hash
-  `cba4f224237d0cd6a1c3984c1114920b101bc66a0e6cdd35e262c42417bc0410`
-- `profitabilityClaimEligible=false`; it neither establishes profitability nor
-  changes J/K parameters.
-
-Current descriptive operational cohort:
-
-- `/root/polymarket-money-data/kj-paper-cohort-observability-two-runs-20260717`
-- 2 replay-verified runs, 6 target markets; report hash
-  `e4cd5370760da77e75caccbf0e4ed308dbd619aa3f83deee41dbc1d391f46a4d`
-- Reopens each journal and cross-checks runtime-summary hashes, tail, record and
-  event counts before aggregating public-stream counters, official-settlement
-  delay and J/K execution outcomes. It is permanently descriptive paper evidence.
-
-Future formal campaigns must use `paper:campaign-plan`, campaign-bound `paper:mvp`
-runs plus the matching `paper:campaign-cohort-report` and
-`paper:campaign-cohort-observability-report`; no such public campaign has yet been
-collected. The two existing plan-bound runs predate this v2 binding and remain
-descriptive PnL/observability cohorts only.
-
-The delayed-resolution recovery integration test uses a v2 campaign-bound run:
-it verifies journal recovery, `paper:finalize`, `paper:report`, and report
-campaign binding remain intact after the original finite wrapper has no result.
-
-## Next evidence gate
-
-The first plan-bound three-market gate has passed.  Subsequent bounded runs
-should accumulate an independently precommitted multi-market sample and record
-connection stability, official-resolution delay, fills/no-fills and PnL
-distribution without parameter changes. `paper:cohort-report` aggregates only
-the PnL distribution, while `paper:cohort-observability-report` independently
-rechecks runtime/journal evidence and aggregates quality metrics. Both reject
-duplicate/overlapping inputs and never make a profitability claim. Every run
-must still meet all of the
-following, not merely process exit zero:
-
-1. `resultKind=INITIAL`, `accepted=true`, and `planBinding=HASH_CHAINED`;
-2. exactly three observed and completed target markets, with no other unsettled
-   market or pending intent;
-3. collector commit, target cutoff, journal path, and runtime mode match the
-   hash-chained plan;
-4. terminal failure is null and credential/user-channel/order counters are zero;
-5. `paper:report` returns `planBinding=HASH_CHAINED`, verifies all settlement/PnL
-   identities, and produces stable source/CSV/artifact hashes;
-6. results remain descriptive paper evidence and do not authorize parameter
-   selection, shadow, or live trading.
-
-If official resolution exceeds the bounded window, only this recovery chain is
-allowed:
-
-```text
-paper:settle -> paper:finalize -> paper:report
-```
+后续有界 run 应在不改参数的前提下积累独立预注册多市场样本，记录连接稳定性、官方 resolution delay、fill/no-fill 与 PnL 分布。每次 run 必须满足：`resultKind=INITIAL`、`accepted=true`、`planBinding=HASH_CHAINED`；恰好完成计划 target 且无 pending risk；commit/window/journal/runtime 与 hash-chained plan 匹配；terminal failure 为空且 credential/user-channel/order counter 为零；`paper:report` 验证 settlement/PnL identity 并导出稳定 hash。结果持续只是描述性 paper 证据。

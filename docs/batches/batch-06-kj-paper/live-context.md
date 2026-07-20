@@ -1,98 +1,25 @@
-# Public runtime K/J paper boundary
+# 公共运行时 K/J Paper 边界
 
 ## StrategyContext
 
-`execution/src/strategy/kj-context.ts` is the single paper-only boundary from
-the public TypeScript runtime into K/J consumers.  Every runtime snapshot emits
-`kjStrategyContextReady`, `kjStrategyContextReason`, and
-`kjStrategyContext`.  A context is produced only when:
+`execution/src/strategy/kj-context.ts` 是 public TypeScript runtime 到 K/J consumer 的唯一 paper-only 边界。每个 runtime snapshot 输出 `kjStrategyContextReady`、`kjStrategyContextReason` 和 `kjStrategyContext`。只有 Gamma 确认开放的五分钟 market、存在 fee rate 与不同 Up/Down token ID，两个 book 均 active/uncrossed/非空且不超过五秒，Binance signal 为正且不超过十秒并携带 source/receive/connection/hash evidence，所有 ReceiveStamp 属于同一 process clock domain，且 decision time 位于 market interval 内，才产生不可变 context。任一证据缺失或无效时只输出 reason。
 
-- Gamma identifies an active, open, accepting five-minute market with an
-  explicit public fee rate and distinct Up/Down token IDs;
-- both books are active, uncrossed, non-empty, continuity-unverified, and at
-  most five seconds old;
-- the Binance signal is positive, at most ten seconds old, not future-dated,
-  and carries source/receive/connection/hash evidence;
-- book and signal ReceiveStamps use the same process clock domain; and
-- decision time is inside the market interval.
+## Realtime paper consumer
 
-The immutable output binds market and token identity, top-of-book, full receive
-stamps, signal evidence, fee evidence, and structural paper-only flags.  Any
-missing or invalid evidence yields a reason and no context.
+只有 runtime `paper` mode 且显式提供 `--kj-paper-journal` 才把 ready context 交给 `execution/src/runtime/kj-paper-engine.ts`。`monitor` mode 和未提供 journal 的 paper mode 均只输出 context，绝不改变 J/K wallet。
 
-## Real-time paper consumer
+engine 包含独立 J/K in-memory wallet、single/fast/slow EWMA、opening anchor、15 秒 decision cadence、fee/spread-aware edge、critical band、Kelly/cash/market/depth cap、冻结 intent quantity、worst-case reservation、一秒 execution latency、partial fill、slippage no-fill、real Up/Down token position 与 `INIT -> RUNNING -> STOPPING -> DONE` lifecycle。冲突 context、signal input、settlement ID 和同一 market 的第二份 settlement 都 fail closed。
 
-Only runtime `paper` mode with an explicit `--kj-paper-journal` passes ready
-contexts to `execution/src/runtime/kj-paper-engine.ts`.  Runtime `monitor` mode,
-and paper mode without the journal option, emit the context but never mutate K/J
-wallets.  The versioned engine currently models:
+接受的 context 会先 fsync 到 `kj-paper-input-journal-v2`。MVP run 在任何 context 前写入 `RUN_PLAN`，以 hash-bind run ID、target count/window 与 committed code ID。interval end 后 runtime 轮询 public Gamma endpoint；仅当 market closed、`umaResolutionStatus=resolved` 且存在唯一 1-valued outcome 时，精确 raw response 才能成为 official evidence。replay 会重新验证 response，而不信任已存 winner。
 
-- global J single-EWMA and K fast/slow-EWMA signal state;
-- independent 10,000-unit J/K in-memory wallets and market ledgers;
-- an opening anchor only when observed within five seconds of interval start;
-- 15-second decision cadence, fee/spread-aware edge, critical band, Kelly and
-  cash/market/depth caps;
-- frozen intent quantity, worst-case reservation through the allowed one-cent
-  slippage, one-second execution latency, partial fill, slippage no-fill, and
-  reservation release;
-- real Up/Down token positions and market lifecycle
-  `INIT -> RUNNING -> STOPPING -> DONE`;
-- deduplication with rejection of conflicting context, signal input,
-  settlement ID, and second settlement-per-market content.
+journal 验证重建 context、engine version/config、identity conflict、per-clock order 与 SHA-256 chain；atomic checkpoint 检测 tail truncation，并允许 journal fsync 后、checkpoint 发布前崩溃自愈。symlink、Git 内存储、DrvFS、被修改 record、不完整行、缺 anchor、倒序 watermark 和身份冲突均 fail closed。
 
-Before engine mutation, accepted contexts are fsynced to
-`kj-paper-input-journal-v2`.  New MVP runs first append a `RUN_PLAN` record that
-hash-binds run ID, target count/window, and committed code ID before any market
-context.  After interval end, the runtime polls the public
-Gamma market endpoint; a matching closed market with
-`umaResolutionStatus=resolved` and exactly one 1-valued outcome is converted to
-official evidence only after the exact raw response is fsynced.  Replay
-revalidates that response instead of trusting a stored winner.  The journal
-validates exact reconstructed context, engine version/config, identity
-conflicts and per-clock order; each record is SHA-256 chained.  An atomic side
-checkpoint detects valid-line tail truncation while allowing a crash after
-journal fsync but before checkpoint publication to self-heal.  Restart strictly
-replays the journal into the same engine state.  Symlink paths, Git-local
-storage, DrvFS, modified records, incomplete lines, missing anchors, reversed
-watermarks and conflicting identities fail closed.
+## Product 边界与限制
 
-Snapshots expose `kjPaperEngineVersion`, incremental `kjPaperEvents`, a full
-`kjPaperState` (wallets, reservations, positions, market ledgers and pending
-intents), journal count/hash, and the current market state.  Events bind deterministic
-IDs to decision or execution context hashes, receive ordinals, intent data,
-fees, position-after-fill, and official settlement evidence.
+`npm run paper:mvp -- --markets 1` 是有界的无人值守 product entry：等待下一个完整 interval，记录 committed code ID，执行 half-open target cutoff，默认给十分钟 resolution grace，并仅在 replay inspection 后写入 `result.json`。每次最多 12 个 market；`paper:report` 重开 journal，验证 bound plan 与 result/runtime artifact，重建 settlement event，核对逐 market 与 aggregate wallet PnL identity，并输出 no-overwrite 的 hash JSON 与逐 market CSV。没有 `RUN_PLAN` 的 legacy journal 必须标为 `LEGACY_UNBOUND`。
 
-## Product boundary and fail-closed limitations
+journal replay 只能恢复接受输入和确定性 paper state，不是 exchange reconciliation，也没有 private account/order evidence。delayed、ambiguous、50/50 或 identity-conflicting Gamma result 不得猜测；`paper:settle` 仅恢复冻结 target window，`paper:finalize` 复用 acceptance builder 写入 `RECOVERED_FINAL`。
 
-`npm run paper:mvp -- --markets 1` is the bounded unattended product entry.  It
-waits for the next complete interval, records a committed code ID, runs both
-wallets, enforces a half-open target interval cutoff, includes a finite
-ten-minute default resolution grace period, and emits `result.json` only after
-replay-based inspection.  It exits the grace window early once capture is over
-and every registered market is settled.  It accepts at most 12 markets per run.
-`paper:report` reopens the journal, checks the bound plan against result/runtime
-artifacts, rebuilds settlement events, verifies per-market and aggregate wallet
-PnL identities, and emits hashed JSON plus per-market CSV without overwrite.
-Legacy journals without `RUN_PLAN` are disclosed as `LEGACY_UNBOUND`.
+TypeScript 使用确定性 Abramowitz-Stegun 7.1.26 normal-CDF approximation；`kj-probability-v1.json` 将其相对 Python `erf` 的绝对误差限制在 `0.0000002`，`kj-ewma-intent-parity-v1.json` 验证共享 J 拒单与 K EWMA-to-intent-to-fill-to-settlement 路径。这是代表性而非穷举测试。book continuity 持续为 `UNVERIFIED`，fill 仅是理论 paper fill，不是真实订单成交证据。
 
-1. Journal replay restores accepted inputs and deterministic paper state, but it
-   is not an exchange reconciliation mechanism and has no private account or
-   order evidence by design.
-2. A delayed, ambiguous, 50/50, identity-conflicting, or otherwise unsupported
-   Gamma result is not guessed; the run remains unaccepted or terminates safely.
-   `paper:settle` can later resume only the frozen target window against the
-   same durable journal, without opening a new paper market.  `paper:finalize`
-   then reuses the MVP acceptance builder to produce a no-overwrite
-   `RECOVERED_FINAL` result; it requires a clean original child exit and the
-   hash-chained plan.
-3. TypeScript uses the deterministic Abramowitz-Stegun 7.1.26 normal-CDF
-   approximation.  `data/golden/batch-06/kj-probability-v1.json` bounds it to
-   `0.0000002` absolute error against Python `erf` for representative and
-   clamped-tail z-scores.  `kj-ewma-intent-parity-v1.json` additionally verifies
-   a shared J rejection and K EWMA-to-intent-to-fill-to-settlement path.  This is
-   representative rather than exhaustive coverage of all runtime branches.
-4. Book continuity remains explicitly `UNVERIFIED`, so fills are theoretical
-   paper fills, never evidence that a live order would have executed.
-
-No credential, private channel, signature, order, cancellation, or live-wallet
-path is present.  `LIVE_TRADING_ENABLED=false` remains unchanged.
+不存在凭据、private channel、signature、order、cancellation 或 live-wallet 路径；`LIVE_TRADING_ENABLED=false` 不变。

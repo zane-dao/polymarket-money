@@ -21,4 +21,4 @@
 三个为负；两个 ISO 周一负一正。这不满足“盈利不依赖少数时期”或稳定性条件。
 
 详细概率表、执行表和模型定义见：
-`docs/batches/batch-03b-historical-baselines/batch-3b-result.md`。
+`reports/batches/batch-03b/BATCH-3B-RESULT.md`。

@@ -63,7 +63,7 @@ identity/quality/replay、脱敏 fixtures、smoke/verify scripts、离线与 rep
 
 ## 10. 详细文档的项目内路径
 
-- `docs/batches/batch-02-readonly-data/batch-2-result.md`
+- `reports/batches/batch-02/BATCH-2-RESULT.md`
 - `docs/batches/batch-02-readonly-data/data-contract.md`
 - `docs/batches/batch-02-readonly-data/market-identity.md`
 - `docs/batches/batch-02-readonly-data/raw-storage.md`

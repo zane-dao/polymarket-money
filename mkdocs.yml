@@ -4,7 +4,7 @@ site_url: https://github.com/zane-dao/polymarket-money
 repo_url: https://github.com/zane-dao/polymarket-money
 repo_name: zane-dao/polymarket-money
 docs_dir: .
-site_dir: site
+site_dir: ../polymarket-money-site
 
 theme:
   name: mkdocs

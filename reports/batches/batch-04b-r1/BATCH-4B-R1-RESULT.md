@@ -16,7 +16,7 @@ Batch 4B-R1 已完成。第二次 Sol 唯一结论为
 ## 验证
 
 Python 190/190、Node 89/89、Ruff、TypeScript、pip check、npm audit 与 diff check 均通过。
-完整命令级结果见 `reports/batches/batch-04b-r1/TEST-RESULTS.md`。
+完整命令级结果见 `reports/batches/batch-04b-r1/TEST-RESULTS-BATCH-04B-R1.md`。
 
 ## 保留限制
 

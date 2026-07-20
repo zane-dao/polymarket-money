@@ -5,5 +5,5 @@ Batch 的测试结果、执行证据和验收结论保留在仓库根目录的 `
 
 可在 GitHub 仓库直接查看：
 
-- [报告索引](https://github.com/zane-dao/polymarket-money/blob/main/reports/INDEX.md)
+- [报告索引](https://github.com/zane-dao/polymarket-money/blob/main/reports/REPORTS-INDEX.md)
 - [按批次报告](https://github.com/zane-dao/polymarket-money/tree/main/reports/batches)

@@ -25,7 +25,7 @@ resizes that decision. Only adapters may perform external I/O.
 The Batch 1 Python models use aware UTC `datetime` values and explicit causal
 names: `source_time`, `server_time`, `receive_time`, `decision_time`,
 `order_send_time`, `fill_time`, and `settlement_time`. They contain no generic
-`timestamp` field. See `docs/domain-model.md` for the normative definitions.
+`timestamp` field. See `docs/batches/batch-01-foundation/domain-model.md` for the normative definitions.
 
 The versioned Batch 2 wire contract uses required snake-case lifecycle fields:
 `source_time`, `server_time`, `receive_time`, `process_time`, and `persist_time`.

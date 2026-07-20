@@ -11,7 +11,6 @@ theme:
   language: zh
 
 nav:
-  - 首页: index.md
   - 项目入口: INDEX.md
   - 当前计划:
       - 当前状态: plan/CURRENT.md
@@ -23,10 +22,10 @@ nav:
       - 项目目标: goals/PROJECT-GOALS.md
       - 子目标: goals/SUBGOALS.md
   - 长期决定: decisions/DECISIONS.md
-  - Batch 设计: batches/
-  - Batch 报告说明: reports.md
+  - Batch 设计: batches/BATCHES-INDEX.md
+  - Batch 报告说明: operations/REPORTS-GUIDE.md
   - 运维:
       - 设置: operations/SETUP.md
       - 运行手册: operations/RUNBOOK.md
       - 文档维护: operations/MAINTENANCE.md
-  - 历史归档: archive/
+  - 历史归档: archive/ARCHIVE-INDEX.md

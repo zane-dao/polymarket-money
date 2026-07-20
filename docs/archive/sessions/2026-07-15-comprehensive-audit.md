@@ -18,7 +18,7 @@
 6. 开源引擎有生产门禁分叉、部分成交提前 settle、状态/恢复孤儿单、实际 fill/fee 丢失等
    阻断问题。
 
-详细证据：`/root/projects/polymarket-money/docs/audit-findings.md`。
+详细证据：`/root/projects/polymarket-money/docs/archive/reference-audits/legacy-systems-audit-findings.md`。
 
 ## 模型结论
 

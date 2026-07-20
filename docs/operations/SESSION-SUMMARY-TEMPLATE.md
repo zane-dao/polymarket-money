@@ -1,4 +1,6 @@
-# YYYY-MM-DD 会话主题
+# YYYY-MM-DD HH:MM 时区｜会话主题
+
+新增摘要文件按时间命名，并在 `docs/archive/sessions/INDEX.md` 表格最上方登记；旧摘要不重排。
 
 ## 目标
 

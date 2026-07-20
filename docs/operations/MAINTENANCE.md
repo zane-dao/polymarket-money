@@ -9,8 +9,8 @@
 1. 用当前工作树、测试和官方协议核对新要求；冲突时以规范的替代规则处理。
 2. 完成实现和验证，记录命令与结果到相应 batch report。
 3. 只在 `docs/plan/CURRENT.md` 更新当前事实、未完成项和明确停点。
-4. 仅有跨会话取舍时更新 `docs/decisions/DECISIONS.md`。
-5. 有追溯价值的实质工作使用 [会话模板](SESSION-SUMMARY-TEMPLATE.md) 新增到 `docs/archive/sessions/`，并更新该目录的 `INDEX.md`。
+4. 仅有跨会话取舍时更新 `docs/decisions/DECISIONS.md`：新决定插在“最新决定（倒序）”的最上方，并写 `YYYY-MM-DD HH:MM 时区`。
+5. 有追溯价值的实质工作使用 [会话模板](SESSION-SUMMARY-TEMPLATE.md) 新增到 `docs/archive/sessions/`；在 `INDEX.md` 表格最上方登记，并写时间。
 6. 仅在目标、规范、阶段、路由或架构实际变化时更新相应文档与 `docs/INDEX.md`。
 
 ## 3. 单一真相

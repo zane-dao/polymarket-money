@@ -30,7 +30,21 @@ def _public_payload(event: dict[str, Any], kind: str, base: str) -> dict[str, st
         return {**common, "decisionId": f"decision-{base}",
                 "action": "BUY" if status == "FILLED" else "SKIP" if status == "UNFILLED" else "HOLD",
                 "reason": event.get("reason"), "probability": event.get("probability_up"),
-                "price": event.get("decision_ask"), "edge": event.get("edge"),
+                "price": event.get("decision_ask"), "decisionAsk": event.get("decision_ask"),
+                "executablePrice": event.get("fill_price"), "edge": event.get("edge"),
+                "netEdge": event.get("net_edge"), "requiredEdge": event.get("required_edge"),
+                "feeRate": event.get("fee_rate"), "estimatedFee": event.get("intended_fee"),
+                "intendedQuantity": event.get("intended_quantity"),
+                "intendedStake": event.get("intended_stake"),
+                "targetPositionQuantity": event.get("target_position_quantity"),
+                "currentPositionQuantity": event.get("position_before"),
+                "openOrderQuantity": event.get("open_order_quantity"),
+                "approvedOrderQuantity": event.get("intended_quantity"),
+                "riskStatus": event.get("risk_status"),
+                "riskReasonCodes": event.get("risk_reason_codes"),
+                "visibleAskQuantity": event.get("visible_ask_size"),
+                "decisionVisibleAskQuantity": event.get("decision_visible_ask_size"),
+                "bookParticipation": event.get("book_participation"),
                 "outcome": event.get("winner"), "pnl": event.get("net_pnl")}
     if kind == "order":
         return {**common, "orderId": event.get("intent_id") or f"order-{base}",
@@ -72,7 +86,8 @@ def run(input_value: dict[str, Any]) -> dict[str, Any]:
     parameters = input_value["parameters"]
     initial_cash = Decimal(input_value["initialCash"])
     result, result_strategy_id = run_registered_workbench_backtest(
-        strategy_id, receipt, rows, parameters, initial_cash, Decimal(input_value["maxPosition"])
+        strategy_id, receipt, rows, parameters, initial_cash, Decimal(input_value["maxPosition"]),
+        input_value["request"].get("evaluationSplit"),
     )
     summary = result["runs"][result_strategy_id]
     source_events = [event for event in result["events"] if event["strategy"] == result_strategy_id]
@@ -82,6 +97,9 @@ def run(input_value: dict[str, Any]) -> dict[str, Any]:
     return {
         "schemaVersion": "backtest-result-v1", "runId": input_value["runId"], "request": input_value["request"],
         "startedAtUtc": input_value["startedAtUtc"], "completedAtUtc": input_value["completedAtUtc"],
+        "evaluationScope": {"schemaVersion": "backtest-evaluation-scope-v1", "split": result["split"],
+                            "horizonSeconds": result["horizon_seconds"], "scenario": result["scenario"],
+                            "cohortHash": result["cohort_hash"], "cohortSize": result["cohort_size"]},
         "metrics": {"netPnl": summary["net_pnl"], "fees": summary["fees"], "maxDrawdown": summary["max_drawdown"], "fillRate": format(fill_rate, "f"), "winRate": summary["win_rate"], "brier": summary["brier_score"]},
         "equityCurve": equity, "events": events,
     }

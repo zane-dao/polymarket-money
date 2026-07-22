@@ -859,35 +859,41 @@ function VerifiedLivePage({
                 </span>
               </div>
             )}
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>时间</th>
-                  <th>影子事件</th>
-                  <th>策略</th>
-                  <th>市场</th>
-                  <th>详情</th>
-                </tr>
-              </thead>
-              <tbody>
-                {strategyRuntime.shadow.events
-                  .slice(-20)
-                  .reverse()
-                  .map((event) => (
-                    <tr key={event.eventId}>
-                      <td>{event.eventTime}</td>
-                      <td>{event.eventType}</td>
-                      <td>{event.strategy ?? "SYSTEM"}</td>
-                      <td>{event.marketId}</td>
-                      <td>
-                        {Object.entries(event.details)
-                          .map(([key, value]) => `${key}=${String(value)}`)
-                          .join(" · ") || "—"}
-                      </td>
+            <StrategyDecisionExplanation events={strategyRuntime.shadow.events} />
+            <details className="technical-details">
+              <summary>查看最近 20 条策略审计事件与技术字段</summary>
+              <div className="table-scroll">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>影子事件</th>
+                      <th>策略</th>
+                      <th>市场</th>
+                      <th>技术详情</th>
                     </tr>
-                  ))}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {strategyRuntime.shadow.events
+                      .slice(-20)
+                      .reverse()
+                      .map((event) => (
+                        <tr key={event.eventId}>
+                          <td>{event.eventTime}</td>
+                          <td>{event.eventType}</td>
+                          <td>{event.strategy ?? "SYSTEM"}</td>
+                          <td>{event.marketId}</td>
+                          <td>
+                            {Object.entries(event.details)
+                              .map(([key, value]) => `${key}=${String(value)}`)
+                              .join(" · ") || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
           </>
         )}
       </Panel>
@@ -1259,6 +1265,34 @@ function VerifiedLivePage({
       </Panel>
     </>
   );
+}
+
+function StrategyDecisionExplanation({
+  events,
+}: {
+  events: PaperStrategyRuntimeV1["shadow"]["events"];
+}) {
+  const event = [...events]
+    .reverse()
+    .find((item) => item.eventType === "DECISION" && item.strategy !== null && item.details.riskStatus !== undefined);
+  if (event === undefined) return <EmptyState title="尚无可解释的动态策略判断" detail="等待后端策略生成包含概率、净优势、目标仓位和风控结果的真实事件；页面不会用示例数字补齐。" />;
+  const details = event.details;
+  const approved = details.riskStatus === "APPROVED" ? "批准" : details.riskStatus === "REDUCED" ? "已缩小" : "拒绝";
+  return <section className="strategy-explanation" aria-label="最近动态策略判断">
+    <header><div><strong>最近策略判断</strong><span>{event.strategy} · {event.eventTime}</span></div><Badge tone={details.riskStatus === "APPROVED" ? "good" : details.riskStatus === "REDUCED" ? "warn" : "bad"}>风控{approved}</Badge></header>
+    <p>{details.reason ?? details.riskReasonCodes ?? "后端未记录判断原因"}</p>
+    <div className="validation-list">
+      <span>模型概率 <b>{details.probabilityUp ?? "未记录"}</b></span>
+      <span>扣费后净优势 <b>{details.netEdge ?? "未记录"}</b></span>
+      <span>可执行价格 <b>{details.estimatedAveragePrice ?? details.decisionAsk ?? "未记录"}</b></span>
+      <span>预估手续费 <b>{details.estimatedFee ?? "未记录"}</b></span>
+      <span>目标总仓位 <b>{details.targetPositionQuantity ?? "未记录"}</b></span>
+      <span>已有 / 在途仓位 <b>{details.currentPositionQuantity ?? "0"} / {details.openOrderQuantity ?? "0"}</b></span>
+      <span>本次获准数量 <b>{details.riskApprovedQuantity ?? "0"}</b></span>
+      <span>风控原因 <b>{details.riskReasonCodes ?? details.reason ?? "未记录"}</b></span>
+    </div>
+    <small>价格为当前最佳可执行卖一价；当前输入仅包含可见一档深度，未观察到多档时不会伪称 VWAP。</small>
+  </section>;
 }
 
 function message(error: unknown, fallback: string): string {

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { isAbsolute, join, resolve } from "node:path";
 
@@ -7,6 +7,9 @@ const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}$/u;
 export type BacktestRequestV1 = Readonly<{
   schemaVersion: "backtest-request-v1";
   requestId: string;
+  /** Backend-owned presentation metadata; absent only on legacy persisted requests. */
+  displayName?: string;
+  description?: string;
   strategyId: string;
   strategyVersion: string;
   datasetId: string;
@@ -15,6 +18,7 @@ export type BacktestRequestV1 = Readonly<{
   latencyMs: number;
   initialCash: string;
   maxPosition: string;
+  evaluationSplit?: "VALIDATION" | "FINAL_TEST";
 }>;
 
 export type BacktestEventV1 = Readonly<{
@@ -24,18 +28,29 @@ export type BacktestEventV1 = Readonly<{
   payload: Readonly<Record<string, string | number | boolean | null>>;
 }>;
 
+export type BacktestEvaluationScopeV1 = Readonly<{
+  schemaVersion: "backtest-evaluation-scope-v1";
+  split: "TRAIN" | "VALIDATION" | "FINAL_TEST";
+  horizonSeconds: number;
+  scenario: "BASE_1S" | "STRESS_1S_PLUS_TICK";
+  cohortHash: string;
+  cohortSize: number;
+}>;
+
 export type BacktestResultV1 = Readonly<{
   schemaVersion: "backtest-result-v1";
   runId: string;
   request: BacktestRequestV1;
   startedAtUtc: string;
   completedAtUtc: string;
+  /** Absent only on legacy results; such results must fail closed for comparison. */
+  evaluationScope?: BacktestEvaluationScopeV1;
   metrics: Readonly<{
     netPnl: string;
     fees: string;
     maxDrawdown: string;
     fillRate: string;
-    winRate: string;
+    winRate: string | null;
     brier: string | null;
   }>;
   equityCurve: readonly Readonly<{ timeUtc: string; equity: string }>[];
@@ -46,6 +61,7 @@ export type BacktestJobV1 = Readonly<{
   schemaVersion: "backtest-job-v1";
   runId: string;
   requestId: string;
+  displayName?: string;
   status: "queued" | "running" | "stopping" | "succeeded" | "failed" | "cancelled";
   progressPermille: number;
   error: string | null;
@@ -66,6 +82,10 @@ function validateRequest(input: BacktestRequestV1): void {
     if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(value)) throw new Error(`${field} must be a canonical non-negative decimal`);
   }
   if (input.feeModel.trim() === "" || input.strategyVersion.trim() === "") throw new Error("feeModel and strategyVersion are required");
+  if (input.evaluationSplit !== undefined && input.evaluationSplit !== "VALIDATION" && input.evaluationSplit !== "FINAL_TEST") throw new Error("evaluationSplit is invalid");
+  for (const [field, value] of [["displayName", input.displayName], ["description", input.description]] as const) {
+    if (value !== undefined && (value.trim() === "" || value.length > 240 || /[\u0000-\u001f]/u.test(value))) throw new Error(`${field} is invalid`);
+  }
 }
 
 export class FileBacktestResultStore {
@@ -92,6 +112,13 @@ export class FileBacktestResultStore {
     }
     return value as BacktestResultV1;
   }
+
+  async delete(runId: string): Promise<void> {
+    if (!SAFE_ID.test(runId)) throw new Error("runId is invalid");
+    await this.load(runId);
+    await unlink(join(this.#root, `${runId}.json`));
+    await unlink(join(this.#root, `${runId}.sha256`));
+  }
 }
 
 export class BacktestJobService {
@@ -109,7 +136,7 @@ export class BacktestJobService {
     if (existing !== undefined) return this.get(existing);
     const runId = `bt-${Date.now()}-${++this.#ordinal}`;
     const controller = new AbortController();
-    const state = { view: Object.freeze({ schemaVersion: "backtest-job-v1" as const, runId, requestId: input.requestId, status: "queued" as const, progressPermille: 0, error: null }), controller };
+    const state = { view: Object.freeze({ schemaVersion: "backtest-job-v1" as const, runId, requestId: input.requestId, ...(input.displayName === undefined ? {} : { displayName: input.displayName }), status: "queued" as const, progressPermille: 0, error: null }), controller };
     this.#jobs.set(runId, state); this.#requests.set(input.requestId, runId);
     queueMicrotask(() => void this.#execute(input, state));
     return state.view;

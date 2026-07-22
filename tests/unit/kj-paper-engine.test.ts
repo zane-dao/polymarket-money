@@ -9,6 +9,7 @@ import {
   kjPaperProbabilityFromZ,
   type KJOfficialSettlement,
 } from "../../backend/core/src/runtime/kj-paper-engine.js";
+import { reviewTargetPositionV1 } from "../../backend/core/src/risk/index.js";
 import { createKJStrategyContext, type KJStrategyContextV1 } from "../../strategies/src/kj-context.js";
 
 const START = Date.parse("2026-07-17T00:00:00.000Z");
@@ -130,12 +131,32 @@ test("paper engine freezes intents, reserves cash, fills once, and deduplicates 
   const fills = engine.events().filter((event) => event.eventType === "FILL");
   assert.ok(fills.every((fill) =>
     Number(fill.details.quantity) <= Number(fill.details.intendedQuantity)));
+  const intent = engine.events().find((event) => event.eventType === "INTENT" && event.strategy === "J_FEE_AWARE");
+  assert.equal(intent?.details.riskStatus, "APPROVED");
+  assert.ok(Number(intent?.details.targetPositionQuantity) >= Number(intent?.details.intendedQuantity));
+  assert.ok(Number(intent?.details.estimatedFee) > 0);
   assert.ok(fills.every((fill) => fill.details.partial === true));
   const snapshot = engine.snapshot();
   assert.equal(snapshot.schemaVersion, "kj-paper-engine-snapshot-v1");
   assert.equal(snapshot.markets[0]?.state, "RUNNING");
   assert.ok(Number(snapshot.wallets.J_FEE_AWARE.positions["111"]) > 0);
   assert.equal(snapshot.pendingIntents.length, 0);
+});
+
+test("target-position review nets existing and resting quantity before applying depth and risk caps", () => {
+  const review = reviewTargetPositionV1({
+    requestedTargetQuantity: "100", currentPositionQuantity: "30", openOrderQuantity: "20",
+    executablePrice: "0.5", maximumFillPrice: "0.51", feeRate: "0.02",
+    visibleAskQuantity: "40", bookParticipation: "0.5", availableCash: "1000",
+    currentMarketNotional: "0", currentTotalNotional: "0", maximumOrderNotional: "100",
+    maximumMarketNotional: "100", maximumTotalNotional: "100",
+  });
+  assert.equal(review.status, "REDUCED");
+  assert.equal(review.coveredQuantity, "50");
+  assert.equal(review.requestedOrderQuantity, "50");
+  assert.equal(review.approvedOrderQuantity, "20");
+  assert.deepEqual(review.reasonCodes, ["VISIBLE_DEPTH_LIMIT"]);
+  assert.ok(Number(review.reservedAmount) > 10);
 });
 
 test("slippage no-fill and market transition release every paper reservation", () => {

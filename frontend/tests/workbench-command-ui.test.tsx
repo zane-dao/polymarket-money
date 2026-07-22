@@ -173,6 +173,7 @@ function commands(): WorkbenchCommands {
           threshold: {
             type: "number" as const,
             required: true,
+            defaultValue: 0.25,
             minimum: 0,
             maximum: 1,
           },
@@ -355,16 +356,36 @@ describe("workbench command interactions", () => {
         .getByRole("navigation", { name: "主导航" })
         .querySelectorAll("button")[3]!,
     );
-    await screen.findByDisplayValue("K Edge · k-edge");
+    await screen.findByDisplayValue("K Edge");
+    expect(screen.getByLabelText("版本")).toHaveValue("1.0.1");
+    expect(screen.getByLabelText("参数 threshold")).toHaveValue(0.25);
     await user.click(screen.getByRole("button", { name: "验证参数" }));
     expect(client.validateStrategyParameters).toHaveBeenCalledWith("k-edge", {
-      threshold: 0,
+      threshold: 0.25,
     });
     await user.click(screen.getByRole("button", { name: "保存版本" }));
     expect(client.saveStrategyVersion).toHaveBeenCalled();
     expect(
       await screen.findByText(/已由后端保存不可变版本/),
     ).toBeInTheDocument();
+  });
+
+  it("shows backend-owned research warnings without blocking a strategy version", async () => {
+    const client = commands();
+    vi.mocked(client.validateStrategyParameters).mockResolvedValue({
+      schemaVersion: "strategy-validation-v1",
+      valid: true,
+      errors: [],
+      warnings: [{ code: "NARROW_EDGE_WINDOW", severity: "warning", message: "可交易优势区间很窄" }],
+    });
+    const user = userEvent.setup();
+    render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
+    await user.click(screen.getByRole("navigation", { name: "主导航" }).querySelectorAll("button")[3]!);
+    await screen.findByDisplayValue("K Edge");
+    await user.click(screen.getByRole("button", { name: "验证参数" }));
+    expect(await screen.findByLabelText("研究告警")).toHaveTextContent("可交易优势区间很窄");
+    await user.click(screen.getByRole("button", { name: "保存版本" }));
+    expect(client.saveStrategyVersion).toHaveBeenCalled();
   });
 
   it("reloads an immutable strategy version through the backend command client", async () => {
@@ -377,10 +398,12 @@ describe("workbench command interactions", () => {
         .querySelectorAll("button")[3]!,
     );
     await screen.findByRole("option", { name: "1.0.0" });
-    await user.click(screen.getByRole("button", { name: "版本操作" }));
+    await user.click(screen.getByRole("button", { name: "加载版本" }));
     expect(client.getStrategyVersion).toHaveBeenCalledWith("k-edge", "1.0.0");
     expect(await screen.findByDisplayValue("后端保存版本")).toBeInTheDocument();
     expect(screen.getByLabelText("参数 threshold")).toHaveValue(0.4);
+    expect(screen.getByLabelText("版本")).toHaveValue("1.0.1");
+    expect(screen.getByLabelText("当前策略摘要")).toHaveTextContent("2026");
   });
 
   it("renders backend allowed modes and never invents Paper eligibility for L V2", async () => {
@@ -412,7 +435,8 @@ describe("workbench command interactions", () => {
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
     await user.click(screen.getByRole("button", { name: /数据集管理/ }));
-    await screen.findByText("btc");
+    await screen.findByRole("heading", { name: "Btc" });
+    expect(screen.getByText("生成时间").parentElement).toHaveTextContent("未记录");
     await user.click(screen.getByRole("button", { name: "重新扫描" }));
     expect(client.scanDatasets).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "详情与校验" }));
@@ -469,8 +493,11 @@ describe("workbench command interactions", () => {
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
     await user.click(screen.getByRole("button", { name: /回测实验室/ }));
+    expect(screen.getByLabelText("回测数据分组")).toHaveValue("VALIDATION");
     await user.click(screen.getByRole("button", { name: "运行回测" }));
-    expect(client.startBacktest).toHaveBeenCalled();
+    expect(client.startBacktest).toHaveBeenCalledWith(
+      expect.objectContaining({ evaluationSplit: "VALIDATION", displayName: expect.stringContaining("验证"), description: expect.any(String) }),
+    );
     expect(await screen.findByText(/后端已接受任务 bt-1/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "刷新状态" }));
     expect(client.getBacktestJob).toHaveBeenCalledWith("bt-1");
@@ -867,6 +894,7 @@ describe("workbench command interactions", () => {
         schemaVersion: "backtest-job-v1",
         runId: "run-complete",
         requestId: "request-complete",
+        displayName: "费用感知概率策略 · BTC 验证",
         status: "succeeded",
         progressPermille: 1000,
         error: null,
@@ -909,6 +937,7 @@ describe("workbench command interactions", () => {
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
     await user.click(screen.getByRole("button", { name: /决策记录/ }));
+    expect((await screen.findAllByText("费用感知概率策略 · BTC 验证")).length).toBeGreaterThan(0);
     expect(
       (await screen.findAllByText("decision-real-1")).length,
     ).toBeGreaterThan(0);
@@ -932,6 +961,7 @@ describe("workbench command interactions", () => {
         schemaVersion: "backtest-job-v1",
         runId: "replay-complete",
         requestId: "request-replay",
+        displayName: "双波动率概率策略 · BTC 验证",
         status: "succeeded",
         progressPermille: 1000,
         error: null,
@@ -963,8 +993,9 @@ describe("workbench command interactions", () => {
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
     await user.click(screen.getByRole("button", { name: /市场回放/ }));
+    expect((await screen.findAllByText("双波动率概率策略 · BTC 验证")).length).toBeGreaterThan(0);
     expect(
-      await screen.findByRole("heading", { name: "replay-real-1" }),
+      await screen.findByRole("heading", { name: "HOLD" }),
     ).toBeInTheDocument();
     expect(client.getBacktestReplay).toHaveBeenCalledWith("replay-complete", {
       page: 1,
@@ -972,10 +1003,27 @@ describe("workbench command interactions", () => {
     });
     await user.click(screen.getByRole("button", { name: "下一事件 ▶" }));
     expect(
-      await screen.findByRole("heading", { name: "replay-real-2" }),
+      await screen.findByRole("heading", { name: "冻结事件" }),
     ).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("BTCUSDT 67,837.20");
     expect(document.body).not.toHaveTextContent("23:17:00.250");
+  });
+
+  it("shows immediate progress and a visible backend error when comparing selected runs", async () => {
+    const client = commands();
+    vi.mocked(client.listBacktestJobs).mockResolvedValue([
+      { schemaVersion: "backtest-job-v1", runId: "arena-run-1", requestId: "request-1", status: "succeeded", progressPermille: 1000, error: null },
+      { schemaVersion: "backtest-job-v1", runId: "arena-run-2", requestId: "request-2", status: "succeeded", progressPermille: 1000, error: null },
+    ]);
+    vi.mocked(client.compareBacktests).mockRejectedValue(new Error("运行的费用模型不一致"));
+    const user = userEvent.setup();
+    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
+    await user.click(screen.getByRole("button", { name: /策略竞技场/ }));
+    const compareButton = await screen.findByRole("button", { name: "比较所选运行（2）" });
+    await user.click(compareButton);
+    expect(client.compareBacktests).toHaveBeenCalledWith(["arena-run-1", "arena-run-2"]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("比较失败：运行的费用模型不一致");
+    expect(compareButton).toBeEnabled();
   });
 
   it("shows a locked, explicit demo for an empty verified-local DTO and can return to verified data", async () => {

@@ -7,7 +7,7 @@ one stable strategy boundary.  Paper orchestration remains outside this package.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any, Callable
 
@@ -58,7 +58,7 @@ def _decimal(parameters: dict[str, Any], name: str, default: Decimal) -> Decimal
 
 def _kj_workbench_runner(strategy: KJStrategy) -> Callable[..., tuple[dict[str, Any], str]]:
     def run(receipt: object, rows: object, parameters: dict[str, Any], initial_cash: Decimal,
-            max_position: Decimal) -> tuple[dict[str, Any], str]:
+            max_position: Decimal, evaluation_split: str | None = None) -> tuple[dict[str, Any], str]:
         common = KJConfig()
         config = KJConfig(
             edge_threshold=_decimal(parameters, "edgeThreshold", common.edge_threshold),
@@ -66,7 +66,10 @@ def _kj_workbench_runner(strategy: KJStrategy) -> Callable[..., tuple[dict[str, 
             max_stake_abs_usdc=min(_decimal(parameters, "maxStakeUsdc", common.max_stake_abs_usdc), max_position),
             book_participation=_decimal(parameters, "bookParticipation", common.book_participation),
         )
-        result = run_kj_paper(receipt, rows, strategies=(strategy,), split="FINAL_TEST",
+        split = evaluation_split or "FINAL_TEST"
+        if split not in {"VALIDATION", "FINAL_TEST"}:
+            raise ValueError("J/K workbench evaluation split is invalid")
+        result = run_kj_paper(receipt, rows, strategies=(strategy,), split=split,
                               horizon_seconds=30, scenario=PaperScenario.BASE_1S,
                               initial_cash=initial_cash, config=config)
         return result, strategy.value
@@ -74,15 +77,21 @@ def _kj_workbench_runner(strategy: KJStrategy) -> Callable[..., tuple[dict[str, 
 
 
 def _l_v2_workbench_runner(receipt: object, rows: object, parameters: dict[str, Any],
-                           initial_cash: Decimal, max_position: Decimal) -> tuple[dict[str, Any], str]:
+                           initial_cash: Decimal, max_position: Decimal,
+                           evaluation_split: str | None = None) -> tuple[dict[str, Any], str]:
     common = KJConfig()
-    adaptive = LAdaptiveConfig(
+    selected = l_adaptive_v2_midrange_train_selected_config()
+    adaptive = replace(
+        selected,
         max_stake_abs_usdc=min(_decimal(parameters, "maxStakeUsdc", common.max_stake_abs_usdc), max_position),
         book_participation=_decimal(parameters, "bookParticipation", common.book_participation),
-        max_signal_edge=_decimal(parameters, "maxSignalEdge", common.max_edge),
+        max_signal_edge=_decimal(parameters, "maxSignalEdge", selected.max_signal_edge),
     )
+    split = evaluation_split or "VALIDATION"
+    if split != "VALIDATION":
+        raise ValueError("L V2 workbench evaluation is restricted to VALIDATION")
     result = run_kj_paper(receipt, rows, strategies=(AdaptiveStrategy.L_ADAPTIVE_EXECUTION,),
-                          split="VALIDATION", horizon_seconds=30,
+                          split=split, horizon_seconds=30,
                           scenario=PaperScenario.BASE_1S, initial_cash=initial_cash,
                           adaptive_config=adaptive)
     return result, AdaptiveStrategy.L_ADAPTIVE_EXECUTION.value
@@ -135,12 +144,13 @@ def resolve_strategy(strategy_id: str) -> StrategyDescriptor:
 
 def run_registered_workbench_backtest(strategy_id: str, receipt: object, rows: object,
                                       parameters: dict[str, Any], initial_cash: Decimal,
-                                      max_position: Decimal) -> tuple[dict[str, Any], str]:
+                                      max_position: Decimal,
+                                      evaluation_split: str | None = None) -> tuple[dict[str, Any], str]:
     """Run a reviewed registry adapter; never import or execute user-provided code."""
     descriptor = resolve_strategy(strategy_id)
     if descriptor.workbench_backtest is None:
         raise ValueError(f"strategy has no offline workbench runner: {strategy_id}")
-    return descriptor.workbench_backtest(receipt, rows, parameters, initial_cash, max_position)
+    return descriptor.workbench_backtest(receipt, rows, parameters, initial_cash, max_position, evaluation_split)
 
 
 __all__ = [

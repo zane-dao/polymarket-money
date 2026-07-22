@@ -21,7 +21,9 @@ test("backtest jobs are idempotent, report progress and persist queryable result
   const runner: BacktestRunner = { async run(input, context) { context.reportProgress(500); return { schemaVersion: "backtest-result-v1", runId: context.runId, request: input,
     startedAtUtc: "2026-01-01T00:00:00Z", completedAtUtc: "2026-01-01T00:00:01Z", metrics: { netPnl: "1", fees: "0.1", maxDrawdown: "0", fillRate: "1", winRate: "1", brier: "0.1" }, equityCurve: [], events: [] }; } };
   const service = new BacktestJobService(runner, new FileBacktestResultStore(root));
-  const first = service.start(request); assert.equal(service.start(request).runId, first.runId);
+  const namedRequest = { ...request, displayName: "费用感知概率策略 · BTC 验证", description: "用于验证集的纸面回测。" };
+  const first = service.start(namedRequest); assert.equal(service.start(namedRequest).runId, first.runId);
+  assert.equal(first.displayName, namedRequest.displayName);
   await waitFor(service, first.runId, "succeeded");
   assert.equal(service.get(first.runId).status, "succeeded");
   assert.equal((await service.result(first.runId)).metrics.netPnl, "1");

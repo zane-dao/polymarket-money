@@ -98,8 +98,6 @@ class KJConfig:
             value = getattr(self, name)
             if not value.is_finite() or value < ZERO:
                 raise ValueError(f"{name} must be a finite non-negative Decimal")
-        if self.max_edge <= self.edge_threshold:
-            raise ValueError("max_edge must exceed edge_threshold")
         if not ZERO < self.probability_clamp < Decimal("0.5"):
             raise ValueError("probability_clamp must be between zero and 0.5")
         if not ZERO < self.book_participation <= ONE:
@@ -179,7 +177,6 @@ class LAdaptiveConfig:
             "market_quote_reprice_risk_multiplier",
             "volatility_remaining_multiplier",
             "depth_risk_max",
-            "max_signal_edge",
             "kelly_multiplier",
             "max_stake_fraction",
             "max_stake_abs_usdc",
@@ -191,6 +188,8 @@ class LAdaptiveConfig:
             value = getattr(self, name)
             if not value.is_finite() or value < ZERO:
                 raise ValueError(f"{name} must be a finite non-negative Decimal")
+        if not self.max_signal_edge.is_finite():
+            raise ValueError("max_signal_edge must be finite")
         if (
             self.short_volatility_weight
             + self.medium_volatility_weight
@@ -204,8 +203,6 @@ class LAdaptiveConfig:
             raise ValueError("book_participation must be in (0, 1]")
         if self.volatility_drag_reference <= ZERO:
             raise ValueError("volatility_drag_reference must be positive")
-        if self.max_signal_edge <= ZERO:
-            raise ValueError("max_signal_edge must be positive")
 
     def to_mapping(self) -> dict[str, str]:
         return {
@@ -985,6 +982,18 @@ def run_kj_paper(
     )
     if not selected:
         raise ValueError("no rows match split and horizon")
+    cohort_hash = sha256(
+        canonical_json(
+            [
+                {
+                    "condition_id": str(row["condition_id"]),
+                    "decision_time": str(row["decision_time"]),
+                    "horizon_seconds": int(row["horizon_seconds"]),
+                }
+                for row in selected
+            ]
+        ).encode("utf-8")
+    ).hexdigest()
 
     runs: dict[str, Any] = {}
     all_events: list[dict[str, Any]] = []
@@ -1112,6 +1121,8 @@ def run_kj_paper(
         "split": split,
         "horizon_seconds": horizon_seconds,
         "scenario": scenario.value,
+        "cohort_hash": cohort_hash,
+        "cohort_size": len(selected),
         "config": (
             {
                 "config_version": adaptive_config.config_version,

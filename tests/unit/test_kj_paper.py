@@ -467,6 +467,14 @@ class KJPaperTest(unittest.TestCase):
         self.assertEqual(len(result["events"]), 4)
         self.assertIn("brier_score", result["runs"]["J_FEE_AWARE"])
         self.assertIn("net_without_best_3_days", result["runs"]["K_DUAL_VOL"])
+        self.assertEqual(result["cohort_size"], 2)
+        self.assertRegex(result["cohort_hash"], r"^[0-9a-f]{64}$")
+        reversed_result = run_kj_paper(
+            receipt,
+            (row(condition="m2", winner="Down"), row(condition="m1")),
+            strategies=(KJStrategy.J_FEE_AWARE,),
+        )
+        self.assertEqual(result["cohort_hash"], reversed_result["cohort_hash"])
 
         from tempfile import TemporaryDirectory
         with TemporaryDirectory() as temporary:

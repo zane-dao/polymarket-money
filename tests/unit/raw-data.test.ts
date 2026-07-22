@@ -11,22 +11,22 @@ import {
   parsePersistedEnvelope,
   parsePersistedEnvelopeV2,
   rawSha256,
-} from "../../execution/src/domain/raw-event.js";
+} from "../../backend/core/src/domain/raw-event.js";
 import {
   parseClobMarketMessage,
   parseRestOrderBook,
   parseRtdsPriceMessage,
-} from "../../execution/src/adapters/market-data/parsers.js";
-import { BookState, PublicOrderBook } from "../../execution/src/adapters/market-data/book-state.js";
+} from "../../backend/core/src/adapters/market-data/parsers.js";
+import { BookState, PublicOrderBook } from "../../backend/core/src/adapters/market-data/book-state.js";
 import {
   clobMarketSubscription,
   rtdsSubscription,
   validatePublicBtcFiveMinuteMarket,
-} from "../../execution/src/adapters/market-data/public-sources.js";
+} from "../../backend/core/src/adapters/market-data/public-sources.js";
 import {
   DatasetManifestWriter,
   RawSegmentWriter,
-} from "../../execution/src/storage/raw-segment.js";
+} from "../../backend/core/src/storage/raw-segment.js";
 
 const root = new URL("../../../", import.meta.url);
 

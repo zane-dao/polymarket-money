@@ -1,6 +1,6 @@
 # 当前状态
 
-更新时间：2026-07-20
+更新时间：2026-07-22
 
 本文件只回答“现在做到哪里、下一步是什么、当前能做什么”。历史过程、旧测试数字和逐次
 提交记录不在这里维护；截至 2026-07-18 的完整旧状态已归档为
@@ -17,34 +17,112 @@
   `UNVERIFIED`。
 - `paired-20260718-0900` campaign 已在预热前按用户要求永久中止；不得补跑或计入证据。
 - 当前没有 shadow/live 准入，也没有可达的真实下单路径。
+- 用户已把短期操作方式明确改为 Web；Tauri/Rust 暂停接线和验收，但代码保留供以后恢复。
+  React 必须通过仅本机固定 Web API 访问 TypeScript/Python 后端，仍不得直接读取数据库或文件。
+- 最新纠偏将目标目录简化为 `frontend/`、轻量 `src-tauri/`、模块化 `backend/` 和独立
+  `strategies/`；不再把主要业务放入 Tauri，也不采用 `modules/typescript|python` 分层。
 
 ## 当前 Batch
 
-没有正在执行的产品或研究 Batch。本轮仅整理文档治理，不改变策略、运行时或研究结论。
-历史 Batch 的设计与结论从 [Batch 索引](../batches/BATCHES-INDEX.md) 进入。
+Batch 07 的目录纠偏已形成可构建状态：前端合同与测试位于 `frontend/`；`src-tauri/src` 只保留
+轻量 app-status；原顶层 `execution/` 已归入 `backend/core/`，同时保留
+`backend/{market-data,backtest,risk,storage,tests}` 的明确业务入口。`strategies/` 已包含 TS 合同、
+K/J context/warmup，以及列明 B0-B3、J、K、L V1、L V2 的 Python 公共注册表、确定性实现和
+专项测试；原 `research/polymarket_money/kj_paper.py` 只保留兼容导入。L V1/V2 的用法、修改规则、
+冻结状态和历史测试证据已集中到 `strategies/README.md` 与 `strategies/TEST-RESULTS.md`。
+
+前端工作台已完成本机 Web 后端接线：React/Vite 入口、9 个页面模块、共享布局/组件、SVG 图表、
+响应式样式、框架无关 reducer、严格 workbench manifest 与只读数据源端口均位于 `frontend/`。
+概览、实时、决策、策略、数据集、回测、回放、竞技场和健康页均通过 loopback 固定 Web command
+访问同一后端应用服务。原 Tauri command 暂不再作为当前入口或验收对象。在
+真实 DTO 不足时明确显示 unavailable。生产 `verified-local` 分支不再回退到 preview 数字；前端
+不读取数据库、文件路径或原始数据。策略版本、数据集扫描、历史回测任务、结果/事件/资金曲线、
+Paper Kill Switch 与 app-status 均由后端拥有。设计稿阶段曾按 1440×1000 同尺寸截图核对，并补齐
+原稿中的高密度检查器、状态卡、运行排名、服务控制与事件流；正文和辅助字号也已上调。设计稿
+`polymarket_btc5m_workbench_fusion_v3.html` 仍是独立参考文件，生产代码没有对它建立依赖。
+预览模式仍只用于独立视觉测试并显式标记 `PREVIEW DATA`；Web 生产入口必须使用 `VERIFIED LOCAL`。
+生产入口现已保留静态 React 资产的页面级演示能力：当本地只读数据加载失败，或在无命令桥且
+工作台 DTO 完全为空时，自动显示醒目的 `DEMO DATA` 警示、失败原因和锁定的完整静态页面；顶栏
+可在自动、真实数据和界面演示间切换。演示区使用 `inert` 和事件拦截，不能触发后端、Paper、
+导出或持久化操作。当前仍是页面级切换；真实与演示模块在同一页面按字段混合是后续工作。
+实时公共行情采集尚未取得本次启动批准，因此实时页面的 host 状态保持 STOPPED/NOT READY，
+不会伪报 WebSocket、延迟或盘口健康；Paper 安全控制、会话与已持久化账本仍可查询。当前已实现具体 `PublicClobPaperMarketFeed`：精确 BTC 5m
+slug 的 Gamma discovery、两腿 CLOB REST bootstrap、公开 CLOB market WebSocket、PING/PONG、
+book/price_change 与 abort/断连；其网络/时钟/timer 可注入且构造不执行 I/O。caller-managed
+`PaperMarketHost`、有界快照缓存、连接/缺口/错误健康状态，以及 Paper 会话启动、停止、恢复、
+状态核对的固定 Web/CLI 命令。服务启动不会隐式联网，只有页面提交精确 slug 和当次明确批准后才
+启动公开 feed。
+
+长期运行基础由一个 Web 进程内的惰性 Node Paper host 持有；前端提供精确 slug 和显式公开联网
+批准控件。公共 feed 已组合 Gamma/CLOB 与 Binance Spot
+`bookTicker`，两源未同时连接或 Binance/CLOB 数据陈旧时不发布 ready 快照。Paper 会话现已提供
+订单提交、撤单、重新报价、GTD 到期、手工 Paper 测试结算及订单/成交/仓位/结算/审计事件账本；
+生产 Live 页已接入 V2 手续费证据、GTC/GTD/FAK/FOK、账本、模拟订单、撤单、改价、到期检查和
+手工 Paper 测试结算，所有操作只经过 Web 后端。官方 Gamma 自动模拟结算使用有界重试、严格市场
+身份绑定和 hash-linked outbox，能够恢复 J/K canonical session 的 pending 结算。
+
+组合 feed 现已在同一 `ReceiveClock` 下生成完整 K/J point-in-time context，并由现有 K/J paper
+engine 写入可恢复 journal。Live 页显示真实 runtime 状态、J/K 钱包和最近事件。回测分类事件、
+资金曲线、回放、比较、系统健康和异常也已通过固定 Web 只读查询接口暴露。运行证据仓在仓外保存
+有界 hash 链，记录连接、缺口、错误、快照年龄、延迟和结算失败；数据库未接入时明确报告
+`unavailable/degraded`。数据集页支持后端只读归一化 CSV、JSON、NDJSON/JSONL，并发布为内容寻址、
+不可变的统一历史事件；Parquet 尚未支持。
 
 ## 下一步
 
-1. 先提出一个明确、有限、可证伪的研究问题，再决定是否建立新 Batch。
-2. 若要启动任何公开联网 paper/campaign，必须取得用户当次明确批准，并在启动前冻结窗口、
+1. 在取得当次明确联网批准后，做一次公开 Gamma/CLOB/Binance 的短时 Web Paper 集成验证；未批准前
+   保持 STOPPED，当前只声明离线工程链通过。
+2. 继续把 `strategies/src/python/kj_l.py` 中 paper 成交、组合和导出编排拆到 `backend/backtest`
+   或 `backend/core`，纯 J/K/L 决策留在 `strategies/`；不得复制实现或修改冻结结果。
+3. 继续消除 `strategies` 对 research/backend 具体 adapter/domain 路径的依赖，改用稳定策略 DTO。
+4. 若要启动任何公开联网 paper/campaign，必须取得用户当次明确批准，并在启动前冻结窗口、
    配置、commit/hash 和完整 cohort 验收规则。
-3. K/J 保持冻结，禁止用单场或 Final Test 结果反向调参；L 的后续研究须先补齐连续、
+5. K/J 保持冻结，禁止用单场或 Final Test 结果反向调参；L 的后续研究须先补齐连续、
    point-in-time 的 CLOB quote 与可验证 Chainlink boundary 输入。
-4. shadow/live 继续关闭，只有独立证据门和单独授权才能改变。
+6. shadow/live 继续关闭，只有独立证据门和单独授权才能改变；Tauri 恢复另行安排。
 
 ## 当前硬边界
 
 - `LIVE_TRADING_ENABLED=false`。
-- 不读取凭据，不连接私有用户频道，不签名，不下单或撤单。
+- 不读取凭据，不连接私有用户频道，不签名，不发送或撤销任何真实订单；Paper 模拟订单严格隔离。
 - 不把 paper PnL、单场成功、旧测试通过或工程完成当作盈利、连续性或实盘证据。
 - 不自动重跑被中止 campaign，不以降低门槛“补齐”不完整证据。
 
 ## 最近验证基线
 
-- 当前最新文档化代码验证：Node `147/147`（提交 `517a48a`）。
+- 2026-07-22 静态资产保护与锁定演示：全仓 Node `252/252`、前端 Vitest `23/23`、Playwright
+  桌面/移动本机 Web server `4/4`、前端 TypeScript、Vite production build 和
+  `git diff --check` 均通过；没有启动公网采集或真实交易路径。
+- 2026-07-22 Web 工作台收口：全仓 Node `251/251`、前端 Vitest `22/22`、Playwright 本机真实
+  Web server 桌面/移动 `4/4`、策略目录 Python unittest `9/9`，TypeScript typecheck、后端 build、
+  Vite production build 和 `git diff --check` 均通过。公开联网未获当次批准，因此没有把离线测试
+  冒充实时采集证据；Tauri/Rust 未纳入本轮验收。
+
+- 2026-07-21 本地工作台纵向链：全仓 Node `205/205`、前端 Vitest `12/12`、前端 production build、
+  Playwright 桌面/移动 production-bridge E2E `4/4`、Rust Tauri bridge `7/7`（`-D warnings`）及
+  离线 `cargo build` 通过。临时只读历史数据副本完成
+  真实端到端回测：任务 `succeeded`，返回 1,597 条决策/成交/结算事件与 160 个资金曲线点，
+  DTO 无本地路径；Paper Kill Switch 跨独立 CLI 进程持久化/恢复冒烟通过。
+  长期 IPC、caller-managed Paper host 与公开 feed 专项 Node 测试、策略目录 Python unittest `5/5` 通过。
+
+- 2026-07-21 目录与策略注册纠偏验证：Python 策略注册表 `3/3`、Node `154/154`、TypeScript
+  typecheck 通过；Rust Tauri bridge `5/5` 通过，并在 `RUSTFLAGS='-D warnings'` 下重新编译通过；
+  `git diff --check` 通过。
+- 2026-07-21 React 工作台验证：前端独立 TypeScript 检查通过，Vitest + jsdom 组件测试
+  `2/2` 通过，Vite 8 production build 通过；Playwright Chromium 桌面/Pixel 7 E2E `4/4`
+  通过，覆盖 8 个路由、console/page error 和 paper-only 票据，并完成桌面/移动截图检查；全仓
+  Node 测试 `157/157` 通过。
+- 2026-07-21 视觉校正复验：原稿与实现按 8 个页面、同一 1440×1000 viewport 截图对照；修正
+  信息结构和小字号后重新通过 TypeScript、Vitest `2/2`、Vite production build、Playwright
+  桌面/Pixel 7 `4/4` 与全仓 Node `157/157`，并人工检查总览、决策、回放、竞技场和移动健康页。
 - 最近完整 MVP 工程审计：Node `146/146`、Python `200/200`、Ruff 与 TypeScript 通过
   （提交 `cfb6f64`）。
-- 本轮是文档整改，未重新运行代码测试；文档链接和文件名检查见本轮交付结果。
+- 当前 `.venv` 不存在，系统 Python 3.14.4 未安装 pytest/ruff，因此本轮不能重新证明 Python
+  测试；旧通过数只保留为历史基线。系统 `/usr/bin/rustc` 与 `/usr/bin/cargo` 为 1.93.1，
+  shell 默认 rustup shim 未配置 toolchain。
+- Ubuntu Rust 包未包含可直接调用的 rustfmt/clippy 组件；调用会落入未配置的 rustup shim。
+  未经批准不下载 toolchain，当前以 `-D warnings` 编译和单元测试作为临时验证，不声称
+  fmt/clippy 已通过。
 
 具体结果必须进入 [报告索引](../../reports/REPORTS-INDEX.md)；长期取舍只进入
 [长期决策](../decisions/DECISIONS.md)；未完成工作只进入 [Backlog](BACKLOG.md)。

@@ -6,8 +6,8 @@ import { Decimal } from "decimal.js";
 import {
   FeeEdgeCalculator,
   type FeeScheduleEvidence,
-} from "../../execution/src/runtime/fee-edge.js";
-import { canonicalMoney, MONEY_DECIMAL_CONTRACT_VERSION } from "../../execution/src/domain/money.js";
+} from "../../backend/core/src/runtime/fee-edge.js";
+import { canonicalMoney, MONEY_DECIMAL_CONTRACT_VERSION } from "../../backend/core/src/domain/money.js";
 
 const root = new URL("../../../", import.meta.url);
 const fixture = JSON.parse(await readFile(

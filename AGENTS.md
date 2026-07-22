@@ -35,5 +35,5 @@
 - 领域类型不得依赖供应商 SDK。
 - 外部 I/O 必须隔离在 adapter。
 - 策略函数必须确定性运行，且所有输入显式传入。
-- 时间戳使用 UTC ISO 8601 字符串，并沿用 `execution/src/domain` 的规范字段名。
+- 时间戳使用 UTC ISO 8601 字符串，并沿用 `backend/core/src/domain` 的规范字段名。
 - 新执行行为须有单元测试，并补充适当的回放、集成、golden 或 shadow 测试。

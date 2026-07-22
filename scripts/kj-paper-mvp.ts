@@ -8,14 +8,14 @@ import {
   planKJPaperMvp,
   KJ_PAPER_WARMUP_SECONDS,
   type KJPaperMvpPlan,
-} from "../execution/src/product/kj-paper-mvp.js";
+} from "../backend/core/src/product/kj-paper-mvp.js";
 import {
   campaignBinding,
   campaignRun,
   parseKJPaperCampaignArtifact,
-} from "../execution/src/product/kj-paper-campaign.js";
-import { buildKJPaperMvpResult } from "../execution/src/product/kj-paper-mvp-result.js";
-import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
+} from "../backend/core/src/product/kj-paper-campaign.js";
+import { buildKJPaperMvpResult } from "../backend/core/src/product/kj-paper-mvp-result.js";
+import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);

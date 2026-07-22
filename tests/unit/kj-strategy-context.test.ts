@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { PublicBtcFiveMinuteMarket } from "../../execution/src/adapters/market-data/public-sources.js";
-import { createKJStrategyContext } from "../../execution/src/strategy/kj-context.js";
-import type { ReceiveStamp } from "../../execution/src/domain/receive-time.js";
+import type { PublicBtcFiveMinuteMarket } from "../../backend/core/src/adapters/market-data/public-sources.js";
+import { createKJStrategyContext } from "../../strategies/src/kj-context.js";
+import type { ReceiveStamp } from "../../backend/core/src/domain/receive-time.js";
 
 function stamp(wall: string, ns: string, ordinal: string): ReceiveStamp {
   return {

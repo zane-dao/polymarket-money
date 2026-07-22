@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import type { PublicBtcFiveMinuteMarket } from "../../execution/src/adapters/market-data/public-sources.js";
+import type { PublicBtcFiveMinuteMarket } from "../../backend/core/src/adapters/market-data/public-sources.js";
 import {
   createKJOfficialSettlementFromGamma,
   GAMMA_RESOLUTION_ADAPTER_VERSION,
-} from "../../execution/src/adapters/settlement/gamma-resolution.js";
+} from "../../backend/core/src/adapters/settlement/gamma-resolution.js";
 
 const root = new URL("../../../", import.meta.url);
 

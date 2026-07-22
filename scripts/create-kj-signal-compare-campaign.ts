@@ -4,7 +4,7 @@ import { lstat, open, readFile, realpath, type FileHandle } from "node:fs/promis
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildKJSignalCompareCampaign } from "../execution/src/product/kj-signal-compare-campaign.js";
+import { buildKJSignalCompareCampaign } from "../backend/core/src/product/kj-signal-compare-campaign.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);

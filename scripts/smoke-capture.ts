@@ -13,19 +13,19 @@ import {
   type CapturedFrame,
   type PublicBtcFiveMinuteMarket,
   type PublicSocketAuditEvent,
-} from "../execution/src/adapters/market-data/public-sources.js";
+} from "../backend/core/src/adapters/market-data/public-sources.js";
 import {
   parseClobMarketFrame,
   parseRtdsPriceMessage,
-} from "../execution/src/adapters/market-data/parsers.js";
-import { PublicOrderBook } from "../execution/src/adapters/market-data/book-state.js";
-import { createEnvelopeDraftV2, type ParserStatus } from "../execution/src/domain/raw-event.js";
+} from "../backend/core/src/adapters/market-data/parsers.js";
+import { PublicOrderBook } from "../backend/core/src/adapters/market-data/book-state.js";
+import { createEnvelopeDraftV2, type ParserStatus } from "../backend/core/src/domain/raw-event.js";
 import {
   DatasetManifestWriter,
   RawSegmentWriter,
   type ClosedSegment,
   type DatasetManifestV1,
-} from "../execution/src/storage/raw-segment.js";
+} from "../backend/core/src/storage/raw-segment.js";
 
 interface SmokeOptions {
   readonly dataRoot: string;

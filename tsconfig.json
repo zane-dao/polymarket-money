@@ -16,6 +16,15 @@
     "rootDir": ".",
     "skipLibCheck": true
   },
-  "include": ["execution/src/**/*.ts", "execution/tests/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+  "include": [
+    "backend/core/src/**/*.ts",
+    "backend/core/tests/**/*.ts",
+    "frontend/src/**/*.ts",
+    "frontend/tests/**/*.ts",
+    "backend/**/*.ts",
+    "strategies/**/*.ts",
+    "tests/**/*.ts",
+    "scripts/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

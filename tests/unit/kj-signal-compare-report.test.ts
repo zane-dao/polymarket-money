@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildKJSignalComparePlan, signalCompareArtifact } from "../../execution/src/product/kj-signal-compare.js";
-import { buildKJSignalCompareReport, kjSignalCompareReportHash } from "../../execution/src/product/kj-signal-compare-report.js";
-import { kjPaperReportArtifactHash } from "../../execution/src/product/kj-paper-report.js";
+import { buildKJSignalComparePlan, signalCompareArtifact } from "../../backend/core/src/product/kj-signal-compare.js";
+import { buildKJSignalCompareReport, kjSignalCompareReportHash } from "../../backend/core/src/product/kj-signal-compare-report.js";
+import { kjPaperReportArtifactHash } from "../../backend/core/src/product/kj-paper-report.js";
 
 const COMMIT = "a".repeat(40);
 const START = "2026-07-18T05:00:00.000Z";

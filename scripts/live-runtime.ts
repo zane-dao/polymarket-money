@@ -6,16 +6,17 @@ import { Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
 
-import { BookState, PublicOrderBook } from "../execution/src/adapters/market-data/book-state.js";
+import { BookState, PublicOrderBook } from "../backend/core/src/adapters/market-data/book-state.js";
 import {
   canonicalDecimalString,
   parseClobMarketFrame,
   parseRtdsPriceMessage,
-} from "../execution/src/adapters/market-data/parsers.js";
+  parseBinanceBookTicker,
+} from "../backend/core/src/adapters/market-data/parsers.js";
 import {
   createKJOfficialSettlementFromGamma,
   GammaResolutionPending,
-} from "../execution/src/adapters/settlement/gamma-resolution.js";
+} from "../backend/core/src/adapters/settlement/gamma-resolution.js";
 import {
   capturePublicSocket,
   clobMarketSubscription,
@@ -25,29 +26,29 @@ import {
   validatePublicBtcFiveMinuteMarket,
   type PublicBtcFiveMinuteMarket,
   type PublicSocketRequest,
-} from "../execution/src/adapters/market-data/public-sources.js";
-import { createEnvelopeDraftV2, rawSha256, type ParserStatus } from "../execution/src/domain/raw-event.js";
-import type { ReceiveStamp } from "../execution/src/domain/receive-time.js";
-import { Money } from "../execution/src/domain/money.js";
+} from "../backend/core/src/adapters/market-data/public-sources.js";
+import { createEnvelopeDraftV2, rawSha256, type ParserStatus } from "../backend/core/src/domain/raw-event.js";
+import type { ReceiveStamp } from "../backend/core/src/domain/receive-time.js";
+import { Money } from "../backend/core/src/domain/money.js";
 import {
   canonicalOpportunityFacts,
   createOpportunityObservationV1,
   createRouteEvaluationV1,
   type OpportunityObservationV1,
   type RouteEvaluationV1,
-} from "../execution/src/domain/opportunity-observation.js";
-import { FeeEdgeCalculator } from "../execution/src/runtime/fee-edge.js";
-import { classifyClobBookObservation } from "../execution/src/runtime/clob-book-observation.js";
+} from "../backend/core/src/domain/opportunity-observation.js";
+import { FeeEdgeCalculator } from "../backend/core/src/runtime/fee-edge.js";
+import { classifyClobBookObservation } from "../backend/core/src/runtime/clob-book-observation.js";
 import {
   createOpportunityRuntimeConfig,
   type OpportunityRuntimeConfig,
-} from "../execution/src/runtime/opportunity-config.js";
+} from "../backend/core/src/runtime/opportunity-config.js";
 import {
   createRuntimeIncident,
   FailClosedRuntime,
   type EmergencyTerminalReceipt,
   type RuntimeIncidentV1,
-} from "../execution/src/runtime/incidents.js";
+} from "../backend/core/src/runtime/incidents.js";
 import {
   DEFAULT_LEAD_LAG_CONFIG,
   LeadLagEngine,
@@ -58,7 +59,7 @@ import {
   type LeadLagStamp,
   type LeadLagTrigger,
   type TriggerRejection,
-} from "../execution/src/runtime/lead-lag.js";
+} from "../backend/core/src/runtime/lead-lag.js";
 import {
   completeSetArbitrageObserver,
   makerEnvelopeObserver,
@@ -66,28 +67,28 @@ import {
   type PaperAudit,
   type PaperSnapshot,
   type ObserverName,
-} from "../execution/src/runtime/paper.js";
-import { createKJStrategyContext } from "../execution/src/strategy/kj-context.js";
-import { createKJPaperWarmupSignal } from "../execution/src/strategy/kj-warmup.js";
+} from "../backend/core/src/runtime/paper.js";
+import { createKJStrategyContext } from "../strategies/src/kj-context.js";
+import { createKJPaperWarmupSignal } from "../strategies/src/kj-warmup.js";
 import {
   KJ_PAPER_ENGINE_VERSION,
   KJPaperEngine,
-} from "../execution/src/runtime/kj-paper-engine.js";
+} from "../backend/core/src/runtime/kj-paper-engine.js";
 import {
   MIN_FREE_BYTES,
   SharedByteBudget,
   validateRecordingOptions,
   type RecordMode,
   type RecordingOptions,
-} from "../execution/src/runtime/recording.js";
-import { loadR2Preregistration, type R2Preregistration } from "../execution/src/runtime/r2-preregistration.js";
+} from "../backend/core/src/runtime/recording.js";
+import { loadR2Preregistration, type R2Preregistration } from "../backend/core/src/runtime/r2-preregistration.js";
 import {
   RawByteLimitReached,
   DatasetManifestWriter,
   RawSegmentWriter,
   type ClosedSegment,
-} from "../execution/src/storage/raw-segment.js";
-import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
+} from "../backend/core/src/storage/raw-segment.js";
+import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
 
 type Mode = "monitor" | "paper";
 type StreamName = "clob" | "chainlink" | "polymarket_binance" | "binance_spot" | "binance_perpetual" | "gamma";
@@ -784,21 +785,17 @@ function directTicker(
   connectionId: string,
   externalEventId: string,
 ): BookTickerState {
-  const value = JSON.parse(raw) as Record<string, unknown>;
-  for (const key of ["b", "B", "a", "A", "s"]) {
-    if (typeof value[key] !== "string") throw new Error(`bookTicker.${key} is required`);
-  }
-  if (value.s !== "BTCUSDT") throw new Error("bookTicker symbol is not BTCUSDT");
-  const bid = canonicalDecimalString(value.b as string);
-  const ask = canonicalDecimalString(value.a as string);
+  const value = parseBinanceBookTicker(raw);
+  const bid = value.bid;
+  const ask = value.ask;
   return {
     value: Money.from(bid).plus(Money.from(ask)).dividedBy(Money.from("2")).toCanonical(),
     bid,
-    bidSize: value.B as string,
+    bidSize: value.bidSize,
     ask,
-    askSize: value.A as string,
-    sourceTime: isoFromMilliseconds(value.T),
-    serverTime: isoFromMilliseconds(value.E),
+    askSize: value.askSize,
+    sourceTime: value.sourceTime,
+    serverTime: value.serverTime,
     receiveTime: receiveStamp.localWallReceiveTime,
     receiveStamp,
     connectionId,

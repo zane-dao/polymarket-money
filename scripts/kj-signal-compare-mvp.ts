@@ -4,10 +4,10 @@ import { mkdir, open, readFile, realpath, statfs, type FileHandle } from "node:f
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildKJPaperCampaign, campaignArtifact } from "../execution/src/product/kj-paper-campaign.js";
-import { parseKJSignalCompareCampaignArtifact } from "../execution/src/product/kj-signal-compare-campaign.js";
-import { buildKJSignalComparePlan, signalCompareArtifact } from "../execution/src/product/kj-signal-compare.js";
-import { KJ_PAPER_WARMUP_SECONDS } from "../execution/src/product/kj-paper-mvp.js";
+import { buildKJPaperCampaign, campaignArtifact } from "../backend/core/src/product/kj-paper-campaign.js";
+import { parseKJSignalCompareCampaignArtifact } from "../backend/core/src/product/kj-signal-compare-campaign.js";
+import { buildKJSignalComparePlan, signalCompareArtifact } from "../backend/core/src/product/kj-signal-compare.js";
+import { KJ_PAPER_WARMUP_SECONDS } from "../backend/core/src/product/kj-paper-mvp.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);

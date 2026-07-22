@@ -10,13 +10,13 @@ import {
   type CapturedFrame,
   type PublicHttpRuntime,
   type PublicSocketRuntime,
-} from "../../execution/src/adapters/market-data/public-sources.js";
+} from "../../backend/core/src/adapters/market-data/public-sources.js";
 import {
   createEnvelopeDraft,
   createEnvelopeDraftV2,
-} from "../../execution/src/domain/raw-event.js";
-import { ReceiveClock } from "../../execution/src/domain/receive-time.js";
-import { RawSegmentWriter } from "../../execution/src/storage/raw-segment.js";
+} from "../../backend/core/src/domain/raw-event.js";
+import { ReceiveClock } from "../../backend/core/src/domain/receive-time.js";
+import { RawSegmentWriter } from "../../backend/core/src/storage/raw-segment.js";
 
 class FakeSocket extends EventTarget {
   readyState = 1;

@@ -16,7 +16,7 @@
 
 - `research/`：notebook、数据集、特征研究、回测和研究报告。
 - `research/polymarket_money/`：供应商无关的 Python 领域规则、安全逻辑和离线成交会计。
-- `execution/src/domain/`：共享领域契约；`adapters/`：外部系统接口；`strategy/`：纯策略契约；`risk/`：风控配置和决定。
+- `backend/core/src/domain/`：共享领域契约；`adapters/`：外部系统接口；`strategy/`：纯策略契约；`risk/`：风控配置和决定。
 - `data/`：本地数据、确定性 fixture 和 golden 输出；`tests/`：unit、integration、replay、golden 与 shadow 测试。
 - `docs/batches/`：Batch 设计、范围和验收要求；`reports/batches/`：测试、环境和验证证据。
 - `docs/plan/`：当前计划、路线和 backlog；`docs/spec/`、`docs/goals/`、`docs/decisions/`：稳定边界、目标和长期决定。
@@ -50,6 +50,26 @@ npm run mvp:console -- --data-root /root/polymarket-money-data --enable-local-hi
 ```
 
 API 不接受任意命令、参数、输出路径或网络模式；一次只允许一个本地历史运行。页面也可以显示已有 `paper-mvp/*/result.json` 或恢复后的 `final-result.json` 的验收状态、计划绑定、目标数量和逐策略 paper PnL，但不会读取 journal 或启动 realtime 进程。验收证据见 [MVP Console 验收](docs/batches/batch-06-kj-paper/mvp-console-acceptance.md)。
+
+## Web 研究工作台（当前操作入口）
+
+短期生产操作统一使用本机 Web 工作台，Tauri 暂停。先指定仓外数据根，再构建并启动：
+
+```bash
+POLYMARKET_DATA_ROOT=/root/polymarket-money-data npm run web:serve
+```
+
+`frontend/dist/` 是 `npm run frontend:build` 生成的 Web 发布目录，包含浏览器实际加载的压缩
+HTML、CSS、JavaScript 和 source map；它不是数据库，也不是源码目录。构建时会重新生成，
+不要在里面手工修改功能，功能修改应落在 `frontend/src/`。
+
+打开 `http://127.0.0.1:4173`。服务只监听 loopback，并同时托管 `frontend/dist/` 和固定
+`/api/commands/*` 白名单。React 只能调用这些版本化 JSON 命令；数据库、文件路径、原始历史数据
+和 Paper journal 均留在后端。API 拒绝跨来源请求、任意 shell、SQL、任意 URL 和未知命令。
+
+服务启动不会联网采集。只有实时页提交精确 BTC 五分钟 slug，并明确勾选本次公开行情联网批准后，
+长期 Paper runtime 才能连接公开 Gamma/CLOB/Binance 行情；它仍不连接钱包、私有用户频道、签名或
+真实订单。停止 Web 服务会优雅关闭 runtime，持久 Paper 会话和账本可在下次启动时恢复。
 
 ## 历史 K/J 与 L 研究
 

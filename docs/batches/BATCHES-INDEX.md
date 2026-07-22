@@ -15,5 +15,6 @@
 | 04B-R1 合同整改 | [batch-04b-r1](batch-04b-r1/) | `reports/batches/batch-04b-r1/` | 已完成 |
 | 04B-R2 观测 | [batch-04b-r2](batch-04b-r2/) | `reports/batches/batch-04b-r2/` | `INCOMPLETE_EVIDENCE`，不重跑 |
 | 06 K/J paper | [batch-06-kj-paper](batch-06-kj-paper/) | `reports/batches/batch-06-kj-paper/` | 工程闭环完成 |
+| 07 桌面架构整合 | [batch-07-desktop-consolidation](batch-07-desktop-consolidation/) | `reports/batches/batch-07-desktop-consolidation/` | 进行中：简化目录与首批真实入口完成 |
 
 当前是否有活跃 Batch、下一步和授权边界只以 [当前状态](../plan/CURRENT.md) 为准。

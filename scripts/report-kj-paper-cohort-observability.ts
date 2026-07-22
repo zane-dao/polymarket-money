@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { writeSync } from "node:fs";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readFile, realpath, statfs, type FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -8,12 +9,12 @@ import {
   buildKJPaperCohortObservabilityReport,
   kjPaperCohortObservabilityReportHash,
   type KJPaperCohortObservabilityInput,
-} from "../execution/src/product/kj-paper-cohort-observability-report.js";
+} from "../backend/core/src/product/kj-paper-cohort-observability-report.js";
 import {
   buildKJPaperCampaignCohortObservabilityReport,
   kjPaperCampaignCohortObservabilityReportHash,
-} from "../execution/src/product/kj-paper-campaign-cohort-observability-report.js";
-import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
+} from "../backend/core/src/product/kj-paper-campaign-cohort-observability-report.js";
+import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
 
 function inputs(): string[] {
   const values: string[] = [];
@@ -206,7 +207,7 @@ async function main(): Promise<void> {
   await mkdir(outputDirectory, { recursive: false, mode: 0o700 });
   await syncDirectory(parent);
   await durableWrite(join(outputDirectory, "summary.json"), `${JSON.stringify({ report, reportHash }, null, 2)}\n`);
-  process.stdout.write(`${JSON.stringify({
+  writeSync(process.stdout.fd, `${JSON.stringify({
     accepted: true,
     evidenceStatus: report.evidenceStatus,
     profitabilityClaimEligible: report.profitabilityClaimEligible,

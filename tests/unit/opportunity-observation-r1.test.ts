@@ -7,7 +7,7 @@ import {
   createOpportunityObservationV1,
   createRouteEvaluationV1,
   parseOpportunityObservationV1,
-} from "../../execution/src/domain/opportunity-observation.js";
+} from "../../backend/core/src/domain/opportunity-observation.js";
 
 const draft = {
   opportunityFamily: "COMPLETE_SET_ARBITRAGE" as const,

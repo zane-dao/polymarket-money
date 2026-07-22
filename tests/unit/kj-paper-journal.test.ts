@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
 
-import type { PublicBtcFiveMinuteMarket } from "../../execution/src/adapters/market-data/public-sources.js";
-import type { GammaResolutionInput } from "../../execution/src/adapters/settlement/gamma-resolution.js";
-import type { ReceiveStamp } from "../../execution/src/domain/receive-time.js";
-import { KJPaperJournal } from "../../execution/src/storage/kj-paper-journal.js";
-import { createKJStrategyContext, type KJStrategyContextV1 } from "../../execution/src/strategy/kj-context.js";
-import { createKJPaperWarmupSignal } from "../../execution/src/strategy/kj-warmup.js";
+import type { PublicBtcFiveMinuteMarket } from "../../backend/core/src/adapters/market-data/public-sources.js";
+import type { GammaResolutionInput } from "../../backend/core/src/adapters/settlement/gamma-resolution.js";
+import type { ReceiveStamp } from "../../backend/core/src/domain/receive-time.js";
+import { KJPaperJournal } from "../../backend/core/src/storage/kj-paper-journal.js";
+import { createKJStrategyContext, type KJStrategyContextV1 } from "../../strategies/src/kj-context.js";
+import { createKJPaperWarmupSignal } from "../../strategies/src/kj-warmup.js";
 
 const START = Date.parse("2026-07-17T00:00:00.000Z");
 const execFile = promisify(execFileCallback);
@@ -270,6 +270,7 @@ test("K/J journal durably replays contexts, fills, wallets, and official settlem
       import.meta.url,
     ));
     const { stdout } = await execFile(process.execPath, [inspectionScript, path]);
+    assert.notEqual(stdout.trim(), "", "journal inspector produced no JSON");
     const inspection = JSON.parse(stdout) as {
       journalRecordCount: string;
       state: { eventCount: string; markets: readonly { state: string }[] };

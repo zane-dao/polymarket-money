@@ -1,16 +1,16 @@
 import { isAbsolute, resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
 
-import { fetchPublicMarketBySlug } from "../execution/src/adapters/market-data/public-sources.js";
+import { fetchPublicMarketBySlug } from "../backend/core/src/adapters/market-data/public-sources.js";
 import {
   createKJOfficialSettlementFromGamma,
   GammaResolutionPending,
-} from "../execution/src/adapters/settlement/gamma-resolution.js";
+} from "../backend/core/src/adapters/settlement/gamma-resolution.js";
 import {
   KJ_SETTLEMENT_RECOVERY_VERSION,
   selectKJSettlementRecoveryMarkets,
-} from "../execution/src/product/kj-settlement-recovery.js";
-import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
+} from "../backend/core/src/product/kj-settlement-recovery.js";
+import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);

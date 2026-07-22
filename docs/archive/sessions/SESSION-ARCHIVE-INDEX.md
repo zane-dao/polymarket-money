@@ -4,6 +4,9 @@
 
 | 时间 | 主题 | 摘要 | 状态 |
 |---|---|---|---|
+| 2026-07-22 11:01 Asia/Singapore | Fusion V3 静态资产保护与锁定演示 | `2026-07-22-fusion-v3-demo-asset-preservation.md` | 页面级演示隔离完成；模块级真实接线已进入 Backlog |
+| 2026-07-22 05:56 Asia/Singapore | Web 策略与 Paper 执行工作台收口 | `2026-07-22-web-strategy-paper-workbench.md` | Web 工程链通过；真实交易关闭，公开联网运行证据待单独批准 |
+| 2026-07-21 09:52 Asia/Singapore | Fusion V3 React 工作台实现 | `2026-07-21-fusion-v3-react-workbench.md` | 第一版完成；桌面/移动浏览器验收通过，真实数据接入待续 |
 | 2026-07-20 20:42 Asia/Singapore | 文档体系审计与整改 | `2026-07-20-document-system-audit.md` | 完成；文档名唯一、相对链接无断链 |
 | 2026-07-18（历史记录；具体时刻未记录） | 干净三市场双信号配对 Paper | `2026-07-18-clean-paired-signal-paper.md` | 两腿 3/3 市场通过并已生成配对报告；只作描述性比较 |
 | 2026-07-18（历史记录；具体时刻未记录） | 双信号配对 Paper 诊断与首市场边界修复 | `2026-07-18-paired-signal-paper-diagnostic.md` | 首轮配对报告完成但有预热市场泄漏，已修复，等待干净重跑授权 |

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildKJPaperCampaign,
   campaignArtifact,
-} from "../execution/src/product/kj-paper-campaign.js";
+} from "../backend/core/src/product/kj-paper-campaign.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);

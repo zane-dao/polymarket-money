@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DEFAULT_LEAD_LAG_CONFIG } from "../../execution/src/runtime/lead-lag.js";
+import { DEFAULT_LEAD_LAG_CONFIG } from "../../backend/core/src/runtime/lead-lag.js";
 import {
   OPPORTUNITY_RUNTIME_CONFIG_VERSION,
   createOpportunityRuntimeConfig,
-} from "../../execution/src/runtime/opportunity-config.js";
+} from "../../backend/core/src/runtime/opportunity-config.js";
 
 const base = {
   mode: "paper" as const,

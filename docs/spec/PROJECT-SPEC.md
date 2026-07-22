@@ -51,8 +51,17 @@
 ## 5. 架构规范
 
 - `/root/projects/polymarket-money` 是新代码与工程文档的唯一写入仓。
-- Python 负责研究、离线数据、特征、模型评估和回测；不得拥有真实执行凭据。
-- TypeScript 负责未来实时适配、中央风控、订单状态、账本、恢复和监控。
+- `frontend/` 只负责 React + TypeScript + TSX 页面、状态和调用，不直接访问数据库、网络
+  客户端、策略内部实现或下单逻辑。
+- `src-tauri/` 只负责 Tauri 配置、应用启动、系统能力和轻量命令桥接，不承载主要策略或
+  业务逻辑。
+- 主要业务后端按实际能力收敛到 `backend/`；允许保留合格的 TypeScript/Python 实现，新增
+  性能敏感或系统能力可使用 Rust，但不得为了语言统一盲目重写。
+- 策略最终独立位于 `strategies/`，只接收标准输入并输出标准决策；不得依赖前端、Tauri、
+  数据库实现、网络客户端或实际下单逻辑。
+- 回测、模拟交易和后续执行通过同一策略接口调用策略；新增策略只涉及实现、注册和测试。
+- 现有 `execution/` 与 `research/` 在小批次迁移验证前保留原位，不为匹配目录模板一次性搬动。
+- 不为了统一语言重写已经完整、边界清楚且测试可用的模块；语言迁移必须有等价测试和明确收益。
 - domain 不依赖 vendor SDK；外部 I/O 只在 adapter；策略为显式输入到显式输出的纯函数。
 - exchange truth、append-only events 和 reconciliation 高于进程内缓存或单次 API 响应。
 

@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import test from "node:test";
 
-import type { PublicBtcFiveMinuteMarket } from "../../execution/src/adapters/market-data/public-sources.js";
-import type { ReceiveStamp } from "../../execution/src/domain/receive-time.js";
-import { buildKJPaperMvpResult } from "../../execution/src/product/kj-paper-mvp-result.js";
-import { KJPaperJournal } from "../../execution/src/storage/kj-paper-journal.js";
-import { createKJStrategyContext } from "../../execution/src/strategy/kj-context.js";
+import type { PublicBtcFiveMinuteMarket } from "../../backend/core/src/adapters/market-data/public-sources.js";
+import type { ReceiveStamp } from "../../backend/core/src/domain/receive-time.js";
+import { buildKJPaperMvpResult } from "../../backend/core/src/product/kj-paper-mvp-result.js";
+import { KJPaperJournal } from "../../backend/core/src/storage/kj-paper-journal.js";
+import { createKJStrategyContext } from "../../strategies/src/kj-context.js";
 
 const execFile = promisify(execFileCallback);
 const START = "2026-07-17T00:00:00.000Z";
@@ -205,6 +205,7 @@ test("paper finalization recovers a missing wrapper result into a reportable fin
     await writeFile(join(runDirectory, "runtime-summary.json"), `${JSON.stringify(observabilityRuntimeSummary)}\n`, "utf8");
     const finalizeScript = fileURLToPath(new URL("../../scripts/finalize-kj-paper-run.js", import.meta.url));
     const finalized = await execFile(process.execPath, [finalizeScript, runDirectory]);
+    assert.notEqual(finalized.stdout.trim(), "", `finalizer produced no JSON; stderr=${finalized.stderr}`);
     assert.equal(JSON.parse(finalized.stdout).accepted, true);
     const finalResult = JSON.parse(await readFile(join(runDirectory, "final-result.json"), "utf8"));
     assert.equal(finalResult.accepted, true);

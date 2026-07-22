@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ReceiveClock } from "../../execution/src/domain/receive-time.js";
+import { ReceiveClock } from "../../backend/core/src/domain/receive-time.js";
 import {
   FailClosedRuntime,
   createRuntimeIncident,
   type EmergencyTerminalReceipt,
   type RuntimeIncidentV1,
-} from "../../execution/src/runtime/incidents.js";
+} from "../../backend/core/src/runtime/incidents.js";
 
 function incident(): RuntimeIncidentV1 {
   const stamp = new ReceiveClock({

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildKJPaperCampaignCohortReport,
   kjPaperCampaignCohortReportHash,
-} from "../execution/src/product/kj-paper-campaign-cohort-report.js";
+} from "../backend/core/src/product/kj-paper-campaign-cohort-report.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);

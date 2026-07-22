@@ -4,13 +4,13 @@ import test from "node:test";
 import {
   buildKJPaperCohortReport,
   kjPaperCohortReportHash,
-} from "../../execution/src/product/kj-paper-cohort-report.js";
-import { kjPaperReportArtifactHash } from "../../execution/src/product/kj-paper-report.js";
-import { campaignArtifact, buildKJPaperCampaign } from "../../execution/src/product/kj-paper-campaign.js";
+} from "../../backend/core/src/product/kj-paper-cohort-report.js";
+import { kjPaperReportArtifactHash } from "../../backend/core/src/product/kj-paper-report.js";
+import { campaignArtifact, buildKJPaperCampaign } from "../../backend/core/src/product/kj-paper-campaign.js";
 import {
   buildKJPaperCampaignCohortReport,
   kjPaperCampaignCohortReportHash,
-} from "../../execution/src/product/kj-paper-campaign-cohort-report.js";
+} from "../../backend/core/src/product/kj-paper-campaign-cohort-report.js";
 
 function artifact(
   runId: string,

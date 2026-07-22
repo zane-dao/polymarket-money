@@ -1,0 +1,1222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Polymarket BTC 五分钟研究与模拟工作台 Fusion V3</title>
+  <style>
+    :root{
+      --bg:#081018;
+      --bg-deep:#050b10;
+      --sidebar:#081119;
+      --panel:#0f1922;
+      --panel-2:#111e28;
+      --panel-3:#0b151d;
+      --border:#263746;
+      --border-soft:#1b2a35;
+      --text:#e4edf3;
+      --muted:#8fa3b2;
+      --subtle:#5f7584;
+      --blue:#4f91ff;
+      --cyan:#35d1c0;
+      --green:#4fd17d;
+      --red:#ff676f;
+      --amber:#f2c35f;
+      --purple:#a68aff;
+      --shadow:0 16px 42px rgba(0,0,0,.24);
+      --radius:13px;
+      --sidebar-width:214px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,"PingFang SC","Microsoft YaHei",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    body{overflow:hidden}
+    button,input,select,textarea{font:inherit}
+    button{cursor:pointer}
+    .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-variant-numeric:tabular-nums}
+    .app{
+      display:grid;
+      grid-template-columns:var(--sidebar-width) minmax(0,1fr);
+      height:100vh;
+      background:
+        radial-gradient(circle at 76% -18%,rgba(79,145,255,.13),transparent 35%),
+        linear-gradient(180deg,#09131b 0%,#060d13 100%);
+    }
+
+    /* 左侧导航 */
+    .sidebar{
+      min-width:0;
+      background:linear-gradient(180deg,#08121a,#060d13);
+      border-right:1px solid var(--border-soft);
+      display:flex;
+      flex-direction:column;
+      padding:14px 11px 12px;
+    }
+    .brand{
+      padding:4px 8px 15px;
+      border-bottom:1px solid var(--border-soft);
+      margin-bottom:10px;
+    }
+    .brand-title{font-size:17px;font-weight:760;letter-spacing:-.3px}
+    .brand-sub{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.45}
+    .nav{display:flex;flex-direction:column;gap:5px}
+    .nav button{
+      width:100%;
+      border:1px solid transparent;
+      background:transparent;
+      color:#a7b7c2;
+      padding:10px 11px;
+      border-radius:10px;
+      text-align:left;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      font-size:12px;
+    }
+    .nav button:hover{background:#0f1d27;color:#fff}
+    .nav button.active{
+      background:linear-gradient(90deg,#16345a,#102844);
+      border-color:#27527e;
+      color:#a9d1ff;
+    }
+    .nav-ico{
+      width:20px;height:20px;border:1px solid currentColor;border-radius:6px;
+      display:grid;place-items:center;font-size:11px;opacity:.9;
+    }
+    .sidebar-foot{
+      margin-top:auto;border-top:1px solid var(--border-soft);padding:12px 8px 2px;
+      color:var(--subtle);font-size:9px;line-height:1.7;
+    }
+
+    /* 主区和顶栏 */
+    .main{min-width:0;display:flex;flex-direction:column}
+    .topbar{
+      min-height:54px;
+      border-bottom:1px solid var(--border-soft);
+      background:rgba(7,15,21,.94);
+      padding:7px 10px;
+      display:flex;
+      align-items:center;
+      gap:7px;
+      overflow-x:auto;
+      scrollbar-width:none;
+    }
+    .topbar::-webkit-scrollbar{display:none}
+    .top-chip{
+      flex:0 0 auto;
+      border:1px solid var(--border);
+      background:#0d1922;
+      border-radius:999px;
+      padding:6px 9px;
+      font-size:10px;
+      color:#c7d3db;
+      white-space:nowrap;
+    }
+    .top-chip b{font-weight:700;color:#f0f5f8}
+    .top-chip.good{border-color:rgba(79,209,125,.32);color:#a9f3c0;background:rgba(79,209,125,.07)}
+    .top-chip.warn{border-color:rgba(242,195,95,.34);color:#ffe0a2;background:rgba(242,195,95,.07)}
+    .top-chip.info{border-color:rgba(79,145,255,.34);color:#b9d7ff;background:rgba(79,145,255,.08)}
+    .workspace{
+      height:calc(100vh - 54px);
+      overflow:auto;
+      padding:9px;
+    }
+
+    /* 通用 */
+    .page{display:none;animation:fade .14s ease}
+    .page.active{display:block}
+    @keyframes fade{from{opacity:.35;transform:translateY(2px)}to{opacity:1;transform:none}}
+    .panel{
+      min-width:0;
+      background:linear-gradient(180deg,rgba(16,29,39,.98),rgba(10,20,28,.98));
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+    }
+    .panel-head{
+      min-height:42px;padding:8px 12px;border-bottom:1px solid var(--border-soft);
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+    }
+    .panel-title{font-size:12px;font-weight:730}
+    .panel-en{font-size:9px;color:var(--muted);margin-left:5px;font-weight:500}
+    .panel-body{padding:11px}
+    .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:1px 2px 9px}
+    .page-head h1{font-size:19px;margin:0;letter-spacing:-.35px}
+    .page-head p{margin:4px 0 0;font-size:10px;color:var(--muted)}
+    .toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .btn{
+      border:1px solid var(--border);background:#11202a;color:#c9d6dd;
+      border-radius:7px;padding:7px 10px;font-size:10px;
+    }
+    .btn:hover{background:#172b38;color:#fff}
+    .btn.primary{background:#184c87;border-color:#2d70bd;color:#fff}
+    .btn.danger{background:#4a1f28;border-color:#7d3541;color:#ffb3b8}
+    .btn.active{background:#173f70;border-color:#4f91ff;color:#fff}
+    .select,.input{
+      background:#0a151d;border:1px solid var(--border);color:var(--text);
+      padding:7px 8px;border-radius:7px;font-size:10px;
+    }
+    .status{
+      display:inline-flex;align-items:center;gap:5px;padding:3px 6px;
+      border:1px solid var(--border);border-radius:5px;font-size:8px;font-weight:750;white-space:nowrap;
+    }
+    .status.good{color:var(--green);border-color:rgba(79,209,125,.34);background:rgba(79,209,125,.07)}
+    .status.warn{color:var(--amber);border-color:rgba(242,195,95,.34);background:rgba(242,195,95,.07)}
+    .status.bad{color:var(--red);border-color:rgba(255,103,111,.34);background:rgba(255,103,111,.07)}
+    .status.info{color:#9cc7ff;border-color:rgba(79,145,255,.34);background:rgba(79,145,255,.08)}
+    .green{color:var(--green)!important}.red{color:var(--red)!important}.amber{color:var(--amber)!important}.blue{color:#8fc0ff!important}.cyan{color:var(--cyan)!important}.purple{color:var(--purple)!important}
+    .muted{color:var(--muted)}
+    .tabs{display:flex;overflow:hidden;border:1px solid var(--border);border-radius:7px}
+    .tabs button{border:0;border-right:1px solid var(--border);background:#0c1821;color:var(--muted);padding:6px 10px;font-size:9px}
+    .tabs button:last-child{border-right:0}
+    .tabs button.active{background:#173e6c;color:#d8eaff}
+
+    /* 指标 */
+    .metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;margin-bottom:7px}
+    .metric{
+      min-height:112px;
+      background:linear-gradient(180deg,#111f29,#0b1720);
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      padding:11px 12px;
+    }
+    .metric-label{font-size:10px;color:#cbd7de;font-weight:700}
+    .metric-en{font-size:8px;color:var(--muted);margin-top:2px}
+    .metric-value{font-size:22px;font-weight:800;letter-spacing:-.6px;margin:10px 0 8px}
+    .metric-row{
+      display:flex;justify-content:space-between;gap:10px;
+      border-top:1px solid rgba(38,55,70,.56);
+      padding:4px 0 0;margin-top:4px;font-size:9px;color:var(--muted)
+    }
+    .metric-row strong{color:#d1dce2;font-weight:650;text-align:right}
+
+    /* Live */
+    .live-main{display:grid;grid-template-columns:minmax(0,1fr) 304px 258px;gap:7px;margin-bottom:7px}
+    .chart-area{height:352px;position:relative;padding:8px 10px 4px}
+    canvas{width:100%;height:100%;display:block}
+    .legend{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:9px;color:var(--muted);padding:0 11px 10px}
+    .legend span{display:flex;align-items:center;gap:5px}
+    .legend i{width:13px;height:2px;display:inline-block;background:currentColor}
+    .tooltip{
+      display:none;position:absolute;z-index:10;pointer-events:none;
+      min-width:190px;padding:8px 9px;border:1px solid var(--border);
+      border-radius:8px;background:#071018;font-size:9px;line-height:1.58;
+      box-shadow:0 14px 40px rgba(0,0,0,.45);
+    }
+    .right-stack{display:grid;grid-template-rows:1fr 1.1fr;gap:7px}
+    .kv{display:grid;grid-template-columns:1fr auto;gap:7px 10px;font-size:9px}
+    .kv div:nth-child(odd){color:var(--muted)}
+    .kv div:nth-child(even){text-align:right;font-family:"SFMono-Regular",Consolas,monospace}
+    .decision-highlight{
+      border:1px solid rgba(79,209,125,.3);
+      background:rgba(79,209,125,.065);
+      border-radius:10px;padding:10px;
+    }
+    .decision-big{font-size:22px;font-weight:850;color:var(--green);margin:4px 0}
+    .decision-reasons{display:grid;gap:5px;font-size:9px;color:#c3d0d7}
+    .decision-reasons div{display:flex;gap:6px}
+    .orderbook{width:100%;border-collapse:collapse;font-size:9px}
+    .orderbook th{color:var(--muted);font-weight:550;padding:4px;border-bottom:1px solid var(--border)}
+    .orderbook td{font-family:"SFMono-Regular",Consolas,monospace;padding:4px;text-align:right;border-bottom:1px solid rgba(38,55,70,.45)}
+    .orderbook th:first-child,.orderbook td:first-child{text-align:left}
+    .book-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:7px}
+    .book-summary div{padding:6px;border:1px solid var(--border-soft);border-radius:7px;background:#09141c;text-align:center;font-size:8px;color:var(--muted)}
+    .book-summary strong{display:block;margin-top:3px;font-size:12px;color:var(--text)}
+    .alertbar{margin-top:7px;padding:7px 8px;border:1px solid rgba(242,195,95,.3);background:rgba(242,195,95,.07);border-radius:7px;font-size:9px;color:var(--amber);display:flex;justify-content:space-between}
+    .live-bottom{display:grid;grid-template-columns:minmax(0,1.42fr) minmax(430px,1fr);gap:7px}
+    .table-wrap{overflow:auto;max-height:360px}
+    table.data{width:100%;border-collapse:collapse;font-size:9px;white-space:nowrap}
+    table.data th{position:sticky;top:0;z-index:1;background:#0e1b24;color:#92a5b1;text-align:left;font-weight:550;padding:6px;border-bottom:1px solid var(--border)}
+    table.data td{padding:5px 6px;border-bottom:1px solid rgba(38,55,70,.44);font-family:"SFMono-Regular",Consolas,monospace}
+    table.data tbody tr{cursor:pointer}
+    table.data tbody tr:hover,table.data tbody tr.selected{background:#112b41}
+    .tag{display:inline-flex;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:8px}
+    .tag.decision{color:#8fc0ff;border-color:#315e8d;background:#102a44}
+    .tag.order{color:var(--amber);border-color:#6e582a;background:#2a2211}
+    .tag.fill{color:#8ceb9f;border-color:#347049;background:#132a1c}
+    .tag.settlement{color:#c8a9ff;border-color:#634c89;background:#221934}
+    .tag.incident{color:#ff9aa0;border-color:#793942;background:#35191e}
+    .detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+    .detail-card{border:1px solid var(--border);border-radius:8px;background:#09141c;padding:8px;min-height:80px}
+    .detail-card.wide{grid-column:1/-1}
+    .detail-card h4{margin:0 0 7px;font-size:9px;color:#b9c8d0}
+    .detail-card p{margin:0;font-size:9px;line-height:1.55;color:#c9d4da}
+    .book-duo{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+
+    /* Decisions */
+    .decisions-layout{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:7px}
+    .filterbar{padding:8px;border-bottom:1px solid var(--border-soft);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+    .filterbar label{font-size:9px;color:var(--muted);display:flex;align-items:center;gap:5px}
+    .filterbar input[type=checkbox]{accent-color:var(--blue)}
+
+    /* Strategy */
+    .strategy-grid{display:grid;grid-template-columns:minmax(0,1.32fr) 400px;gap:7px}
+    .editor{
+      width:100%;height:520px;resize:none;border:0;outline:none;
+      background:#061018;color:#dfe9ee;padding:14px;font:11px/1.65 "SFMono-Regular",Consolas,monospace;tab-size:2;
+    }
+    .config-stack{display:grid;gap:7px;align-content:start}
+    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .field label{display:block;color:var(--muted);font-size:8px;margin-bottom:4px}
+    .field input,.field select{width:100%;border:1px solid var(--border);border-radius:7px;background:#08131b;color:var(--text);padding:7px;font-size:9px}
+    .validation{display:grid;gap:6px;font-size:9px}
+    .validation div{display:flex;justify-content:space-between;border-bottom:1px solid var(--border-soft);padding-bottom:5px}
+    .console{height:96px;overflow:auto;background:#050b10;border:1px solid #1c2b35;border-radius:7px;padding:9px;color:#95d7a9;font:9px/1.6 "SFMono-Regular",Consolas,monospace}
+    .run-list{display:grid;gap:6px}
+    .run-item{display:grid;grid-template-columns:1fr auto;gap:8px;border:1px solid var(--border);background:#09141c;border-radius:8px;padding:9px;font-size:9px}
+    .run-item strong{display:block;font-size:10px}.run-item span{color:var(--muted)}
+
+    /* Backtest */
+    .backtest-top{display:grid;grid-template-columns:1fr 1.35fr;gap:7px;margin-bottom:7px}
+    .run-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    .run-meta div{border:1px solid var(--border-soft);border-radius:8px;background:#09141c;padding:7px}
+    .run-meta span{display:block;font-size:8px;color:var(--muted)}.run-meta strong{display:block;font-size:10px;margin-top:3px}
+    .small-metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+    .small-metric{border:1px solid var(--border);border-radius:9px;background:#0b1720;padding:8px}
+    .small-metric span{font-size:8px;color:var(--muted)}.small-metric strong{display:block;font-size:15px;margin-top:5px}
+    .backtest-charts{display:grid;grid-template-columns:1.25fr .75fr;gap:7px;margin-bottom:7px}
+    .chart-box{height:286px;padding:8px}
+    .secondary-charts{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+    .small-chart{height:225px;padding:8px}
+    .bucket-list{display:grid;gap:7px}
+    .bucket-row{display:grid;grid-template-columns:82px 1fr 50px;gap:7px;align-items:center;font-size:9px}
+    .bar-track{height:9px;border:1px solid var(--border-soft);background:#071018;border-radius:999px;overflow:hidden}
+    .bar-fill{height:100%;background:var(--blue)}
+
+    /* Replay */
+    .replay-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .timeline{height:9px;flex:1;min-width:200px;border:1px solid var(--border);background:#071018;border-radius:999px;overflow:hidden}
+    .timeline-fill{height:100%;width:44%;background:linear-gradient(90deg,#2f74bb,#35d1c0)}
+    .replay-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:7px}
+    .replay-side{display:grid;gap:7px;align-content:start}
+    .replay-chart{height:370px;padding:8px}
+    .event-stream{max-height:330px;overflow:auto}
+    .event-row{display:grid;grid-template-columns:72px 90px 1fr;gap:7px;padding:7px 10px;border-bottom:1px solid var(--border-soft);font-size:9px}
+    .event-row .time{font-family:"SFMono-Regular",Consolas,monospace;color:var(--muted)}
+
+    /* Compare */
+    .compare-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:7px}
+    .run-selector{display:grid;gap:6px}
+    .run-check{display:flex;gap:8px;border:1px solid var(--border);background:#09141c;border-radius:8px;padding:9px}
+    .run-check input{accent-color:var(--blue)}
+    .run-check strong{display:block;font-size:10px}.run-check span{font-size:8px;color:var(--muted)}
+    .compare-main{display:grid;gap:7px}
+    .compare-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+    .compare-table th,.compare-table td{text-align:right!important}
+    .compare-table th:first-child,.compare-table td:first-child{text-align:left!important}
+
+    /* Health */
+    .health-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:7px}
+    .health-card{border:1px solid var(--border);border-radius:var(--radius);background:#0b1720;padding:10px}
+    .health-card h3{font-size:10px;margin:0 0 8px}.health-big{font-size:19px;font-weight:800;margin:8px 0}
+    .health-layout{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+    .quality-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    .quality-box{border:1px solid var(--border);background:#09141c;border-radius:8px;padding:9px}
+    .quality-box span{font-size:8px;color:var(--muted)}.quality-box strong{display:block;font-size:16px;margin-top:4px}
+    .incident-list{display:grid;gap:6px}
+    .incident{display:grid;grid-template-columns:72px 110px 1fr auto;gap:8px;align-items:center;border:1px solid var(--border);background:#09141c;border-radius:8px;padding:8px;font-size:9px}
+    .footnote{font-size:8px;color:var(--subtle);padding:7px 2px}
+
+    .toast{display:none;position:fixed;right:18px;bottom:18px;z-index:100;background:#0e1b24;border:1px solid #345269;border-radius:8px;padding:10px 13px;font-size:10px;box-shadow:var(--shadow)}
+    .toast.show{display:block;animation:fade .15s ease}
+
+    @media (max-width:1380px){
+      :root{--sidebar-width:184px}
+      .metrics{grid-template-columns:repeat(3,1fr)}
+      .live-main{grid-template-columns:minmax(0,1fr) 300px}
+      .current-decision{grid-column:1/-1}
+      .live-bottom{grid-template-columns:1fr}
+      .small-metrics{grid-template-columns:repeat(4,1fr)}
+    }
+    @media (max-width:980px){
+      body{overflow:auto}
+      .app{grid-template-columns:1fr;height:auto;min-height:100vh}
+      .sidebar{position:static}
+      .nav{display:grid;grid-template-columns:repeat(2,1fr)}
+      .sidebar-foot{display:none}
+      .workspace{height:auto;overflow:visible}
+      .metrics,.health-grid{grid-template-columns:repeat(2,1fr)}
+      .live-main,.live-bottom,.decisions-layout,.strategy-grid,.backtest-top,.backtest-charts,.secondary-charts,.replay-layout,.compare-layout,.health-layout{grid-template-columns:1fr}
+      .small-metrics{grid-template-columns:repeat(2,1fr)}
+      .compare-summary{grid-template-columns:repeat(2,1fr)}
+    }
+
+    /* Fusion V3：总览、纸面订单票、帮助、策略台账、运维控制 */
+    .top-actions{display:flex;gap:6px;margin-left:auto;flex:0 0 auto}
+    .overview-grid{display:grid;grid-template-columns:1.18fr .82fr;gap:7px;margin-bottom:7px}
+    .overview-hero{padding:18px;background:linear-gradient(135deg,rgba(79,145,255,.13),rgba(53,209,192,.04));border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .overview-hero .kicker{font-size:9px;color:#9bc6ff;text-transform:uppercase;letter-spacing:.8px}
+    .overview-hero h1{font-size:25px;margin:7px 0;letter-spacing:-.7px}.overview-hero p{font-size:10px;color:#aebdc6;line-height:1.65;margin:0;max-width:760px}
+    .overview-actions{display:flex;gap:7px;margin-top:14px;flex-wrap:wrap}
+    .quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.quick-card{border:1px solid var(--border);border-radius:var(--radius);background:#0d1922;padding:11px}.quick-card span{font-size:8px;color:var(--muted)}.quick-card strong{display:block;font-size:17px;margin-top:5px}
+    .overview-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:7px}.flow-list,.link-list{display:grid;gap:6px}
+    .flow-step{display:grid;grid-template-columns:25px 1fr;gap:8px;border:1px solid var(--border-soft);border-radius:8px;background:#09141c;padding:8px}.flow-no{width:24px;height:24px;border-radius:7px;background:#173e6c;color:#b9d8ff;display:grid;place-items:center;font-size:10px;font-weight:800}.flow-step strong{display:block;font-size:9px}.flow-step p{font-size:8px;line-height:1.5;color:var(--muted);margin:3px 0 0}
+    .link-row{display:flex;justify-content:space-between;gap:8px;border:1px solid var(--border-soft);background:#09141c;border-radius:8px;padding:8px;font-size:9px}.link-row span:last-child{color:#8fc0ff;white-space:nowrap}
+    .strategy-records{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.record-table{width:100%;border-collapse:collapse;font-size:8px}.record-table th,.record-table td{padding:7px;border-bottom:1px solid var(--border-soft);text-align:left}.record-table th{color:var(--muted)}
+    .ledger-list{display:grid;gap:6px}.ledger-row{display:grid;grid-template-columns:150px 85px 1fr auto;gap:8px;border:1px solid var(--border);background:#09141c;border-radius:8px;padding:8px;font-size:8px}.ledger-row a{color:#8fc0ff;text-decoration:none}
+    .arena-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:7px}.arena-card{border:1px solid var(--border);border-radius:9px;background:#0b1720;padding:9px}.arena-card span{font-size:8px;color:var(--muted)}.arena-card strong{display:block;font-size:15px;margin-top:5px}.arena-ranking td,.arena-ranking th{text-align:right!important}.arena-ranking td:first-child,.arena-ranking th:first-child{text-align:left!important}
+    .ops-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px}.service-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}.service-card{border:1px solid var(--border);background:#09141c;border-radius:9px;padding:9px}.service-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.service-card strong{font-size:9px}.service-card p{font-size:8px;color:var(--muted);margin:5px 0 0}.source-list{display:grid;gap:5px}.source-row{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border-soft);background:#09141c;border-radius:8px;padding:7px 8px;font-size:8px}
+    .switch{position:relative;width:34px;height:18px;border-radius:999px;background:#31414e;border:1px solid #495c6a;flex:0 0 auto}.switch::after{content:"";position:absolute;width:14px;height:14px;left:2px;top:1px;background:#c8d2d8;border-radius:50%;transition:.18s}.switch.on{background:#176642;border-color:#2c9a67}.switch.on::after{left:16px;background:#9ff0b9}
+    .overlay{position:fixed;inset:0;background:rgba(0,0,0,.58);opacity:0;pointer-events:none;transition:.18s;z-index:80}.overlay.show{opacity:1;pointer-events:auto}
+    .ticket{position:fixed;right:0;top:0;height:100vh;width:352px;background:#05080c;border-left:1px solid #1d2831;z-index:90;transform:translateX(100%);transition:.2s;box-shadow:-25px 0 55px rgba(0,0,0,.45);display:flex;flex-direction:column}.ticket.open{transform:none}.ticket-head{height:48px;border-bottom:1px solid #1b252d;padding:0 14px;display:flex;align-items:center;justify-content:space-between}.ticket-head strong{font-size:11px}.icon-btn{border:0;background:transparent;color:#8396a2;font-size:18px}.ticket-body{padding:13px;overflow:auto}.market-ticket{border:1px solid #1b2831;border-radius:12px;background:#090e13;padding:11px}.ticket-title{display:flex;align-items:center;justify-content:space-between}.ticket-title h3{font-size:12px;margin:0}.coin{width:24px;height:24px;border-radius:7px;background:#f7931a;display:grid;place-items:center;font-weight:900;color:#fff}.ticket-count{display:flex;gap:7px;color:var(--red);font:700 17px "SFMono-Regular",Consolas,monospace}.ticket-sub{font-size:7px;color:#70828d;margin:4px 0 10px}.ticket-price-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:7px}.ticket-price span{display:block;font-size:7px;color:#71838e}.ticket-price strong{display:block;font-size:14px;margin-top:3px}.ticket-price:last-child{text-align:right}.ticket-chart{height:128px;border:1px solid #16232c;border-radius:8px;background:#05090d;margin:8px 0 11px;padding:6px}.trade-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}.trade-button{border:0;border-radius:9px;color:#fff;padding:14px 6px;font-size:11px;font-weight:800}.trade-button.up{background:#00bd78}.trade-button.down{background:#e8475e}.amount-row{display:grid;grid-template-columns:84px 1fr;gap:7px;margin-top:10px}.mode-tabs{display:flex;border:1px solid #26333d;border-radius:7px;overflow:hidden}.mode-tabs button{flex:1;border:0;background:#0b1117;color:#8496a2;font-size:8px}.mode-tabs button.active{color:#fff;border:1px solid #d08e25;background:#15110b}.amount-input{display:flex;align-items:center;border:1px solid #26333d;border-radius:7px;background:#0a1015;padding:0 9px}.amount-input input{width:100%;border:0;outline:0;background:transparent;color:#fff;font:700 11px "SFMono-Regular",Consolas,monospace}.amount-input span{font-size:8px;color:#778995}.submit-paper{margin-top:9px;width:100%;border:1px solid #315780;background:#12243a;color:#b9d7ff;border-radius:8px;padding:9px;font-size:9px}.ticket-note{font-size:7px;color:#71838e;line-height:1.5;margin-top:8px}
+    .modal{position:fixed;left:50%;top:50%;width:min(820px,92vw);max-height:84vh;transform:translate(-50%,-46%) scale(.98);opacity:0;pointer-events:none;background:#0a141c;border:1px solid var(--border);border-radius:14px;z-index:95;box-shadow:0 28px 80px rgba(0,0,0,.55);transition:.18s;overflow:hidden}.modal.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}.modal-head{height:48px;border-bottom:1px solid var(--border-soft);padding:0 13px;display:flex;align-items:center;justify-content:space-between}.modal-body{padding:12px;overflow:auto;max-height:calc(84vh - 48px)}.help-card{border:1px solid var(--border);border-radius:9px;background:#09141c;padding:10px;margin-bottom:7px}.help-card h4{font-size:10px;margin:0 0 6px}.help-card p,.help-card li{font-size:8px;line-height:1.6;color:#bac8d0}.help-card ul{margin:5px 0 0;padding-left:17px}
+    @media(max-width:1380px){.overview-row{grid-template-columns:1fr 1fr}.overview-row>.panel:last-child{grid-column:1/-1}.strategy-records,.ops-grid{grid-template-columns:1fr}.arena-summary{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:980px){.overview-grid,.overview-row{grid-template-columns:1fr}.overview-row>.panel:last-child{grid-column:auto}.ticket{width:min(352px,100vw)}}
+
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-title">Polymarket Money</div>
+      <div class="brand-sub">BTC 五分钟研究与模拟工作台<br>BTC 5m Research Workstation</div>
+    </div>
+    <nav class="nav" id="nav">
+      <button class="active" data-page="overview"><span class="nav-ico">O</span>总览</button>
+      <button data-page="live"><span class="nav-ico">L</span>实时驾驶舱</button>
+      <button data-page="decisions"><span class="nav-ico">D</span>决策记录</button>
+      <button data-page="strategy"><span class="nav-ico">S</span>策略工作室</button>
+      <button data-page="backtest"><span class="nav-ico">B</span>回测实验室</button>
+      <button data-page="replay"><span class="nav-ico">R</span>市场回放</button>
+      <button data-page="compare"><span class="nav-ico">A</span>策略竞技场</button>
+      <button data-page="health"><span class="nav-ico">H</span>系统健康</button>
+    </nav>
+    <div class="sidebar-foot">
+      模式：PAPER 模拟<br>
+      当前策略：K-Edge v0.4<br>
+      原型版本：Fusion V3
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <span class="top-chip info">模式：<b>PAPER 模拟</b></span>
+      <span class="top-chip">当前市场：<b>BTC 五分钟涨跌</b></span>
+      <span class="top-chip">市场时间：<b class="mono">23:15 → 23:20</b></span>
+      <span class="top-chip warn">剩余时间：<b class="mono" id="countdown">00:02:17</b></span>
+      <span class="top-chip">策略：<b>K-Edge v0.4</b></span>
+      <span class="top-chip good">Polymarket：HEALTHY 健康</span>
+      <span class="top-chip good">Binance：HEALTHY 健康</span>
+      <span class="top-chip">数据年龄（Data Age）：<b class="mono">18 ms</b></span>
+      <span class="top-chip warn">连续性（Continuity）：UNVERIFIED 未验证</span>
+      <div class="top-actions"><button class="btn" id="helpOpen">使用说明</button><button class="btn primary" id="ticketOpen">纸面订单票</button></div>
+    </header>
+
+    <div class="workspace">
+
+      <!-- 0 总览 -->
+      <section class="page active" id="page-overview">
+        <div class="overview-grid">
+          <div class="overview-hero">
+            <div class="kicker">Research & Simulation Command Center</div>
+            <h1>从行情观察，到策略验证，再到逐事件复盘</h1>
+            <p>这一版保留旧平台最有价值的首页说明、纸面订单票、实验台账、策略日志、模拟竞技场和进程看护，同时使用更清楚的决策链：市场状态 → 模型概率 → 可执行优势 → 模拟成交 → 最终盈亏。</p>
+            <div class="overview-actions"><button class="btn primary" data-jump="live">进入实时驾驶舱</button><button class="btn" data-jump="strategy">打开策略工作室</button><button class="btn" id="overviewTicket">打开纸面订单票</button></div>
+          </div>
+          <div class="quick-grid">
+            <div class="quick-card"><span>当前候选策略</span><strong>K-Edge v0.4</strong><div class="muted" style="font-size:8px;margin-top:4px">扣费后可执行优势 + 深度门槛</div></div>
+            <div class="quick-card"><span>最新回测净盈亏</span><strong class="green mono">+214.80 USDC</strong><div class="muted" style="font-size:8px;margin-top:4px">BT-20260718-0042</div></div>
+            <div class="quick-card"><span>模型质量 Brier @ T−60s</span><strong class="mono">0.0941</strong><div class="muted" style="font-size:8px;margin-top:4px">最近 50 个已结算市场</div></div>
+            <div class="quick-card"><span>系统可信状态</span><strong class="amber">可用但未完全验证</strong><div class="muted" style="font-size:8px;margin-top:4px">盘口连续性 UNVERIFIED</div></div>
+          </div>
+        </div>
+        <div class="overview-row">
+          <div class="panel"><div class="panel-head"><div><span class="panel-title">推荐工作流</span><span class="panel-en">Recommended Workflow</span></div></div><div class="panel-body flow-list">
+            <div class="flow-step"><div class="flow-no">1</div><div><strong>实时观察</strong><p>确认数据健康、盘口完整、当前概率和可执行优势。</p></div></div>
+            <div class="flow-step"><div class="flow-no">2</div><div><strong>检查决策</strong><p>查看为什么买入、跳过或持有，以及当时盘口快照。</p></div></div>
+            <div class="flow-step"><div class="flow-no">3</div><div><strong>设计与回测</strong><p>修改策略和参数，保存版本并检查费用、回撤和概率校准。</p></div></div>
+            <div class="flow-step"><div class="flow-no">4</div><div><strong>回放与对比</strong><p>逐事件复盘，并在策略竞技场比较多个版本。</p></div></div>
+          </div></div>
+          <div class="panel"><div class="panel-head"><div><span class="panel-title">最近实验与记录</span><span class="panel-en">Recent Experiments & Logs</span></div></div><div class="panel-body link-list">
+            <div class="link-row"><span>BT-0042 · K-Edge v0.4 回测</span><span>完成</span></div><div class="link-row"><span>sweep-20260712-02 · edge-max</span><span>293 组</span></div><div class="link-row"><span>参数变更：max_entry_price 400 → 560</span><span>已记录</span></div><div class="link-row"><span>异常：BOOK_GAP 盘口缺口</span><span class="amber">已标记</span></div>
+          </div></div>
+          <div class="panel"><div class="panel-head"><div><span class="panel-title">快捷说明</span><span class="panel-en">Quick Documentation</span></div></div><div class="panel-body link-list">
+            <div class="link-row"><span>运行模式：LIVE DATA / PAPER / REPLAY</span><span>查看</span></div><div class="link-row"><span>策略字段与输出契约</span><span>查看</span></div><div class="link-row"><span>手续费与可执行优势公式</span><span>查看</span></div><div class="link-row" id="openChangelog"><span>版本变更记录 Changelog</span><span>查看</span></div>
+          </div></div>
+        </div>
+        <div class="panel"><div class="panel-head"><div><span class="panel-title">本次会话状态</span><span class="panel-en">Session Status</span></div><span class="status warn">SIMULATION ONLY 仅模拟</span></div><div class="panel-body quick-grid">
+          <div class="quick-card"><span>Polymarket WebSocket</span><strong class="green">健康</strong></div><div class="quick-card"><span>Binance WebSocket</span><strong class="green">健康</strong></div><div class="quick-card"><span>事件记录器 Recorder</span><strong class="green">运行中</strong></div><div class="quick-card"><span>真实交易 Live Trading</span><strong class="red">禁用</strong></div>
+        </div></div>
+      </section>
+
+      <!-- 1 实时驾驶舱 -->
+      <section class="page" id="page-live">
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">已结算净盈亏</div><div class="metric-en">Settled Net PnL</div>
+            <div class="metric-value green mono">+18.42 <small>USDC</small></div>
+            <div class="metric-row"><span>毛盈亏（Gross PnL）</span><strong class="green">+22.37</strong></div>
+            <div class="metric-row"><span>手续费（Fees）</span><strong class="red">−3.95</strong></div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">市价估值盈亏</div><div class="metric-en">Mark-to-Market PnL</div>
+            <div class="metric-value red mono">−1.24 <small>USDC</small></div>
+            <div class="metric-row"><span>未结算市场</span><strong>2</strong></div>
+            <div class="metric-row"><span>性质</span><strong>未实现估值</strong></div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">当前风险敞口</div><div class="metric-en">Current Exposure</div>
+            <div class="metric-value mono">+874 <small>YES</small></div>
+            <div class="metric-row"><span>YES / NO 份额</span><strong><span class="green">1,286</span> / <span class="red">412</span></strong></div>
+            <div class="metric-row"><span>上限占用</span><strong class="amber">21.8%</strong></div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">买入 YES 可执行优势</div><div class="metric-en">Buy YES Executable Edge</div>
+            <div class="metric-value red mono">−1.84%</div>
+            <div class="metric-row"><span>校准概率 / 卖一价</span><strong>0.612 / 0.625</strong></div>
+            <div class="metric-row"><span>可见数量</span><strong>4,892</strong></div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">买入 NO 可执行优势</div><div class="metric-en">Buy NO Executable Edge</div>
+            <div class="metric-value green mono">+0.36%</div>
+            <div class="metric-row"><span>NO 概率 / 卖一价</span><strong>0.388 / 0.381</strong></div>
+            <div class="metric-row"><span>可见数量</span><strong>6,231</strong></div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">模型质量</div><div class="metric-en">Model Quality · Brier Score</div>
+            <div class="metric-value mono">0.0941</div>
+            <div class="metric-row"><span>布里尔分数 @ T−60s</span><strong>最近 50 个已结算市场</strong></div>
+            <div class="metric-row"><span>基准分数</span><strong>0.1372</strong></div>
+          </div>
+        </div>
+
+        <div class="live-main">
+          <div class="panel">
+            <div class="panel-head">
+              <div><span class="panel-title">概率与可交易价格时间线</span><span class="panel-en">Probability & Tradable Price Timeline</span></div>
+              <div class="toolbar"><div class="tabs"><button class="active">1 秒</button><button>5 秒</button><button>10 秒</button></div><button class="btn">指标设置</button></div>
+            </div>
+            <div class="chart-area">
+              <canvas id="liveChart"></canvas>
+              <div class="tooltip" id="liveTooltip"></div>
+            </div>
+            <div class="legend">
+              <span style="color:#7c93ad"><i></i>原始概率（p_raw）</span>
+              <span style="color:#4f91ff"><i></i>校准概率（p_cal）</span>
+              <span style="color:#4fd17d"><i></i>YES 买一价（Best Bid）</span>
+              <span style="color:#ff676f"><i></i>YES 卖一价（Best Ask）</span>
+              <span style="color:#f2c35f">◆ 策略决策</span>
+              <span style="color:#35d1c0">○ 模拟成交</span>
+            </div>
+          </div>
+
+          <div class="right-stack">
+            <div class="panel">
+              <div class="panel-head"><div><span class="panel-title">市场状态</span><span class="panel-en">Market State</span></div><span class="status good">ACTIVE 活跃</span></div>
+              <div class="panel-body kv">
+                <div>BTC 当前价格</div><div>67,842.31</div>
+                <div>五分钟参考开盘价</div><div>67,620.00</div>
+                <div>价格差</div><div class="green">+222.31</div>
+                <div>基点差（bps）</div><div class="green">+32.86</div>
+                <div>当前方向</div><div class="green">UP 上涨</div>
+                <div>剩余时间</div><div>00:02:17</div>
+                <div>下一市场</div><div class="green">READY 就绪</div>
+                <div>可模拟交易</div><div class="green">YES</div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head">
+                <div><span class="panel-title">Polymarket 五档盘口</span><span class="panel-en">Order Book</span></div>
+                <div class="tabs" id="bookTabs"><button class="active" data-side="yes">YES</button><button data-side="no">NO</button></div>
+              </div>
+              <div class="panel-body">
+                <table class="orderbook" id="liveBook"></table>
+                <div class="book-summary">
+                  <div>买一价<strong class="green" id="bookBid">0.584</strong></div>
+                  <div>点差（Spread）<strong id="bookSpread">0.041</strong></div>
+                  <div>卖一价<strong class="red" id="bookAsk">0.625</strong></div>
+                </div>
+                <div class="alertbar"><span>盘口单边为空（One Side Empty）</span><strong class="green">否</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel current-decision">
+            <div class="panel-head"><div><span class="panel-title">当前决策</span><span class="panel-en">Current Decision</span></div><span class="status good">ELIGIBLE 可执行</span></div>
+            <div class="panel-body">
+              <div class="decision-highlight">
+                <div class="muted" style="font-size:9px">当前动作（Current Action）</div>
+                <div class="decision-big">买入 NO（BUY NO）</div>
+                <div class="mono" style="font-size:10px">净优势 +0.36% · 目标数量 1,000</div>
+              </div>
+              <div style="height:8px"></div>
+              <div class="kv">
+                <div>原始概率（p_raw）</div><div>0.605</div>
+                <div>校准概率（p_cal）</div><div>0.606</div>
+                <div>NO 卖一价</div><div class="red">0.381</div>
+                <div>可见数量</div><div>6,231</div>
+                <div>策略阈值</div><div>0.25%</div>
+                <div>特征时间戳</div><div>23:18:16.120</div>
+              </div>
+              <div style="height:9px"></div>
+              <div class="decision-reasons">
+                <div><span class="green">✓</span><span>扣除手续费后的优势高于阈值</span></div>
+                <div><span class="green">✓</span><span>可见盘口深度满足最低要求</span></div>
+                <div><span class="green">✓</span><span>数据新鲜度满足要求</span></div>
+                <div><span class="amber">⚠</span><span>盘口连续性仍未被外部证明</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="live-bottom">
+          <div class="panel">
+            <div class="panel-head">
+              <div><span class="panel-title">最近决策与执行事件</span><span class="panel-en">Recent Decisions & Execution Events</span></div>
+              <div class="toolbar"><button class="btn active">全部</button><button class="btn">仅决策</button><button class="btn">仅成交</button></div>
+            </div>
+            <div class="table-wrap"><table class="data" id="recentDecisionTable"></table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">选中决策详情</span><span class="panel-en">Selected Decision Detail</span></div><span class="mono muted" id="detailTime">23:16:58.118</span></div>
+            <div class="panel-body" id="liveDetail"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2 决策记录 -->
+      <section class="page" id="page-decisions">
+        <div class="page-head">
+          <div><h1>决策记录（Decision Log）</h1><p>逐条检查策略判断、模拟订单、成交和最终结算。</p></div>
+          <div class="toolbar"><button class="btn">导出 CSV</button><button class="btn primary">创建复盘集</button></div>
+        </div>
+        <div class="decisions-layout">
+          <div class="panel">
+            <div class="filterbar">
+              <label>市场 <select class="select"><option>全部 BTC 五分钟市场</option><option>23:15–23:20</option></select></label>
+              <label>方向 <select class="select"><option>全部</option><option>YES</option><option>NO</option></select></label>
+              <label>净优势 ≥ <input class="input" value="0.00%" style="width:74px"></label>
+              <label><input type="checkbox" checked> 可执行</label>
+              <label><input type="checkbox" checked> 已成交</label>
+              <label><input type="checkbox"> 仅异常</label>
+            </div>
+            <div class="table-wrap" style="max-height:720px"><table class="data" id="allDecisionTable"></table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">决策检查器</span><span class="panel-en">Decision Inspector</span></div><span class="status warn">CONTINUITY 未验证</span></div>
+            <div class="panel-body" id="decisionInspector"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3 策略工作室 -->
+      <section class="page" id="page-strategy">
+        <div class="page-head">
+          <div><h1>策略工作室（Strategy Studio）</h1><p>编写策略代码、配置参数、验证契约并生成版本。</p></div>
+          <div class="toolbar"><button class="btn" id="validateBtn">验证（Validate）</button><button class="btn" id="saveBtn">保存版本</button><button class="btn primary" id="runBacktestBtn">运行回测</button></div>
+        </div>
+        <div class="strategy-grid">
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">Python 策略代码</span><span class="panel-en">Strategy Code</span></div><span class="status good">SCHEMA VALID 契约有效</span></div>
+            <textarea class="editor" id="strategyEditor" spellcheck="false">from polymarket_money.strategy import Observation, Decision, Action
+
+class KEdgeStrategy:
+    strategy_id = "k-edge"
+    version = "0.4.0"
+
+    def on_observation(self, obs: Observation) -> Decision:
+        if not obs.market.sim_tradeable:
+            return Decision.skip("MARKET_NOT_TRADEABLE")
+
+        if obs.health.data_age_ms > self.params.max_data_age_ms:
+            return Decision.skip("DATA_STALE")
+
+        yes_edge = (
+            obs.model.p_cal
+            - obs.orderbook.yes.best_ask
+            - obs.execution.yes_fee_estimate
+        )
+
+        no_edge = (
+            (1.0 - obs.model.p_cal)
+            - obs.orderbook.no.best_ask
+            - obs.execution.no_fee_estimate
+        )
+
+        side, edge, visible_size = max(
+            [
+                ("YES", yes_edge, obs.orderbook.yes.visible_ask_size),
+                ("NO", no_edge, obs.orderbook.no.visible_ask_size),
+            ],
+            key=lambda item: item[1],
+        )
+
+        if edge < self.params.edge_threshold:
+            return Decision.skip("EDGE_BELOW_THRESHOLD")
+
+        if visible_size < self.params.min_visible_size:
+            return Decision.skip("VISIBLE_SIZE_BELOW_MINIMUM")
+
+        target_size = min(
+            self.params.target_size,
+            visible_size,
+            obs.risk.remaining_capacity(side),
+        )
+
+        return Decision(
+            action=Action.BUY,
+            side=side,
+            size=target_size,
+            reason="POSITIVE_FEE_ADJUSTED_EDGE",
+        )</textarea>
+            <div class="panel-body"><div class="console" id="strategyConsole">[23:18:04] 已载入策略 k-edge v0.4.0
+[23:18:04] 策略契约检查通过
+[23:18:04] 8 个必需观测字段可用
+[23:18:04] 未检测到禁止导入
+[23:18:04] 可以运行模拟回测</div></div>
+          </div>
+          <div class="config-stack">
+            <div class="panel">
+              <div class="panel-head"><span class="panel-title">策略身份与版本</span><span class="status info">DRAFT 草稿</span></div>
+              <div class="panel-body form-grid">
+                <div class="field"><label>策略 ID（Strategy ID）</label><input value="k-edge"></div>
+                <div class="field"><label>版本（Version）</label><input value="0.4.0"></div>
+                <div class="field" style="grid-column:1/-1"><label>说明（Description）</label><input value="基于可执行净优势、深度和健康门槛的策略"></div>
+                <div class="field"><label>运行语言</label><select><option>Python</option></select></div>
+                <div class="field"><label>允许模式</label><select><option>模拟 / 回测</option></select></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><span class="panel-title">策略参数（Parameters）</span><button class="btn">恢复默认</button></div>
+              <div class="panel-body form-grid">
+                <div class="field"><label>优势阈值 edge_threshold</label><input value="0.0025"></div>
+                <div class="field"><label>目标数量 target_size</label><input value="1000"></div>
+                <div class="field"><label>最小可见数量 min_visible_size</label><input value="500"></div>
+                <div class="field"><label>最大数据年龄 max_data_age_ms</label><input value="250"></div>
+                <div class="field"><label>最小剩余时间（秒）</label><input value="20"></div>
+                <div class="field"><label>最大剩余时间（秒）</label><input value="270"></div>
+                <div class="field"><label>冷却时间 cooldown_ms</label><input value="1500"></div>
+                <div class="field"><label>最大敞口 max_exposure</label><input value="4000"></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><span class="panel-title">数据与执行模型</span><span class="panel-en">Data & Execution Model</span></div>
+              <div class="panel-body form-grid">
+                <div class="field"><label>数据集（Dataset）</label><select><option>BTC5M-L2-v2 / 6–7 月</option></select></div>
+                <div class="field"><label>连续性门槛</label><select><option>允许未验证但打标签</option></select></div>
+                <div class="field"><label>执行方式</label><select><option>吃单 / 可见卖一价</option></select></div>
+                <div class="field"><label>手续费模型</label><select><option>FeeEdgeCalculator v2</option></select></div>
+                <div class="field"><label>延迟模型（Latency Model）</label><select><option>本地回放 + 20 ms</option></select></div>
+                <div class="field"><label>部分成交（Partial Fill）</label><select><option>启用</option></select></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><span class="panel-title">验证结果（Validation）</span></div>
+              <div class="panel-body validation">
+                <div><span>策略契约</span><span class="green">通过</span></div>
+                <div><span>必需字段</span><span class="green">通过</span></div>
+                <div><span>禁止导入</span><span class="green">无</span></div>
+                <div><span>手续费计算</span><span class="green">一致</span></div>
+                <div><span>连续性策略</span><span class="amber">已打标签</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:7px">
+          <div class="panel-head"><div><span class="panel-title">最近策略运行</span><span class="panel-en">Recent Strategy Runs</span></div><button class="btn">查看全部</button></div>
+          <div class="panel-body run-list">
+            <div class="run-item"><div><strong>BT-20260718-0042 · K-Edge v0.4</strong><span>BTC5M-L2-v2 · 2026-06-01 → 2026-07-15</span></div><span class="status good">COMPLETE 完成</span></div>
+            <div class="run-item"><div><strong>BT-20260718-0041 · K-Edge v0.3</strong><span>同一数据集 · 旧优势阈值</span></div><span class="status good">COMPLETE 完成</span></div>
+            <div class="run-item"><div><strong>BT-20260718-0040 · J-Spread v0.2</strong><span>盘口深度敏感性实验</span></div><span class="status warn">DATA INSUFFICIENT 数据不足</span></div>
+          </div>
+        </div>
+
+        <div class="strategy-records">
+          <div class="panel"><div class="panel-head"><div><span class="panel-title">策略参数变更日志</span><span class="panel-en">Strategy Parameter Log</span></div><button class="btn">新增备注</button></div><div class="panel-body"><table class="record-table"><thead><tr><th>时间</th><th>事件</th><th>Kelly</th><th>单市场上限</th><th>最大入场价</th><th>原因</th></tr></thead><tbody>
+            <tr><td>07/12 11:20</td><td>参数调整</td><td>×0.25</td><td>2%</td><td class="blue">400</td><td>降低高价风险</td></tr><tr><td>07/08 09:28</td><td>参数调整</td><td>×0.25</td><td>2%</td><td class="blue">560</td><td>扩大样本覆盖</td></tr><tr><td>07/06 04:03</td><td>费用更新</td><td>×0.25</td><td>2%</td><td>560</td><td>统一手续费模型</td></tr><tr><td>07/02 23:44</td><td>初始策略</td><td>×0.25</td><td>2%</td><td>—</td><td>建立基线</td></tr>
+          </tbody></table></div></div>
+          <div class="panel"><div class="panel-head"><div><span class="panel-title">扫描与实验台账</span><span class="panel-en">Sweep & Experiment Ledger</span></div><button class="btn primary">新建实验</button></div><div class="panel-body ledger-list">
+            <div class="ledger-row"><a href="#">sweep-20260712-02</a><span>07-12</span><span>edge_threshold × max_entry_price，293 组</span><span class="status good">完成</span></div><div class="ledger-row"><a href="#">sweep-20260711-06</a><span>07-11</span><span>手续费敏感性与 Band 联合扫描</span><span class="status good">完成</span></div><div class="ledger-row"><a href="#">exp-20260708-crystal</a><span>07-08</span><span>边界价差与连续性过滤</span><span class="status warn">复核中</span></div><div class="ledger-row"><a href="#">exp-20260706-audit</a><span>07-06</span><span>结算结果与 winner 字段审计</span><span class="status good">完成</span></div>
+          </div></div>
+        </div>
+
+      </section>
+
+      <!-- 4 回测实验室 -->
+      <section class="page" id="page-backtest">
+        <div class="page-head">
+          <div><h1>回测实验室（Backtest Lab）</h1><p>检查收益、费用、执行质量、概率校准和分组表现。</p></div>
+          <div class="toolbar"><select class="select"><option>BT-20260718-0042 · K-Edge v0.4</option></select><button class="btn">复制运行</button><button class="btn primary">加入对比</button></div>
+        </div>
+        <div class="backtest-top">
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">运行元数据</span><span class="panel-en">Run Metadata</span></div><span class="status good">COMPLETE 完成</span></div>
+            <div class="panel-body run-meta">
+              <div><span>运行 ID</span><strong class="mono">BT-20260718-0042</strong></div>
+              <div><span>策略</span><strong>K-Edge v0.4</strong></div>
+              <div><span>数据集</span><strong>BTC5M-L2-v2</strong></div>
+              <div><span>时间区间</span><strong>06-01 → 07-15</strong></div>
+              <div><span>Git 提交</span><strong class="mono">73c0b8d</strong></div>
+              <div><span>配置哈希</span><strong class="mono">e41a2c9</strong></div>
+            </div>
+          </div>
+          <div class="small-metrics">
+            <div class="small-metric"><span>净盈亏 Net PnL</span><strong class="green mono">+214.80</strong></div>
+            <div class="small-metric"><span>毛盈亏 Gross PnL</span><strong class="mono">+278.61</strong></div>
+            <div class="small-metric"><span>手续费 Fees</span><strong class="red mono">−63.81</strong></div>
+            <div class="small-metric"><span>最大回撤 Max DD</span><strong class="red mono">−41.70</strong></div>
+            <div class="small-metric"><span>成交笔数</span><strong class="mono">286</strong></div>
+            <div class="small-metric"><span>成交率 Fill Rate</span><strong class="mono">71.5%</strong></div>
+            <div class="small-metric"><span>胜率 Win Rate</span><strong class="mono">58.7%</strong></div>
+            <div class="small-metric"><span>平均每笔</span><strong class="green mono">+0.75</strong></div>
+            <div class="small-metric"><span>Brier @ T−60s</span><strong class="mono">0.0941</strong></div>
+            <div class="small-metric"><span>对数损失 Log Loss</span><strong class="mono">0.318</strong></div>
+            <div class="small-metric"><span>可信市场</span><strong class="mono">412</strong></div>
+            <div class="small-metric"><span>未验证市场</span><strong class="amber mono">37</strong></div>
+          </div>
+        </div>
+        <div class="backtest-charts">
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">累计净盈亏与回撤</span><span class="panel-en">Cumulative Net PnL & Drawdown</span></div><span class="muted" style="font-size:9px">已扣除手续费</span></div>
+            <div class="chart-box"><canvas id="pnlChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">概率校准图</span><span class="panel-en">Reliability Diagram</span></div><span class="muted" style="font-size:9px">市场级样本</span></div>
+            <div class="chart-box"><canvas id="calibrationChart"></canvas></div>
+          </div>
+        </div>
+        <div class="secondary-charts">
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">滚动布里尔分数</span><span class="panel-en">Rolling Brier Score</span></div><span class="muted" style="font-size:9px">50 个已结算市场窗口</span></div>
+            <div class="small-chart"><canvas id="brierChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">分组表现</span><span class="panel-en">Grouped Performance</span></div><div class="tabs"><button class="active">优势</button><button>剩余时间</button><button>深度</button></div></div>
+            <div class="panel-body bucket-list">
+              <div class="bucket-row"><span>0–0.25%</span><div class="bar-track"><div class="bar-fill" style="width:18%;background:#ff676f"></div></div><strong class="red">−8.4</strong></div>
+              <div class="bucket-row"><span>0.25–0.5%</span><div class="bar-track"><div class="bar-fill" style="width:42%"></div></div><strong class="green">+21.7</strong></div>
+              <div class="bucket-row"><span>0.5–1.0%</span><div class="bar-track"><div class="bar-fill" style="width:68%"></div></div><strong class="green">+76.2</strong></div>
+              <div class="bucket-row"><span>1.0–2.0%</span><div class="bar-track"><div class="bar-fill" style="width:88%"></div></div><strong class="green">+102.1</strong></div>
+              <div class="bucket-row"><span>&gt;2.0%</span><div class="bar-track"><div class="bar-fill" style="width:35%"></div></div><strong class="green">+23.2</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:7px">
+          <div class="panel-head"><div><span class="panel-title">回测决策账本</span><span class="panel-en">Backtest Decision Ledger</span></div><div class="toolbar"><button class="btn">仅亏损</button><button class="btn">仅未验证</button><button class="btn">导出</button></div></div>
+          <div class="table-wrap" style="max-height:290px"><table class="data" id="backtestTable"></table></div>
+        </div>
+      </section>
+
+      <!-- 5 市场回放 -->
+      <section class="page" id="page-replay">
+        <div class="page-head">
+          <div><h1>市场回放（Market Replay）</h1><p>逐事件重放 Binance、Polymarket L2 盘口、模型、决策、订单和结算。</p></div>
+          <div class="toolbar"><select class="select"><option>2026-07-18 · 23:15–23:20</option></select><button class="btn">载入市场</button></div>
+        </div>
+        <div class="panel" style="margin-bottom:7px">
+          <div class="panel-body replay-toolbar">
+            <button class="btn" id="replayPrev">◀ 上一事件</button>
+            <button class="btn primary" id="replayPlay">▶ 播放</button>
+            <button class="btn" id="replayNext">下一事件 ▶</button>
+            <div class="tabs"><button>0.5×</button><button class="active">1×</button><button>5×</button><button>20×</button></div>
+            <div class="timeline"><div class="timeline-fill" id="timelineFill"></div></div>
+            <span class="mono" id="replayClock">23:17:16.250 / 23:20:00.000</span>
+            <button class="btn">跳到决策</button><button class="btn">跳到异常</button>
+          </div>
+        </div>
+        <div class="replay-layout">
+          <div>
+            <div class="panel">
+              <div class="panel-head"><div><span class="panel-title">事件回放时间线</span><span class="panel-en">Replay Timeline</span></div><span class="status info">EVENT CLOCK 事件时钟</span></div>
+              <div class="replay-chart"><canvas id="replayChart"></canvas></div>
+            </div>
+            <div class="panel" style="margin-top:7px">
+              <div class="panel-head"><div><span class="panel-title">事件流</span><span class="panel-en">Event Stream</span></div><span class="muted" style="font-size:9px">来源时间 + 本地接收水位</span></div>
+              <div class="event-stream" id="eventStream"></div>
+            </div>
+          </div>
+          <div class="replay-side">
+            <div class="panel">
+              <div class="panel-head"><span class="panel-title">当前回放状态</span><span class="status good">TRADEABLE 可交易</span></div>
+              <div class="panel-body kv">
+                <div>BTC 价格</div><div>67,842.31</div>
+                <div>参考开盘价</div><div>67,620.00</div>
+                <div>p_raw / p_cal</div><div>0.605 / 0.606</div>
+                <div>YES 买一 / 卖一</div><div>0.584 / 0.625</div>
+                <div>NO 买一 / 卖一</div><div>0.369 / 0.381</div>
+                <div>剩余时间</div><div>00:02:44</div>
+                <div>策略动作</div><div class="green">买入 NO</div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><span class="panel-title">当前盘口</span><span class="panel-en">Current Order Book</span></div></div>
+              <div class="panel-body"><table class="orderbook" id="replayBook"></table></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><span class="panel-title">模拟执行</span><span class="panel-en">Execution Simulation</span></div><span class="status good">FILLED 已成交</span></div>
+              <div class="panel-body kv">
+                <div>订单类型</div><div>LIMIT 限价</div>
+                <div>限价</div><div>0.381</div>
+                <div>目标数量</div><div>1,000</div>
+                <div>成交数量</div><div>1,000</div>
+                <div>手续费</div><div>0.00342</div>
+                <div>模拟延迟</div><div>20 ms</div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><span class="panel-title">数据可信状态</span><span class="panel-en">Data Trust</span></div></div>
+              <div class="panel-body decision-reasons">
+                <div><span class="green">✓</span><span>存在本地接收时钟</span></div>
+                <div><span class="green">✓</span><span>连接 ID 保持稳定</span></div>
+                <div><span class="amber">⚠</span><span>连续性未被外部证明</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6 运行对比 -->
+      <section class="page" id="page-compare">
+        <div class="page-head">
+          <div><h1>策略竞技场（Strategy Arena）</h1><p>融合旧平台的模拟盘排名、资金终值和新版 Run 对比。</p></div>
+          <div class="toolbar"><button class="btn">保存对比</button><button class="btn primary">生成复盘摘要</button></div>
+        </div>
+
+        <div class="arena-summary">
+          <div class="arena-card"><span>当前第一名</span><strong>K-Edge v0.4</strong></div><div class="arena-card"><span>最高净盈亏</span><strong class="green mono">+214.80</strong></div><div class="arena-card"><span>最低最大回撤</span><strong class="mono">−33.90</strong></div><div class="arena-card"><span>最佳 Brier</span><strong class="mono">0.0912</strong></div>
+        </div>
+        <div class="panel" style="margin-bottom:7px"><div class="panel-head"><div><span class="panel-title">策略排名</span><span class="panel-en">Strategy Ranking</span></div><span class="muted" style="font-size:9px">同一数据集与结算窗口</span></div><div class="table-wrap"><table class="data arena-ranking"><thead><tr><th>策略</th><th>净盈亏</th><th>最大回撤</th><th>Brier</th><th>成交率</th><th>资金终值</th></tr></thead><tbody><tr><td>#1 K-Edge v0.4</td><td class="green">+214.80</td><td class="red">−41.70</td><td>0.0941</td><td>71.5%</td><td>10,214.80</td></tr><tr><td>#2 K-Edge Strict</td><td class="green">+181.20</td><td class="red">−33.90</td><td>0.0912</td><td>54.2%</td><td>10,181.20</td></tr><tr><td>#3 K-Edge v0.3</td><td class="green">+162.40</td><td class="red">−58.20</td><td>0.1098</td><td>68.2%</td><td>10,162.40</td></tr><tr><td>#4 J-Spread v0.2</td><td class="green">+88.10</td><td class="red">−76.40</td><td>0.1284</td><td>61.0%</td><td>10,088.10</td></tr></tbody></table></div></div>
+
+        <div class="compare-layout">
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">选择 2–4 个运行</span><span class="panel-en">Select Runs</span></div></div>
+            <div class="panel-body run-selector" id="runSelector">
+              <label class="run-check"><input type="checkbox" checked data-run="a"><div><strong>K-Edge v0.4</strong><span>BT-0042 · 当前候选</span></div></label>
+              <label class="run-check"><input type="checkbox" checked data-run="b"><div><strong>K-Edge v0.3</strong><span>BT-0041 · 旧阈值</span></div></label>
+              <label class="run-check"><input type="checkbox" checked data-run="c"><div><strong>J-Spread v0.2</strong><span>BT-0038 · 点差过滤</span></div></label>
+              <label class="run-check"><input type="checkbox" data-run="d"><div><strong>K-Edge v0.4 Strict</strong><span>BT-0043 · 仅可信市场</span></div></label>
+            </div>
+          </div>
+          <div class="compare-main">
+            <div class="compare-summary" id="compareSummary"></div>
+            <div class="panel">
+              <div class="panel-head"><div><span class="panel-title">累计净盈亏对比</span><span class="panel-en">Cumulative Net PnL Comparison</span></div><span class="muted" style="font-size:9px">相同数据集与结算窗口</span></div>
+              <div class="chart-box" style="height:330px"><canvas id="compareChart"></canvas></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><span class="panel-title">指标与参数差异</span><span class="panel-en">Metrics & Parameters</span></div></div>
+              <div class="table-wrap"><table class="data compare-table" id="compareTable"></table></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><div><span class="panel-title">概率校准对比</span><span class="panel-en">Calibration Comparison</span></div></div>
+              <div class="small-chart"><canvas id="compareCalibrationChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7 系统健康 -->
+      <section class="page" id="page-health">
+        <div class="page-head">
+          <div><h1>系统健康（System Health）</h1><p>判断实时数据、市场轮换、事件记录和模拟执行是否可信。</p></div>
+          <div class="toolbar"><button class="btn">下载诊断信息</button><button class="btn danger">停止模拟</button></div>
+        </div>
+        <div class="health-grid">
+          <div class="health-card"><h3>Polymarket WebSocket</h3><span class="status good">HEALTHY 健康</span><div class="health-big green mono">18 ms</div><div class="kv"><div>连接 ID</div><div>pm-8f2a</div><div>重连次数</div><div>2</div><div>最后事件</div><div>23:18:42.341</div></div></div>
+          <div class="health-card"><h3>Binance WebSocket</h3><span class="status good">HEALTHY 健康</span><div class="health-big green mono">11 ms</div><div class="kv"><div>连接 ID</div><div>bn-c117</div><div>重连次数</div><div>1</div><div>最后事件</div><div>23:18:42.347</div></div></div>
+          <div class="health-card"><h3>盘口连续性（Book Continuity）</h3><span class="status warn">UNVERIFIED 未验证</span><div class="health-big amber">TAGGED 已标记</div><div class="kv"><div>时钟域</div><div>local-mono</div><div>接收序号</div><div>8,412,220</div><div>缺口异常</div><div>3</div></div></div>
+          <div class="health-card"><h3>市场轮换（Market Rotation）</h3><span class="status good">READY 就绪</span><div class="health-big green mono">23:20</div><div class="kv"><div>当前市场</div><div>ACTIVE</div><div>下一市场</div><div>FOUND</div><div>Token IDs</div><div>READY</div></div></div>
+        </div>
+
+        <div class="ops-grid">
+          <div class="panel"><div class="panel-head"><div><span class="panel-title">进程与服务控制</span><span class="panel-en">Process & Service Control</span></div><span class="status warn">模拟环境</span></div><div class="panel-body service-grid">
+            <div class="service-card"><div class="service-head"><strong>采集器 Collector</strong><div class="switch" data-switch></div></div><p>当前停止，开关只修改原型状态。</p></div><div class="service-card"><div class="service-head"><strong>前端 Frontend</strong><div class="switch on" data-switch></div></div><p>运行中 · PID 14692</p></div><div class="service-card"><div class="service-head"><strong>模拟展示站 Simulator</strong><div class="switch on" data-switch></div></div><p>运行中 · PAPER 模式</p></div><div class="service-card"><div class="service-head"><strong>自动巡逻 Watchdog</strong><div class="switch" data-switch></div></div><p>禁用，不会自动拉起进程。</p></div><div class="service-card"><div class="service-head"><strong>事件记录器 Recorder</strong><div class="switch on" data-switch></div></div><p>运行中 · 单写入器</p></div><div class="service-card"><div class="service-head"><strong>真实下单 Live Trading</strong><div class="switch" data-switch></div></div><p class="red">禁用，本原型不会发送订单。</p></div>
+          </div></div>
+          <div class="panel"><div class="panel-head"><div><span class="panel-title">信号源开关</span><span class="panel-en">Signal Sources</span></div><button class="btn">全部关闭</button></div><div class="panel-body source-list">
+            <div class="source-row"><span>Binance 成交价</span><div class="switch on" data-switch></div></div><div class="source-row"><span>Binance 盘口</span><div class="switch on" data-switch></div></div><div class="source-row"><span>Binance USD 中间价</span><div class="switch on" data-switch></div></div><div class="source-row"><span>Coinbase</span><div class="switch" data-switch></div></div><div class="source-row"><span>Chainlink 结算源</span><div class="switch on" data-switch></div></div><div class="source-row"><span>OKX</span><div class="switch" data-switch></div></div><div class="source-row"><span>Bybit</span><div class="switch" data-switch></div></div><div class="source-row"><span>Kraken</span><div class="switch" data-switch></div></div>
+          </div></div>
+        </div>
+
+        <div class="health-layout">
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">数据质量计数器</span><span class="panel-en">Data Quality Counters</span></div><span class="muted" style="font-size:9px">本次会话</span></div>
+            <div class="panel-body quality-grid">
+              <div class="quality-box"><span>空盘口事件</span><strong class="mono">4</strong></div>
+              <div class="quality-box"><span>单边为空</span><strong class="amber mono">7</strong></div>
+              <div class="quality-box"><span>陈旧观测</span><strong class="mono">19</strong></div>
+              <div class="quality-box"><span>丢弃异常数据</span><strong class="mono">2</strong></div>
+              <div class="quality-box"><span>运行时异常</span><strong class="red mono">3</strong></div>
+              <div class="quality-box"><span>不可交易窗口</span><strong class="mono">11</strong></div>
+              <div class="quality-box"><span>已记录事件</span><strong class="mono">8.4M</strong></div>
+              <div class="quality-box"><span>写入队列</span><strong class="green mono">0</strong></div>
+              <div class="quality-box"><span>写入器状态</span><strong class="green">SINGLE 单写入</strong></div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><span class="panel-title">本地处理延迟</span><span class="panel-en">Local Processing Latency</span></div><span class="muted" style="font-size:9px">仅表示本地语义</span></div>
+            <div class="panel-body">
+              <div class="quality-grid">
+                <div class="quality-box"><span>接收→标准化 p50</span><strong class="mono">2.9 ms</strong></div>
+                <div class="quality-box"><span>接收→标准化 p95</span><strong class="mono">10.8 ms</strong></div>
+                <div class="quality-box"><span>特征→决策 p95</span><strong class="mono">4.2 ms</strong></div>
+                <div class="quality-box"><span>决策→模拟订单 p95</span><strong class="mono">3.1 ms</strong></div>
+                <div class="quality-box"><span>本地接收时钟</span><strong class="green">正常</strong></div>
+                <div class="quality-box"><span>连接 ID</span><strong class="green">稳定</strong></div>
+              </div>
+              <div style="height:184px;margin-top:8px"><canvas id="healthChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:7px">
+          <div class="panel-head"><div><span class="panel-title">运行时异常</span><span class="panel-en">Runtime Incidents</span></div><div class="toolbar"><button class="btn active">全部</button><button class="btn">未解决</button><button class="btn">已解决</button></div></div>
+          <div class="panel-body incident-list">
+            <div class="incident"><span class="mono muted">23:16:10</span><span class="tag incident">BOOK_GAP 盘口缺口</span><span>重连后无法证明 Polymarket 盘口连续性，市场被标记为 CONTINUITY_UNVERIFIED。</span><span class="status warn">TAGGED 已标记</span></div>
+            <div class="incident"><span class="mono muted">22:57:08</span><span class="tag incident">DATA_STALE 数据陈旧</span><span>数据年龄超过 250 ms，持续 410 ms；期间禁止产生新决策。</span><span class="status good">RESOLVED 已解决</span></div>
+            <div class="incident"><span class="mono muted">22:31:42</span><span class="tag incident">ONE_SIDE_EMPTY 单边为空</span><span>NO 卖方盘口为空，市场在 280 ms 内被标记为 UNTRADEABLE。</span><span class="status good">RESOLVED 已解决</span></div>
+          </div>
+        </div>
+        <div class="footnote">来源时间戳仅作为源数据元信息展示。本页面不会把“来源时间与本地时间之差”直接命名为网络延迟（Network Latency）。</div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay"></div>
+<aside class="ticket" id="ticket">
+  <div class="ticket-head"><strong>Polymarket · 纸面订单票（Paper Order Ticket）</strong><button class="icon-btn" id="ticketClose">×</button></div>
+  <div class="ticket-body"><div class="market-ticket">
+    <div class="ticket-title"><div style="display:flex;gap:8px;align-items:center"><div class="coin">₿</div><div><h3>BTC Up or Down 5m</h3><div class="ticket-sub">Jul 18, 1:55PM–2:00PM ET</div></div></div><div class="ticket-count"><span id="tmin">02</span><span id="tsec">17</span></div></div>
+    <div class="ticket-price-row"><div class="ticket-price"><span>需要击败的价格 Price to Beat</span><strong>0.59</strong></div><div class="ticket-price"><span>当前目标 Current Target</span><strong class="amber">0.60</strong></div></div>
+    <div class="ticket-chart"><canvas id="ticketChart"></canvas></div>
+    <div style="display:flex;justify-content:space-between;font-size:9px;margin-bottom:8px"><strong>订单簿 Order Book</strong><span class="muted">$319.51 Vol.</span></div>
+    <div class="trade-buttons"><button class="trade-button up" data-side-order="UP">上涨 Up<br>60¢</button><button class="trade-button down" data-side-order="DOWN">下跌 Down<br>40¢</button></div>
+    <div class="amount-row"><div class="mode-tabs"><button class="active">手动</button><button>自动</button></div><div class="amount-input"><input id="ticketAmount" value="10"><span>USDC</span></div></div>
+    <button class="submit-paper" id="submitPaper">提交纸面订单（不发送真实交易）</button>
+    <div class="ticket-note">当前为 PAPER 模拟模式。所有按钮只修改本地原型状态，不调用钱包、不读取密钥、不发送真实订单。</div>
+  </div></div>
+</aside>
+<div class="modal" id="helpModal"><div class="modal-head"><strong>使用说明与版本记录</strong><button class="icon-btn" id="helpClose">×</button></div><div class="modal-body">
+  <div class="help-card"><h4>推荐使用顺序</h4><p>先在总览确认系统状态，再进入实时驾驶舱观察决策；发现问题后打开决策记录或市场回放；修改策略后运行回测，最后进入策略竞技场对比多个版本。</p></div>
+  <div class="help-card"><h4>关键专业字段</h4><ul><li>校准概率（p_cal）：校准后的模型概率。</li><li>可执行优势（Executable Edge）：模型概率减去真实卖一价和手续费。</li><li>数据年龄（Data Age）：本地接收事件到当前时刻的时间。</li><li>连续性（Continuity）：盘口是否能证明无缺口更新。</li><li>布里尔分数（Brier Score）：概率预测误差，越低越好。</li></ul></div>
+  <div class="help-card"><h4>Fusion V3 变更</h4><ul><li>新增总览页面与工作流。</li><li>加入纸面订单票，但严格限制为模拟。</li><li>策略页新增参数日志与实验台账。</li><li>运行对比升级为策略竞技场。</li><li>健康页新增进程与信号源控制。</li></ul></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const C={raw:'#7c93ad',cal:'#4f91ff',bid:'#4fd17d',ask:'#ff676f',cyan:'#35d1c0',amber:'#f2c35f',purple:'#a68aff',grid:'#21323e',text:'#8fa3b2',green:'#4fd17d',red:'#ff676f'};
+
+const decisions=[
+ {time:'23:17:20.000',event:'DECISION',market:'23:15–23:20',dir:'NO',pcal:'0.606',price:'—',edge:'+0.0036',qty:'1,000',depth:'6,231',elig:'ELIGIBLE',order:'—',final:'PENDING',pnl:'—'},
+ {time:'23:16:58.118',event:'ORDER',market:'23:15–23:20',dir:'NO',pcal:'0.606',price:'0.381',edge:'+0.0036',qty:'1,000',depth:'6,231',elig:'ELIGIBLE',order:'SUBMITTED',final:'—',pnl:'—'},
+ {time:'23:16:55.642',event:'FILL',market:'23:15–23:20',dir:'NO',pcal:'0.606',price:'0.381',edge:'+0.0036',qty:'1,000',depth:'6,231',elig:'ELIGIBLE',order:'FILLED',final:'OPEN',pnl:'−0.03'},
+ {time:'23:14:32.330',event:'DECISION',market:'23:10–23:15',dir:'YES',pcal:'0.588',price:'—',edge:'−0.0152',qty:'1,200',depth:'4,812',elig:'EDGE<THRESHOLD',order:'—',final:'SKIPPED',pnl:'0.00'},
+ {time:'23:11:42.180',event:'DECISION',market:'23:10–23:15',dir:'YES',pcal:'0.571',price:'—',edge:'+0.0048',qty:'1,500',depth:'5,231',elig:'ELIGIBLE',order:'—',final:'EXECUTED',pnl:'—'},
+ {time:'23:11:36.412',event:'ORDER',market:'23:10–23:15',dir:'YES',pcal:'0.571',price:'0.553',edge:'+0.0048',qty:'1,500',depth:'5,231',elig:'ELIGIBLE',order:'SUBMITTED',final:'—',pnl:'—'},
+ {time:'23:11:34.901',event:'FILL',market:'23:10–23:15',dir:'YES',pcal:'0.571',price:'0.553',edge:'+0.0048',qty:'1,500',depth:'5,231',elig:'ELIGIBLE',order:'FILLED',final:'OPEN',pnl:'+0.04'},
+ {time:'23:10:12.000',event:'SETTLEMENT',market:'23:10–23:15',dir:'YES',pcal:'0.553',price:'—',edge:'+0.0048',qty:'1,500',depth:'—',elig:'SETTLED',order:'—',final:'SETTLED',pnl:'+19.26'},
+ {time:'23:05:08.778',event:'INCIDENT',market:'23:05–23:10',dir:'—',pcal:'—',price:'—',edge:'—',qty:'—',depth:'—',elig:'DATA_STALE',order:'—',final:'SKIPPED',pnl:'0.00'},
+ {time:'22:57:21.411',event:'DECISION',market:'22:55–23:00',dir:'YES',pcal:'0.603',price:'—',edge:'+0.0062',qty:'1,200',depth:'4,921',elig:'ELIGIBLE',order:'—',final:'EXECUTED',pnl:'—'},
+ {time:'22:57:14.503',event:'ORDER',market:'22:55–23:00',dir:'YES',pcal:'0.579',price:'0.579',edge:'+0.0062',qty:'1,200',depth:'4,921',elig:'ELIGIBLE',order:'SUBMITTED',final:'—',pnl:'—'},
+ {time:'22:57:12.008',event:'FILL',market:'22:55–23:00',dir:'YES',pcal:'0.579',price:'0.579',edge:'+0.0062',qty:'1,200',depth:'4,921',elig:'ELIGIBLE',order:'FILLED',final:'OPEN',pnl:'−0.05'},
+ {time:'22:55:09.230',event:'SETTLEMENT',market:'22:50–22:55',dir:'YES',pcal:'0.553',price:'0.467',edge:'+0.0039',qty:'1,000',depth:'—',elig:'SETTLED',order:'—',final:'SETTLED',pnl:'+9.19'},
+ {time:'22:50:33.622',event:'DECISION',market:'22:50–22:55',dir:'NO',pcal:'0.439',price:'—',edge:'+0.0039',qty:'1,000',depth:'4,002',elig:'ELIGIBLE',order:'—',final:'EXECUTED',pnl:'—'}
+];
+
+const yesBook=[[1,1852,.584,.625,1246],[2,1320,.583,.626,1598],[3,1210,.582,.627,1330],[4,980,.581,.629,1220],[5,918,.580,.630,1498]];
+const noBook=[[1,1852,.369,.381,1526],[2,1420,.368,.382,1884],[3,1110,.367,.383,1431],[4,987,.366,.384,1298],[5,844,.365,.385,1582]];
+
+function renderBook(el,data){
+ el.innerHTML='<thead><tr><th>档位</th><th>买量</th><th>买价</th><th>卖价</th><th>卖量</th></tr></thead><tbody>'+
+ data.map(r=>`<tr><td>${r[0]}</td><td>${r[1].toLocaleString()}</td><td class="green">${r[2].toFixed(3)}</td><td class="red">${r[3].toFixed(3)}</td><td>${r[4].toLocaleString()}</td></tr>`).join('')+'</tbody>';
+}
+function eventTag(e){return `<span class="tag ${e.toLowerCase()}">${e}</span>`}
+function valClass(v){return v.startsWith('+')?'green':(v.startsWith('−')||v.startsWith('-'))?'red':''}
+function eligibility(v){
+ const c=(v==='ELIGIBLE'||v==='SETTLED')?'good':(v.includes('THRESHOLD')||v==='DATA_STALE')?'warn':'bad';
+ const zh={ELIGIBLE:'可执行',SETTLED:'已结算','EDGE<THRESHOLD':'优势低于阈值',DATA_STALE:'数据陈旧'}[v]||v;
+ return `<span class="status ${c}">${zh}</span>`;
+}
+function tableHtml(el,rows){
+ el.innerHTML='<thead><tr><th>时间</th><th>事件</th><th>市场</th><th>方向</th><th>p_cal</th><th>执行价</th><th>净优势</th><th>数量</th><th>深度</th><th>可执行性</th><th>订单</th><th>最终状态</th><th>PnL</th></tr></thead><tbody>'+
+ rows.map((d,i)=>`<tr data-index="${i}" class="${i===1?'selected':''}">
+ <td>${d.time}</td><td>${eventTag(d.event)}</td><td>${d.market}</td><td class="${d.dir==='YES'?'green':d.dir==='NO'?'red':''}">${d.dir}</td>
+ <td>${d.pcal}</td><td>${d.price}</td><td class="${valClass(d.edge)}">${d.edge}</td><td>${d.qty}</td><td>${d.depth}</td>
+ <td>${eligibility(d.elig)}</td><td>${d.order}</td><td>${d.final}</td><td class="${valClass(d.pnl)}">${d.pnl}</td></tr>`).join('')+'</tbody>';
+}
+function detailHtml(d){
+ return `<div class="detail-grid">
+  <div class="detail-card"><h4>市场与决策（Market & Decision）</h4><div class="kv">
+   <div>市场</div><div>${d.market}</div><div>方向</div><div class="${d.dir==='YES'?'green':'red'}">${d.dir}</div>
+   <div>可执行性</div><div>${d.elig}</div><div>最终状态</div><div>${d.final}</div>
+  </div></div>
+  <div class="detail-card"><h4>模型输出（Model Output）</h4><div class="kv">
+   <div>p_raw</div><div>0.605</div><div>p_cal</div><div>${d.pcal==='—'?'0.606':d.pcal}</div>
+   <div>模型版本</div><div>K-Edge v0.4</div><div>特征时间戳</div><div>23:16:56.120</div>
+  </div></div>
+  <div class="detail-card wide"><h4>双边盘口快照（Order Book Snapshot）</h4><div class="book-duo">
+   <div><div class="green" style="font-size:9px;margin-bottom:5px">YES 盘口</div><table class="orderbook">${yesBook.slice(0,3).map(r=>`<tr><td>${r[0]}</td><td class="green">${r[2].toFixed(3)}</td><td>${r[1]}</td><td class="red">${r[3].toFixed(3)}</td><td>${r[4]}</td></tr>`).join('')}</table></div>
+   <div><div class="red" style="font-size:9px;margin-bottom:5px">NO 盘口</div><table class="orderbook">${noBook.slice(0,3).map(r=>`<tr><td>${r[0]}</td><td class="green">${r[2].toFixed(3)}</td><td>${r[1]}</td><td class="red">${r[3].toFixed(3)}</td><td>${r[4]}</td></tr>`).join('')}</table></div>
+  </div></div>
+  <div class="detail-card"><h4>决策原因（Decision Reason）</h4><p>扣除手续费后的可执行优势为正，可见深度充分，数据新鲜度通过。连续性仍被标记为未验证。</p></div>
+  <div class="detail-card"><h4>模拟执行（Simulation Execution）</h4><div class="kv"><div>订单类型</div><div>LIMIT</div><div>成交数量</div><div>${d.qty}</div><div>手续费估计</div><div>0.00342</div><div>模拟延迟</div><div>20 ms</div></div></div>
+  <div class="detail-card"><h4>盈亏拆分（PnL Breakdown）</h4><div class="kv"><div>入场价值</div><div>−381.00</div><div>手续费</div><div class="red">−3.42</div><div>当前估值</div><div>−0.03</div><div>已结算</div><div class="${valClass(d.pnl)}">${d.pnl}</div></div></div>
+  <div class="detail-card"><h4>数据可信状态（Data Trust）</h4><div class="decision-reasons"><div><span class="green">✓</span><span>数据年龄 18 ms</span></div><div><span class="green">✓</span><span>双边盘口完整</span></div><div><span class="amber">⚠</span><span>连续性未验证</span></div></div></div>
+ </div>`;
+}
+
+tableHtml(document.getElementById('recentDecisionTable'),decisions);
+tableHtml(document.getElementById('allDecisionTable'),[...decisions,...decisions.map((d,i)=>({...d,time:'21:'+String(50-i).padStart(2,'0')+':12.000'}))]);
+tableHtml(document.getElementById('backtestTable'),[...decisions].reverse());
+document.getElementById('liveDetail').innerHTML=detailHtml(decisions[1]);
+document.getElementById('decisionInspector').innerHTML=detailHtml(decisions[0]);
+renderBook(document.getElementById('liveBook'),yesBook);
+renderBook(document.getElementById('replayBook'),yesBook);
+
+document.getElementById('bookTabs').addEventListener('click',e=>{
+ if(e.target.tagName!=='BUTTON')return;
+ [...e.currentTarget.children].forEach(b=>b.classList.remove('active'));e.target.classList.add('active');
+ const data=e.target.dataset.side==='yes'?yesBook:noBook;renderBook(document.getElementById('liveBook'),data);
+ document.getElementById('bookBid').textContent=data[0][2].toFixed(3);
+ document.getElementById('bookAsk').textContent=data[0][3].toFixed(3);
+ document.getElementById('bookSpread').textContent=(data[0][3]-data[0][2]).toFixed(3);
+});
+
+document.querySelectorAll('#recentDecisionTable tbody tr').forEach(tr=>tr.addEventListener('click',()=>{
+ document.querySelectorAll('#recentDecisionTable tbody tr').forEach(x=>x.classList.remove('selected'));tr.classList.add('selected');
+ const d=decisions[+tr.dataset.index];document.getElementById('liveDetail').innerHTML=detailHtml(d);document.getElementById('detailTime').textContent=d.time;
+}));
+document.querySelectorAll('#allDecisionTable tbody tr').forEach(tr=>tr.addEventListener('click',()=>{
+ const all=[...decisions,...decisions.map((d,i)=>({...d,time:'21:'+String(50-i).padStart(2,'0')+':12.000'}))];
+ document.getElementById('decisionInspector').innerHTML=detailHtml(all[+tr.dataset.index]);
+}));
+
+document.getElementById('nav').addEventListener('click',e=>{
+ const b=e.target.closest('button[data-page]');if(!b)return;
+ document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+ document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+b.dataset.page).classList.add('active');
+ requestAnimationFrame(renderAll);
+});
+
+let remain=137;
+setInterval(()=>{remain=Math.max(0,remain-1);document.getElementById('countdown').textContent=`00:${String(Math.floor(remain/60)).padStart(2,'0')}:${String(remain%60).padStart(2,'0')}`},1000);
+
+function prep(canvas){
+ const r=canvas.getBoundingClientRect(),d=Math.min(2,devicePixelRatio||1);canvas.width=Math.max(10,Math.floor(r.width*d));canvas.height=Math.max(10,Math.floor(r.height*d));
+ const ctx=canvas.getContext('2d');ctx.setTransform(d,0,0,d,0,0);return{ctx,w:r.width,h:r.height};
+}
+function series(n,base,amp,trend=0,phase=0){
+ let v=base,a=[];for(let i=0;i<n;i++){v+=Math.sin((i+phase)/4)*amp*.15+Math.cos((i+phase)/9)*amp*.08+(((i*17)%11)-5)*amp*.015+trend;a.push(Math.max(.03,Math.min(.97,v)))}return a;
+}
+const live={raw:series(80,.47,.08,.0008,1),cal:series(80,.44,.06,.001,4),bid:series(80,.28,.025,.00025,7),ask:series(80,.33,.022,.00028,11)};
+function grid(ctx,w,h,p,min,max,xc=6,yc=5){
+ ctx.strokeStyle=C.grid;ctx.lineWidth=1;ctx.fillStyle=C.text;ctx.font='9px system-ui';
+ for(let i=0;i<=yc;i++){let y=p.t+(h-p.t-p.b)*i/yc;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(w-p.r,y);ctx.stroke();ctx.fillText((max-(max-min)*i/yc).toFixed(2),6,y+3)}
+ for(let i=0;i<=xc;i++){let x=p.l+(w-p.l-p.r)*i/xc;ctx.beginPath();ctx.moveTo(x,p.t);ctx.lineTo(x,h-p.b);ctx.stroke();ctx.fillText(`23:${15+Math.floor(i*50/60)}:${String((i*50)%60).padStart(2,'0')}`,x-18,h-8)}
+}
+function plot(ctx,a,color,w,h,p,min,max,dash=[]){
+ ctx.strokeStyle=color;ctx.lineWidth=1.7;ctx.setLineDash(dash);ctx.beginPath();
+ a.forEach((v,i)=>{let x=p.l+(w-p.l-p.r)*i/(a.length-1),y=p.t+(max-v)/(max-min)*(h-p.t-p.b);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();ctx.setLineDash([]);
+}
+function drawLive(){
+ const c=document.getElementById('liveChart');if(!c.offsetParent)return;const{ctx,w,h}=prep(c),p={l:42,r:18,t:20,b:30},min=.2,max=.72;ctx.clearRect(0,0,w,h);grid(ctx,w,h,p,min,max);
+ plot(ctx,live.raw,C.raw,w,h,p,min,max);plot(ctx,live.cal,C.cal,w,h,p,min,max);plot(ctx,live.bid,C.bid,w,h,p,min,max);plot(ctx,live.ask,C.ask,w,h,p,min,max);
+ [22,48,64].forEach((i,k)=>{let x=p.l+(w-p.l-p.r)*i/(live.cal.length-1),y=p.t+(max-live.cal[i])/(max-min)*(h-p.t-p.b);ctx.fillStyle=C.amber;ctx.save();ctx.translate(x,y);ctx.rotate(Math.PI/4);ctx.fillRect(-4,-4,8,8);ctx.restore();ctx.fillStyle=C.text;ctx.fillText('D'+(k+1),x-6,y-10)});
+ [35,57].forEach((i,k)=>{let x=p.l+(w-p.l-p.r)*i/(live.bid.length-1),y=p.t+(max-live.bid[i])/(max-min)*(h-p.t-p.b);ctx.strokeStyle=C.cyan;ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.stroke();ctx.fillStyle=C.text;ctx.fillText('F'+(k+1),x-6,y+15)});
+ let nx=p.l+(w-p.l-p.r)*68/(live.cal.length-1);ctx.strokeStyle='#fff';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(nx,p.t);ctx.lineTo(nx,h-p.b);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#fff';ctx.fillText('现在',nx+4,p.t+10);
+ c._m={p,min,max,data:live};
+}
+const lc=document.getElementById('liveChart');
+lc.addEventListener('mousemove',e=>{
+ const r=lc.getBoundingClientRect(),m=lc._m;if(!m)return;let x=e.clientX-r.left,i=Math.max(0,Math.min(79,Math.round((x-m.p.l)/(r.width-m.p.l-m.p.r)*79)));
+ const t=document.getElementById('liveTooltip');t.innerHTML=`<strong>23:17:${String(i).padStart(2,'0')}.${String((i*137)%1000).padStart(3,'0')}</strong><br>
+ 原始概率 p_raw：${m.data.raw[i].toFixed(3)}<br>校准概率 p_cal：${m.data.cal[i].toFixed(3)}<br>
+ YES 买一 / 卖一：<span class="green">${m.data.bid[i].toFixed(3)}</span> / <span class="red">${m.data.ask[i].toFixed(3)}</span><br>
+ 扣费后净优势：<span class="green">+0.36%</span><br>BTC：67,842.${String(i).padStart(2,'0')}<br>数据年龄：18 ms`;
+ t.style.display='block';t.style.left=Math.min(r.width-205,x+12)+'px';t.style.top=Math.max(10,e.clientY-r.top-60)+'px';
+});
+lc.addEventListener('mouseleave',()=>document.getElementById('liveTooltip').style.display='none');
+
+function drawLine(canvas,ss,opt={}){
+ if(!canvas.offsetParent)return;const{ctx,w,h}=prep(canvas),p={l:42,r:18,t:20,b:28};ctx.clearRect(0,0,w,h);
+ const vals=ss.flatMap(s=>s.data);let min=opt.min??Math.min(...vals),max=opt.max??Math.max(...vals);if(max===min)max+=1;grid(ctx,w,h,p,min,max);
+ ss.forEach(s=>plot(ctx,s.data,s.color,w,h,p,min,max,s.dash||[]));
+}
+let pnl=[],v=0;for(let i=0;i<120;i++){v+=Math.sin(i/5)*1.6+((i*19)%17-8)*.13+.42;pnl.push(v)}
+const dd=pnl.map((x,i)=>x-Math.max(...pnl.slice(0,i+1))),brier=series(80,.14,.035,-.00045,5);
+function drawPnl(){drawLine(document.getElementById('pnlChart'),[{data:pnl,color:C.green},{data:dd,color:C.red}])}
+function drawBrier(){drawLine(document.getElementById('brierChart'),[{data:brier,color:C.cal}],{min:.06,max:.2})}
+function drawCalibration(){
+ const c=document.getElementById('calibrationChart');if(!c.offsetParent)return;const{ctx,w,h}=prep(c),p={l:42,r:15,t:20,b:30};ctx.clearRect(0,0,w,h);grid(ctx,w,h,p,0,1,5,5);
+ ctx.strokeStyle='#647784';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(p.l,h-p.b);ctx.lineTo(w-p.r,p.t);ctx.stroke();ctx.setLineDash([]);
+ const pts=[[.08,.06],[.18,.16],[.29,.27],[.39,.42],[.51,.5],[.61,.64],[.72,.75],[.83,.79],[.92,.9]];
+ ctx.strokeStyle=C.cal;ctx.lineWidth=2;ctx.beginPath();pts.forEach((q,i)=>{let x=p.l+q[0]*(w-p.l-p.r),y=p.t+(1-q[1])*(h-p.t-p.b);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();ctx.fillStyle=C.cal;
+ pts.forEach(q=>{let x=p.l+q[0]*(w-p.l-p.r),y=p.t+(1-q[1])*(h-p.t-p.b);ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fill()});
+}
+
+const events=[
+ ['23:16:55.010','BINANCE 行情','bookTicker BTCUSDT 67,837.20 / 67,837.21'],
+ ['23:16:55.042','POLY 盘口','YES 买一/卖一 0.584 / 0.625'],
+ ['23:16:55.061','模型 MODEL','p_raw 0.605 → p_cal 0.606'],
+ ['23:16:55.068','决策 DECISION','买入 NO · 扣费后净优势 +0.36%'],
+ ['23:16:55.088','模拟订单','LIMIT NO 1,000 @ 0.381'],
+ ['23:16:55.108','模拟成交','成交 1,000 · 可见深度 6,231'],
+ ['23:16:56.012','盘口变更','NO 卖量 1,526 → 1,420'],
+ ['23:16:56.210','BINANCE 行情','BTC 上涨 1.74 USDT'],
+ ['23:16:57.084','健康 HEALTH','数据年龄 18 ms · 连续性未验证'],
+ ['23:16:58.140','模型 MODEL','p_cal 0.609 · 继续持仓']
+];
+document.getElementById('eventStream').innerHTML=events.map(x=>`<div class="event-row"><span class="time">${x[0]}</span><strong class="${x[1].includes('决策')?'green':'blue'}">${x[1]}</strong><span>${x[2]}</span></div>`).join('');
+
+let rp=44,rt=null;
+function updateReplay(){document.getElementById('timelineFill').style.width=rp+'%';let sec=Math.floor(300*rp/100),m=15+Math.floor(sec/60),s=sec%60;document.getElementById('replayClock').textContent=`23:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.250 / 23:20:00.000`;drawReplay()}
+document.getElementById('replayPlay').addEventListener('click',()=>{
+ const b=document.getElementById('replayPlay');if(rt){clearInterval(rt);rt=null;b.textContent='▶ 播放';return}b.textContent='Ⅱ 暂停';
+ rt=setInterval(()=>{rp+=.5;if(rp>=100){rp=100;clearInterval(rt);rt=null;b.textContent='▶ 播放'}updateReplay()},120);
+});
+document.getElementById('replayPrev').addEventListener('click',()=>{rp=Math.max(0,rp-2);updateReplay()});
+document.getElementById('replayNext').addEventListener('click',()=>{rp=Math.min(100,rp+2);updateReplay()});
+function drawReplay(){const c=document.getElementById('replayChart');if(!c.offsetParent)return;drawLine(c,[{data:live.cal,color:C.cal},{data:live.bid,color:C.bid},{data:live.ask,color:C.ask}],{min:.2,max:.72});const{ctx,w,h}=prep(c),p={l:42,r:18,t:20,b:28};let x=p.l+(w-p.l-p.r)*rp/100;ctx.strokeStyle='#fff';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(x,p.t);ctx.lineTo(x,h-p.b);ctx.stroke();ctx.setLineDash([])}
+
+const runData={
+ a:{name:'K-Edge v0.4',pnl:214.8,dd:-41.7,brier:.0941,fill:'71.5%',color:'#4f91ff',series:pnl},
+ b:{name:'K-Edge v0.3',pnl:162.4,dd:-58.2,brier:.1098,fill:'68.2%',color:'#4fd17d',series:pnl.map((x,i)=>x*.76+Math.sin(i/7)*6)},
+ c:{name:'J-Spread v0.2',pnl:88.1,dd:-76.4,brier:.1284,fill:'61.0%',color:'#a68aff',series:pnl.map((x,i)=>x*.42+Math.cos(i/9)*10)},
+ d:{name:'K-Edge Strict',pnl:181.2,dd:-33.9,brier:.0912,fill:'54.2%',color:'#f2c35f',series:pnl.map((x,i)=>x*.82+Math.sin(i/11)*4)}
+};
+function chosen(){return[...document.querySelectorAll('#runSelector input:checked')].map(x=>runData[x.dataset.run])}
+function drawCompare(){
+ const rs=chosen();document.getElementById('compareSummary').innerHTML=rs.map(r=>`<div class="metric" style="min-height:92px;border-top:2px solid ${r.color}"><div class="metric-label">${r.name}</div><div class="metric-value green mono" style="font-size:18px">+${r.pnl.toFixed(1)}</div><div class="metric-row"><span>回撤 / Brier</span><strong>${r.dd} / ${r.brier}</strong></div></div>`).join('');
+ drawLine(document.getElementById('compareChart'),rs.map(r=>({data:r.series,color:r.color})));
+ const rows=[['净盈亏',...rs.map(r=>'+'+r.pnl.toFixed(1))],['最大回撤',...rs.map(r=>r.dd.toFixed(1))],['Brier @ T−60s',...rs.map(r=>r.brier.toFixed(4))],['成交率',...rs.map(r=>r.fill)],['优势阈值',...rs.map((r,i)=>['0.25%','0.20%','0.30%','0.35%'][i])],['最小可见数量',...rs.map((r,i)=>['500','400','800','500'][i])]];
+ document.getElementById('compareTable').innerHTML='<thead><tr><th>指标</th>'+rs.map(r=>`<th style="color:${r.color}">${r.name}</th>`).join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(x=>`<td>${x}</td>`).join('')+'</tr>').join('')+'</tbody>';
+ drawCompareCal();
+}
+document.getElementById('runSelector').addEventListener('change',drawCompare);
+function drawCompareCal(){
+ const c=document.getElementById('compareCalibrationChart');if(!c.offsetParent)return;const{ctx,w,h}=prep(c),p={l:42,r:15,t:20,b:30};ctx.clearRect(0,0,w,h);grid(ctx,w,h,p,0,1,5,5);
+ ctx.strokeStyle='#647784';ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(p.l,h-p.b);ctx.lineTo(w-p.r,p.t);ctx.stroke();ctx.setLineDash([]);
+ chosen().forEach((r,ri)=>{const pts=Array.from({length:8},(_,i)=>{let x=.1+i*.11;return[x,Math.max(0,Math.min(1,x+Math.sin(i+ri)*(.025+ri*.01)))]});ctx.strokeStyle=r.color;ctx.lineWidth=1.8;ctx.beginPath();pts.forEach((q,i)=>{let x=p.l+q[0]*(w-p.l-p.r),y=p.t+(1-q[1])*(h-p.t-p.b);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()});
+}
+function drawHealth(){drawLine(document.getElementById('healthChart'),[{data:series(90,.018,.008,0,2).map(x=>x*1000),color:C.cal},{data:series(90,.008,.004,0,8).map(x=>x*1000),color:C.cyan}],{min:0,max:40})}
+function renderAll(){drawLive();drawPnl();drawCalibration();drawBrier();drawReplay();drawCompare();drawHealth()}
+window.addEventListener('resize',()=>requestAnimationFrame(renderAll));requestAnimationFrame(renderAll);
+
+const toast=document.getElementById('toast');
+function showToast(msg){toast.textContent=msg;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)}
+document.getElementById('validateBtn').addEventListener('click',()=>{document.getElementById('strategyConsole').textContent+='\\n[23:19:12] 策略验证完成：通过';showToast('策略验证通过')});
+document.getElementById('saveBtn').addEventListener('click',()=>showToast('已保存模拟策略版本'));
+document.getElementById('runBacktestBtn').addEventListener('click',()=>showToast('已创建模拟回测任务：BT-20260718-0044'));
+
+// Fusion V3 interactions
+function jumpPage(page){
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const target=document.getElementById('page-'+page);if(target)target.classList.add('active');
+  requestAnimationFrame(renderAll);
+}
+document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>jumpPage(b.dataset.jump)));
+document.querySelectorAll('[data-switch]').forEach(sw=>sw.addEventListener('click',()=>sw.classList.toggle('on')));
+const overlay=document.getElementById('overlay'),ticket=document.getElementById('ticket'),help=document.getElementById('helpModal');
+function drawTicket(){const c=document.getElementById('ticketChart');if(!c.offsetParent)return;const{ctx,w,h}=prep(c);ctx.clearRect(0,0,w,h);ctx.strokeStyle='#1b2933';for(let i=1;i<4;i++){ctx.beginPath();ctx.moveTo(0,h*i/4);ctx.lineTo(w,h*i/4);ctx.stroke()}const a=[.64,.63,.62,.61,.58,.55,.57,.59,.60];ctx.strokeStyle='#f2a900';ctx.lineWidth=2;ctx.beginPath();a.forEach((v,i)=>{const x=4+(w-8)*i/(a.length-1),y=8+(0.66-v)/.13*(h-16);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();ctx.setLineDash([4,4]);let y=8+(0.66-.59)/.13*(h-16);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();ctx.setLineDash([])}
+function openTicket(){overlay.classList.add('show');ticket.classList.add('open');requestAnimationFrame(drawTicket)}function closeTicket(){ticket.classList.remove('open');if(!help.classList.contains('open'))overlay.classList.remove('show')}
+function openHelp(){overlay.classList.add('show');help.classList.add('open')}function closeHelp(){help.classList.remove('open');if(!ticket.classList.contains('open'))overlay.classList.remove('show')}
+['ticketOpen','overviewTicket'].forEach(id=>document.getElementById(id)?.addEventListener('click',openTicket));document.getElementById('ticketClose').addEventListener('click',closeTicket);document.getElementById('helpOpen').addEventListener('click',openHelp);document.getElementById('openChangelog').addEventListener('click',openHelp);document.getElementById('helpClose').addEventListener('click',closeHelp);overlay.addEventListener('click',()=>{closeTicket();closeHelp()});
+document.querySelectorAll('[data-side-order]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-side-order]').forEach(x=>x.style.outline='');b.style.outline='2px solid #fff'}));
+document.getElementById('submitPaper').addEventListener('click',()=>showToast(`已创建纸面订单：${document.querySelector('[data-side-order][style*="outline"]')?.dataset.sideOrder||'NO'} · ${document.getElementById('ticketAmount').value} USDC`));
+setInterval(()=>{const parts=document.getElementById('countdown').textContent.split(':');document.getElementById('tmin').textContent=parts[1]||'00';document.getElementById('tsec').textContent=parts[2]||'00'},500);
+
+</script>
+</body>
+</html>

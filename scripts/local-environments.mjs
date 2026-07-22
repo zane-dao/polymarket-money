@@ -8,6 +8,8 @@ const localRoot = resolve(repositoryRoot, ".local");
 const releasesRoot = resolve(localRoot, "releases");
 const pointersRoot = resolve(localRoot, "pointers");
 const dataBase = process.env.POLYMARKET_SIM_DATA_BASE ?? "/root/polymarket-money-data";
+const candidateUnit = "polymarket-staging-4273.service";
+const candidatePort = 4273;
 
 function run(command, args, options = {}) {
   return new Promise((resolveRun, rejectRun) => {
@@ -75,6 +77,63 @@ async function buildCandidate() {
   await mkdir(pointersRoot, { recursive: true, mode: 0o700 });
   await writeFile(resolve(pointersRoot, "candidate"), `${releaseId}\n`, { mode: 0o600 });
   process.stdout.write(`Candidate release: ${releaseId}\n`);
+  return releaseId;
+}
+
+async function commandOnCandidate(command, payload = {}) {
+  const response = await fetch(`http://127.0.0.1:${candidatePort}/api/commands/${command}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-workbench-client": "web-v1" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(1_000),
+  });
+  if (!response.ok) throw new Error(`candidate command ${command} returned HTTP ${response.status}`);
+  const envelope = await response.json();
+  if (envelope === null || typeof envelope !== "object" || envelope.ok !== true) throw new Error(`candidate command ${command} returned an invalid response`);
+  return envelope.result;
+}
+
+function hasModule(status, moduleId) {
+  return status !== null && typeof status === "object" && Array.isArray(status.modules) && status.modules.some((item) => item !== null && typeof item === "object" && item.moduleId === moduleId && item.availability === "available");
+}
+
+async function waitForCandidateRelease(releaseId) {
+  let lastError = "candidate did not answer";
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      const status = await commandOnCandidate("get_app_status_v1");
+      if (hasModule(status, "runtime-environment:staging-sim") && hasModule(status, `release:${releaseId}`) && status.liveTradingEnabled === false) return;
+      lastError = "candidate answered with a different release, environment, or live-trading state";
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+  throw new Error(`candidate ${releaseId} was not verified on 127.0.0.1:${candidatePort}: ${lastError}`);
+}
+
+async function assertWarningRegression() {
+  const j = await commandOnCandidate("validate_strategy_parameters_v1", { strategyId: "J_FEE_AWARE", parameters: { edgeThreshold: 0.05, maxEdge: 0.05, maxStakeUsdc: 400, bookParticipation: 0.5 } });
+  const l = await commandOnCandidate("validate_strategy_parameters_v1", { strategyId: "L_ADAPTIVE_EXECUTION_V2", parameters: { maxSignalEdge: 0, maxStakeUsdc: 400, bookParticipation: 0.5 } });
+  if (j?.valid !== true || !Array.isArray(j.warnings) || !j.warnings.some((warning) => warning?.code === "EMPTY_EDGE_WINDOW" && warning?.severity === "danger")) throw new Error("candidate did not return the expected J/K research warning");
+  if (l?.valid !== true || !Array.isArray(l.warnings) || !l.warnings.some((warning) => warning?.code === "ZERO_SIGNAL_EDGE_GUARD" && warning?.severity === "danger")) throw new Error("candidate did not return the expected L research warning");
+}
+
+async function restartOrStartCandidateService() {
+  try {
+    await run("systemctl", ["--user", "restart", candidateUnit]);
+    return;
+  } catch {
+    await run("systemd-run", ["--user", "--unit=polymarket-staging-4273", "--collect", `--property=WorkingDirectory=${repositoryRoot}`, "--setenv=PATH=/usr/local/bin:/usr/bin:/bin", "/usr/local/bin/node", resolve(repositoryRoot, "scripts", "local-environments.mjs"), "serve", "staging"]);
+  }
+}
+
+async function refreshCandidate() {
+  const releaseId = await buildCandidate();
+  await restartOrStartCandidateService();
+  await waitForCandidateRelease(releaseId);
+  await assertWarningRegression();
+  process.stdout.write(`Candidate refreshed and verified: ${releaseId} on 127.0.0.1:${candidatePort}\n`);
 }
 
 async function pointer(name) {
@@ -124,7 +183,8 @@ async function dev() {
 
 const [command, argument] = process.argv.slice(2);
 if (command === "build-candidate") await buildCandidate();
+else if (command === "refresh-candidate") await refreshCandidate();
 else if (command === "promote") await promote();
 else if (command === "serve" && (argument === "production" || argument === "staging")) await serve(argument);
 else if (command === "dev") await dev();
-else throw new Error("usage: local-environments.mjs build-candidate|promote|serve production|serve staging|dev");
+else throw new Error("usage: local-environments.mjs build-candidate|refresh-candidate|promote|serve production|serve staging|dev");

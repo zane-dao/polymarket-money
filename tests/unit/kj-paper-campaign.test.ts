@@ -7,7 +7,7 @@ import {
   campaignBinding,
   campaignRun,
   parseKJPaperCampaignArtifact,
-} from "../../execution/src/product/kj-paper-campaign.js";
+} from "../../backend/core/src/product/kj-paper-campaign.js";
 
 const input = {
   campaignId: "kj-evidence-july",

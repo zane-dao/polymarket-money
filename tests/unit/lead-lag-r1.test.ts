@@ -12,7 +12,7 @@ import {
   type ExternalPriceState,
   type LeadLagStamp,
   type PolymarketBookState,
-} from "../../execution/src/runtime/lead-lag.js";
+} from "../../backend/core/src/runtime/lead-lag.js";
 
 const domain = "process-1";
 const stamp = (ns: number, ordinal: number, clockDomain = domain): LeadLagStamp => ({

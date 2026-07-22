@@ -28,6 +28,7 @@ must/must-not 只看 [spec/PROJECT-SPEC.md](spec/PROJECT-SPEC.md)。本索引不
 | 当前进度、下一步或未完成项 | [plan/CURRENT.md](plan/CURRENT.md)、[plan/BACKLOG.md](plan/BACKLOG.md)、[plan/ROADMAP.md](plan/ROADMAP.md) |
 | 既定取舍 | [decisions/DECISIONS.md](decisions/DECISIONS.md) |
 | 代码边界或模块关系 | [architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md)、`execution/src/`、`research/` |
+| 桌面壳、跨语言边界或整合迁移 | [Batch 07 桌面整合](batches/batch-07-desktop-consolidation/BATCH-07-DESKTOP-CONSOLIDATION.md)、[architecture/ARCHITECTURE.md](architecture/ARCHITECTURE.md) |
 | 具体批次设计或要求 | [batches/BATCHES-INDEX.md](batches/BATCHES-INDEX.md) 后进入对应目录 |
 | 测试、执行证据或验收结论 | [../reports/REPORTS-INDEX.md](../reports/REPORTS-INDEX.md) 后进入 `reports/batches/` |
 | 开发、运行、维护 | [operations/SETUP.md](operations/SETUP.md)、[operations/RUNBOOK.md](operations/RUNBOOK.md)、[operations/MAINTENANCE.md](operations/MAINTENANCE.md) |

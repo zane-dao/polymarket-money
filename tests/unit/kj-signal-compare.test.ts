@@ -6,7 +6,7 @@ import {
   kjSignalComparePlanHash,
   parseKJSignalCompareArtifact,
   signalCompareArtifact,
-} from "../../execution/src/product/kj-signal-compare.js";
+} from "../../backend/core/src/product/kj-signal-compare.js";
 
 const input = {
   compareRunId: "kj-compare-20260718-0500",

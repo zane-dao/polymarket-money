@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { PublicBtcFiveMinuteMarket } from "../../execution/src/adapters/market-data/public-sources.js";
-import { selectKJSettlementRecoveryMarkets } from "../../execution/src/product/kj-settlement-recovery.js";
+import type { PublicBtcFiveMinuteMarket } from "../../backend/core/src/adapters/market-data/public-sources.js";
+import { selectKJSettlementRecoveryMarkets } from "../../backend/core/src/product/kj-settlement-recovery.js";
 
 function market(start: string): PublicBtcFiveMinuteMarket {
   const epoch = Date.parse(start) / 1_000;

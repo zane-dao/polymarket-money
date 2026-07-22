@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import type { PublicBtcFiveMinuteMarket } from "../../execution/src/adapters/market-data/public-sources.js";
-import type { ReceiveStamp } from "../../execution/src/domain/receive-time.js";
+import type { PublicBtcFiveMinuteMarket } from "../../backend/core/src/adapters/market-data/public-sources.js";
+import type { ReceiveStamp } from "../../backend/core/src/domain/receive-time.js";
 import {
   KJPaperEngine,
   kjPaperProbabilityFromZ,
   type KJOfficialSettlement,
-} from "../../execution/src/runtime/kj-paper-engine.js";
-import { createKJStrategyContext, type KJStrategyContextV1 } from "../../execution/src/strategy/kj-context.js";
+} from "../../backend/core/src/runtime/kj-paper-engine.js";
+import { createKJStrategyContext, type KJStrategyContextV1 } from "../../strategies/src/kj-context.js";
 
 const START = Date.parse("2026-07-17T00:00:00.000Z");
 const root = new URL("../../../", import.meta.url);

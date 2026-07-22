@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   KJ_MARKET_INTERVAL_MILLISECONDS,
   planKJPaperMvp,
-} from "../../execution/src/product/kj-paper-mvp.js";
+} from "../../backend/core/src/product/kj-paper-mvp.js";
 
 test("MVP reserves a complete 180-second warmup before its first market and keeps artifacts outside Git", () => {
   const now = Date.parse("2026-07-17T12:03:12.345Z");

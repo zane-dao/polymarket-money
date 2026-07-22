@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { BookState, PublicOrderBook } from "../../execution/src/adapters/market-data/book-state.js";
+import { BookState, PublicOrderBook } from "../../backend/core/src/adapters/market-data/book-state.js";
 import {
   parseClobMarketFrame,
   parseClobMarketMessage,
   parseRtdsPriceMessage,
-} from "../../execution/src/adapters/market-data/parsers.js";
+} from "../../backend/core/src/adapters/market-data/parsers.js";
 import {
   assertCredentialFreePublicPayload,
   capturePublicSocket,
@@ -19,7 +19,8 @@ import {
   type PublicHttpRuntime,
   type PublicSocketAuditEvent,
   type PublicSocketRuntime,
-} from "../../execution/src/adapters/market-data/public-sources.js";
+} from "../../backend/core/src/adapters/market-data/public-sources.js";
+import { parseBinanceBookTicker } from "../../backend/core/src/adapters/market-data/parsers.js";
 
 const root = new URL("../../../", import.meta.url);
 
@@ -160,6 +161,19 @@ test("direct Binance public stream reuses bounded capture without app subscripti
   assert.equal(await capture, 1);
   assert.equal(audits.some((event) => event.eventType === "subscription_sent"), false);
   assert.equal(audits.some((event) => event.eventType === "heartbeat_ping"), false);
+});
+
+test("Binance BTCUSDT bookTicker parser canonicalizes a complete uncrossed public frame", () => {
+  const parsed = parseBinanceBookTicker(JSON.stringify({ u: 42, s: "BTCUSDT", b: "100.00", B: "2.50", a: "100.10", A: "3.00", T: 1_700_000_000_000, E: 1_700_000_000_001 }));
+  assert.deepEqual(parsed, { symbol: "BTCUSDT", bid: "100", bidSize: "2.5", ask: "100.1", askSize: "3", sourceTime: "2023-11-14T22:13:20.000Z", serverTime: "2023-11-14T22:13:20.001Z", updateId: "42" });
+});
+
+test("Binance bookTicker parser rejects wrong symbols, incomplete clocks, invalid sizes and crossed books", () => {
+  const base = { u: 42, s: "BTCUSDT", b: "100", B: "2", a: "101", A: "3", T: 1_700_000_000_000, E: 1_700_000_000_001 };
+  assert.throws(() => parseBinanceBookTicker(JSON.stringify({ ...base, s: "ETHUSDT" })), /BTCUSDT/);
+  assert.throws(() => parseBinanceBookTicker(JSON.stringify({ ...base, T: null })), /bookTicker.T/);
+  assert.throws(() => parseBinanceBookTicker(JSON.stringify({ ...base, B: "0" })), /positive/);
+  assert.throws(() => parseBinanceBookTicker(JSON.stringify({ ...base, b: "102" })), /crossed/);
 });
 
 test("public payload guard recursively rejects credential-like fields", () => {

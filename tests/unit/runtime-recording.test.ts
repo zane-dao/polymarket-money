@@ -7,7 +7,7 @@ import {
   MIN_FREE_BYTES,
   SharedByteBudget,
   validateRecordingOptions,
-} from "../../execution/src/runtime/recording.js";
+} from "../../backend/core/src/runtime/recording.js";
 
 test("raw mode requires explicit bounded duration, bytes, and Linux-native output", () => {
   const input = {

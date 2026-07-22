@@ -43,8 +43,8 @@ test("live runtime is wired to the frozen R1 contracts", async () => {
 
 test("legacy observers delegate exact money and fee calculations", async () => {
   const [paper, opportunities] = await Promise.all([
-    source("execution/src/runtime/paper.ts"),
-    source("execution/src/runtime/opportunities.ts"),
+    source("backend/core/src/runtime/paper.ts"),
+    source("backend/core/src/runtime/opportunities.ts"),
   ]);
   assert.match(paper, /FeeEdgeCalculator/u);
   assert.match(paper, /Money/u);
@@ -83,10 +83,10 @@ test("active capture and runtime paths contain no empty catch disposition", asyn
   const paths = [
     "scripts/live-runtime.ts",
     "scripts/smoke-capture.ts",
-    "execution/src/adapters/market-data/public-sources.ts",
-    "execution/src/adapters/market-data/parsers.ts",
-    "execution/src/storage/raw-segment.ts",
-    "execution/src/storage/kj-paper-journal.ts",
+    "backend/core/src/adapters/market-data/public-sources.ts",
+    "backend/core/src/adapters/market-data/parsers.ts",
+    "backend/core/src/storage/raw-segment.ts",
+    "backend/core/src/storage/kj-paper-journal.ts",
   ];
   for (const path of paths) {
     const text = await source(path);

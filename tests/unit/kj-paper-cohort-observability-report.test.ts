@@ -5,14 +5,14 @@ import test from "node:test";
 import {
   buildKJPaperCohortObservabilityReport,
   kjPaperCohortObservabilityReportHash,
-} from "../../execution/src/product/kj-paper-cohort-observability-report.js";
-import { kjPaperReportArtifactHash } from "../../execution/src/product/kj-paper-report.js";
-import { buildKJPaperCampaign, campaignArtifact } from "../../execution/src/product/kj-paper-campaign.js";
+} from "../../backend/core/src/product/kj-paper-cohort-observability-report.js";
+import { kjPaperReportArtifactHash } from "../../backend/core/src/product/kj-paper-report.js";
+import { buildKJPaperCampaign, campaignArtifact } from "../../backend/core/src/product/kj-paper-campaign.js";
 import {
   buildKJPaperCampaignCohortObservabilityReport,
   kjPaperCampaignCohortObservabilityReportHash,
-} from "../../execution/src/product/kj-paper-campaign-cohort-observability-report.js";
-import type { KJPaperEvent } from "../../execution/src/runtime/kj-paper-engine.js";
+} from "../../backend/core/src/product/kj-paper-campaign-cohort-observability-report.js";
+import type { KJPaperEvent } from "../../backend/core/src/runtime/kj-paper-engine.js";
 
 const COMMIT = "a".repeat(40);
 const JOURNAL_HASH = "b".repeat(64);

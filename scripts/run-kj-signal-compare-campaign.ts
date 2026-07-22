@@ -4,12 +4,12 @@ import { mkdir, open, readFile, realpath, statfs, type FileHandle } from "node:f
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseKJSignalCompareCampaignArtifact } from "../execution/src/product/kj-signal-compare-campaign.js";
+import { parseKJSignalCompareCampaignArtifact } from "../backend/core/src/product/kj-signal-compare-campaign.js";
 import {
   claimKJSignalCompareCampaignLaunch,
   KJ_SIGNAL_COMPARE_CAMPAIGN_LAUNCH_CLAIM_VERSION,
-} from "../execution/src/product/kj-signal-compare-campaign-launch-claim.js";
-import { KJ_PAPER_WARMUP_SECONDS } from "../execution/src/product/kj-paper-mvp.js";
+} from "../backend/core/src/product/kj-signal-compare-campaign-launch-claim.js";
+import { KJ_PAPER_WARMUP_SECONDS } from "../backend/core/src/product/kj-paper-mvp.js";
 
 const LAUNCH_LEAD_SECONDS = KJ_PAPER_WARMUP_SECONDS + 30;
 

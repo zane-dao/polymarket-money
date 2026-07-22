@@ -7,7 +7,7 @@ import {
   makerEnvelopeObserver,
   noTradeObserver,
   type PaperSnapshot,
-} from "../../execution/src/runtime/paper.js";
+} from "../../backend/core/src/runtime/paper.js";
 
 const snapshot: PaperSnapshot = Object.freeze({
   observedAt: "2026-07-16T00:00:00.000Z",

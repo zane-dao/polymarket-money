@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadR2Preregistration } from "../../execution/src/runtime/r2-preregistration.js";
+import { loadR2Preregistration } from "../../backend/core/src/runtime/r2-preregistration.js";
 
 test("R2 runtime loads and hashes the exact frozen preregistration", async () => {
   const config = await loadR2Preregistration("experiments/batch-04b-r2-24-market-observation.yaml");

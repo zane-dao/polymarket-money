@@ -1,10 +1,14 @@
-import { constants } from "node:fs";
+import { constants, writeSync } from "node:fs";
 import { lstat, open, readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 
-import { buildKJPaperMvpResult } from "../execution/src/product/kj-paper-mvp-result.js";
-import type { KJPaperMvpPlan } from "../execution/src/product/kj-paper-mvp.js";
-import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
+import { buildKJPaperMvpResult } from "../backend/core/src/product/kj-paper-mvp-result.js";
+import type { KJPaperMvpPlan } from "../backend/core/src/product/kj-paper-mvp.js";
+import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
+
+function writeStdout(value: unknown): void {
+  writeSync(process.stdout.fd, `${JSON.stringify(value)}\n`);
+}
 
 function object(value: unknown, field: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -162,7 +166,7 @@ async function main(): Promise<void> {
   }
   const resultObject = object(finalResult, "final result");
   if (resultObject.accepted !== true) {
-    process.stdout.write(`${JSON.stringify(finalResult)}\n`);
+    writeStdout(finalResult);
     process.exitCode = 2;
     return;
   }
@@ -183,13 +187,13 @@ async function main(): Promise<void> {
   } finally {
     await directoryHandle.close();
   }
-  process.stdout.write(`${JSON.stringify({
+  writeStdout({
     accepted: true,
     resultKind: "RECOVERED_FINAL",
     resultPath: finalResultPath,
     journalRecordCount: resultObject.journalRecordCount,
     journalLastRecordHash: resultObject.journalLastRecordHash,
-  })}\n`);
+  });
 }
 
 await main();

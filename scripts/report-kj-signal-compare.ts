@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildKJSignalCompareReport,
   kjSignalCompareReportHash,
-} from "../execution/src/product/kj-signal-compare-report.js";
+} from "../backend/core/src/product/kj-signal-compare-report.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);

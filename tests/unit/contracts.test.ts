@@ -1,12 +1,12 @@
-import type { ExecutionEngine } from "../../execution/src/adapters/index.js";
+import type { ExecutionEngine } from "../../backend/core/src/adapters/index.js";
 import type {
   EventTimestamps,
   OrderBook,
   RiskDecision,
   SignalDecision,
-} from "../../execution/src/domain/index.js";
-import { DEFAULT_RISK_CONFIG } from "../../execution/src/risk/index.js";
-import type { Strategy } from "../../execution/src/strategy/index.js";
+} from "../../backend/core/src/domain/index.js";
+import { DEFAULT_RISK_CONFIG } from "../../backend/core/src/risk/index.js";
+import type { Strategy } from "../../strategies/src/index.js";
 
 const timestamps: EventTimestamps = {
   sourceTime: "2026-01-01T00:00:00.000Z",

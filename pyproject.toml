@@ -26,11 +26,17 @@ historical = [
 
 [tool.pytest.ini_options]
 addopts = "-ra"
-testpaths = ["tests", "execution/tests"]
+testpaths = ["tests", "backend/core/tests"]
 
 [tool.ruff]
 target-version = "py311"
 line-length = 100
 
 [tool.setuptools]
-packages = ["research", "research.polymarket_money"]
+packages = [
+  "research",
+  "research.polymarket_money",
+  "strategies",
+  "strategies.src",
+  "strategies.src.python",
+]

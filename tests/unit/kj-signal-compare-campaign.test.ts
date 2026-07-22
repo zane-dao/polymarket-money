@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   buildKJSignalCompareCampaign,
   parseKJSignalCompareCampaignArtifact,
-} from "../../execution/src/product/kj-signal-compare-campaign.js";
+} from "../../backend/core/src/product/kj-signal-compare-campaign.js";
 
 const input = {
   campaignId: "paired-evidence-20260718",

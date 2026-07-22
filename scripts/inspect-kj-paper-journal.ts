@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from "node:path";
+import { writeSync } from "node:fs";
 
-import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
+import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
 
 const input = process.argv[2];
 if (input === undefined || process.argv.length !== 3) {
@@ -10,7 +11,7 @@ if (!isAbsolute(input)) throw new Error("K/J journal inspection path must be abs
 
 const journal = await KJPaperJournal.open(resolve(input));
 try {
-  process.stdout.write(`${JSON.stringify({
+  const output = `${JSON.stringify({
     schemaVersion: "kj-paper-journal-inspection-v1",
     journalPath: journal.path,
     journalRecordCount: String(journal.recordCount),
@@ -18,7 +19,8 @@ try {
     lastRecordHash: journal.lastRecordHash,
     runPlanEvidence: journal.runPlanEvidence,
     state: journal.engine.snapshot(),
-  }, null, 2)}\n`);
+  }, null, 2)}\n`;
+  writeSync(process.stdout.fd, output);
 } finally {
   await journal.close();
 }

@@ -7,11 +7,11 @@ import {
   kjPaperReportCsv,
   kjPaperReportHash,
   type BuildKJPaperReportInput,
-} from "../../execution/src/product/kj-paper-report.js";
+} from "../../backend/core/src/product/kj-paper-report.js";
 import type {
   KJPaperEngineSnapshot,
   KJPaperEvent,
-} from "../../execution/src/runtime/kj-paper-engine.js";
+} from "../../backend/core/src/runtime/kj-paper-engine.js";
 
 const START = "2026-07-17T00:00:00.000Z";
 const END = "2026-07-17T00:05:00.000Z";

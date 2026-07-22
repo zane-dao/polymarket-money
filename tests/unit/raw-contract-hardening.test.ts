@@ -5,7 +5,7 @@ import test from "node:test";
 import {
   createEnvelopeDraft,
   parsePersistedEnvelope,
-} from "../../execution/src/domain/raw-event.js";
+} from "../../backend/core/src/domain/raw-event.js";
 
 const root = new URL("../../../", import.meta.url);
 

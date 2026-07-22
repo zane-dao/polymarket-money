@@ -7,7 +7,7 @@ import test from "node:test";
 import {
   claimKJSignalCompareCampaignLaunch,
   KJ_SIGNAL_COMPARE_CAMPAIGN_LAUNCH_CLAIM_VERSION,
-} from "../../execution/src/product/kj-signal-compare-campaign-launch-claim.js";
+} from "../../backend/core/src/product/kj-signal-compare-campaign-launch-claim.js";
 
 test("campaign launcher makes a durable fail-closed single claim", async () => {
   const root = await mkdtemp(join(tmpdir(), "kj-campaign-claim-"));

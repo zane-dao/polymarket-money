@@ -15,7 +15,8 @@
 - 旧 AI/知识工作区：`/mnt/d/polymarket-paper`，只读。
 - 旧代码仓：`/mnt/c/Users/seeta/Desktop/hello-world`，只读；Python 包在
   `polymarket_paper/`。
-- 开源引擎：`/root/projects/olymarket-trade-engine`，只读；实际目录名缺开头 `p`。
+- 开源引擎：`/root/projects/polymarket-trade-engine`，只读。早期审计使用过缺开头 `p` 的
+  旧工作区路径；历史报告保留当时路径，不代表当前文件系统状态。
 - 学习材料：`/mnt/d/polymarket-learn`，只读；用于 GARCH、HMM、VaR/CVaR 等模型背景。
 
 用户明确认为固定 GBM 不足以处理波动聚集、肥尾和漂移，应评估 GARCH 及其演化模型，

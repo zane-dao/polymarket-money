@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { classifyClobBookObservation } from "../../execution/src/runtime/clob-book-observation.js";
+import { classifyClobBookObservation } from "../../backend/core/src/runtime/clob-book-observation.js";
 
 test("only a successfully applied book mutation may refresh the lead-lag book age", () => {
   assert.equal(classifyClobBookObservation({

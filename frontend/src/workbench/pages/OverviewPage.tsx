@@ -1,0 +1,28 @@
+import { useEffect, useState } from "react";
+import { useWorkbench } from "../app/WorkbenchContext.js";
+import { useWorkbenchData } from "../app/WorkbenchDataContext.js";
+import { useWorkbenchCommands } from "../app/WorkbenchCommandContext.js";
+import type { BacktestJobV1, DatasetListV1, StrategyDefinitionV1, SystemHealthV1 } from "../services/workbench-commands.js";
+import { Badge, EmptyState, Panel } from "../components/ui.js";
+
+export function OverviewPage() {
+  const { dispatch } = useWorkbench();
+  const { sourceKind, runs, decisions } = useWorkbenchData();
+  const commands = useWorkbenchCommands();
+  const [backendSummary, setBackendSummary] = useState<Readonly<{ strategies: readonly StrategyDefinitionV1[]; datasets: DatasetListV1; jobs: readonly BacktestJobV1[]; health: SystemHealthV1 }> | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  useEffect(() => { if (commands === null || sourceKind !== "verified-local") return; let active = true; Promise.all([commands.listStrategyDefinitions(), commands.listDatasets(), commands.listBacktestJobs(), commands.getSystemHealth()]).then(([strategies, datasets, jobs, health]) => { if (active) { setBackendSummary({strategies,datasets,jobs,health}); setSummaryError(null); } }).catch((error: unknown) => { if (active) setSummaryError(error instanceof Error ? error.message : "后端摘要不可用"); }); return () => { active = false; }; }, [commands, sourceKind]);
+  if (sourceKind === "verified-local") return <><section className="command-hero"><div><span className="eyebrow">RESEARCH & SIMULATION COMMAND CENTER</span><h1>从行情观察，到策略验证，再到逐事件复盘</h1><p>生产工作台只展示后端明确提供并通过 schema 校验的数据。</p><div className="toolbar"><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "strategy" })}>打开策略工作室</button><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "datasets" })}>查看数据集</button><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "backtest" })}>创建模拟回测</button></div></div><Panel title="工作台摘要" english="Workbench Summary">{backendSummary === null ? <EmptyState title="后端摘要数据不可用" detail={summaryError ?? "正在加载策略、数据集、任务与健康状态。"} /> : <div className="session-status"><article><span>注册策略</span><strong>{backendSummary.strategies.length}</strong></article><article><span>可用数据集</span><strong>{backendSummary.datasets.datasets.length}</strong></article><article><span>回测任务</span><strong>{backendSummary.jobs.length}</strong></article><article><span>已验证运行</span><strong>{runs.length}</strong></article><article><span>可复盘事件</span><strong>{decisions.length}</strong></article><article><span>系统状态</span><strong className={backendSummary.health.status === "healthy" ? "positive" : "amber"}>{backendSummary.health.status}</strong></article></div>}</Panel></section></>;
+  return <>
+    <section className="command-hero">
+      <div><span className="eyebrow">RESEARCH & SIMULATION COMMAND CENTER</span><h1>从行情观察，到策略验证，再到逐事件复盘</h1><p>这一版保留旧平台最有价值的首页说明、纸面订单票、实验台账、策略日志、模拟竞技场和进程看护，同时使用更清楚的决策链：市场状态 → 模型概率 → 可执行优势 → 模拟成交 → 最终盈亏。</p><div className="toolbar"><button className="button button--primary" onClick={() => dispatch({ type: "navigate", routeId: "live" })}>进入实时驾驶舱</button><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "strategy" })}>打开策略工作室</button><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "live" })}>打开纸面订单票</button></div></div>
+      <div className="hero-kpis"><article><span>当前候选策略</span><strong>K-Edge v0.4</strong><small>扣费后可执行优势 + 深度门槛</small></article><article><span>最新回测净盈亏</span><strong className="positive">+214.80 USDC</strong><small>BT-20260718-0042</small></article><article><span>模拟滚动 Brier @ T−60s</span><strong>0.0941</strong><small>最近 50 个已结算市场</small></article><article><span>系统可信状态</span><strong className="amber">可用但未完全验证</strong><small>盘口连续性 UNVERIFIED</small></article></div>
+    </section>
+    <div className="overview-command-grid">
+      <Panel title="推荐工作流" english="Recommended Workflow"><ol className="workflow-list"><li><b>1</b><span><strong>实时观察</strong><small>确认数据健康、盘口完整、当前概率和可执行优势。</small></span></li><li><b>2</b><span><strong>检查决策</strong><small>查看为什么买入、跳过或持有，以及手续费门槛。</small></span></li><li><b>3</b><span><strong>设计与回测</strong><small>修改策略和参数，保存版本并检查费用、回撤和概率校准。</small></span></li><li><b>4</b><span><strong>回放与对比</strong><small>逐事件复盘，并在策略竞技场比较多个版本。</small></span></li></ol></Panel>
+      <Panel title="最近实验与记录" english="Recent Experiments & Logs"><div className="quick-list"><button>BT-0042 · K-Edge v0.4 回测 <em>完成</em></button><button>sweep-20260712-02 · edge-max <em>293 组</em></button><button>参数变更：max_entry_price 400→560 <em>已记录</em></button><button>异常：BOOK_GAP 盘口缺口 <em className="amber">已标记</em></button></div></Panel>
+      <Panel title="快捷说明" english="Quick Documentation"><div className="quick-list"><button>运行模式：LIVE DATA / PAPER / REPLAY <em>查看</em></button><button>策略字段与输出契约 <em>查看</em></button><button>手续费与可执行优势公式 <em>查看</em></button><button>版本变更记录 Changelog <em>查看</em></button></div></Panel>
+    </div>
+    <Panel title="本次会话状态" english="Session Status" action={<Badge tone="warn">SIMULATION ONLY · 仅模拟</Badge>}><div className="session-status"><article><span>Polymarket WebSocket</span><strong className="positive">健康</strong></article><article><span>Binance WebSocket</span><strong className="positive">健康</strong></article><article><span>事件记录器 Recorder</span><strong className="positive">运行中</strong></article><article><span>真实交易 Live Trading</span><strong className="negative">禁用</strong></article></div></Panel>
+  </>;
+}

@@ -6,12 +6,12 @@ import {
   ReceiveClock,
   compareReceiveStamps,
   receiveStampAtOrBefore,
-} from "../../execution/src/domain/receive-time.js";
+} from "../../backend/core/src/domain/receive-time.js";
 import {
   createEnvelopeDraftV2,
   parsePersistedEnvelope,
   requireSubsecondReceiveStamp,
-} from "../../execution/src/domain/raw-event.js";
+} from "../../backend/core/src/domain/raw-event.js";
 
 const root = new URL("../../../", import.meta.url);
 

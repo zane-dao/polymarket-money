@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { writeSync } from "node:fs";
 import { constants } from "node:fs";
 import {
   lstat,
@@ -16,8 +17,8 @@ import {
   buildKJPaperReport,
   kjPaperReportArtifactHash,
   kjPaperReportCsv,
-} from "../execution/src/product/kj-paper-report.js";
-import { KJPaperJournal } from "../execution/src/storage/kj-paper-journal.js";
+} from "../backend/core/src/product/kj-paper-report.js";
+import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -183,7 +184,7 @@ async function main(): Promise<void> {
   await syncDirectory(outputParent);
   await durableWrite(join(outputDirectory, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   await durableWrite(join(outputDirectory, "markets.csv"), csv);
-  process.stdout.write(`${JSON.stringify({
+  writeSync(process.stdout.fd, `${JSON.stringify({
     accepted: true,
     evidenceStatus: report.evidenceStatus,
     planBinding: report.planBinding,

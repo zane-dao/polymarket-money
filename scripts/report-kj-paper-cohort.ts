@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildKJPaperCohortReport,
   kjPaperCohortReportHash,
-} from "../execution/src/product/kj-paper-cohort-report.js";
+} from "../backend/core/src/product/kj-paper-cohort-report.js";
 
 function inputs(): string[] {
   const values: string[] = [];

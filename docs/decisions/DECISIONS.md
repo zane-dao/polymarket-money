@@ -7,6 +7,126 @@
 
 所有决定均按最新在上的顺序排列。新增决定必须插入本节最上方，使用 `YYYY-MM-DD HH:MM 时区` 时间，并说明决定、原因、适用范围和例外。历史记录若缺少具体时刻，明确标注为“历史记录；具体时刻未记录”，不补造时间。
 
+## D-050 保留 Fusion V3 静态资产，缺数据时使用显式锁定演示
+
+**时间：2026-07-22 11:01 Asia/Singapore**
+
+Fusion V3 HTML 及已实现的 React 静态页面是产品设计和代码资产。真实数据接线不得通过删除页面、
+模块或信息结构来处理未完成功能；未接入的交互应保留并禁用，随后逐项进入 Backlog。
+
+真实数据为空或加载失败时允许使用独立演示数据保持页面完整，但必须持续显示醒目的 `DEMO DATA`
+状态和失败原因，演示区整体不可交互，且不能进入回测、Paper 账本、导出、比较、持久化或任何后端
+命令。用户可显式切换真实数据与界面演示。长期目标是模块级混合状态：有证据的模块显示真实数据，
+其余模块显示 `DEMO/UNAVAILABLE/ERROR`，不得静默以演示数据替代真实数据。
+
+## D-049 短期交互入口改为本机 Web，Tauri 延后处理
+
+**时间：2026-07-22（用户明确决定；具体时刻未记录）**
+
+短期内用户通过 Web 浏览器操作研究工作台。React 生产入口改走仅监听 loopback 的固定 Web API，
+前端仍只消费严格、版本化、无路径 DTO，不得直接读取数据库、文件、原始数据或连接交易所。
+Node/TypeScript/Python 后端继续拥有策略、数据集、回测、Paper、回放、健康和持久化能力。
+
+Tauri/Rust 桥接代码暂时保留但不再作为当前功能接线、验收或阻塞项；D-045 与 D-047 中关于
+固定命令、私有 host 和 fail-closed 的安全原则继续有效，但其“桌面为当前生产入口”的选择被
+本决定暂停。以后恢复 Tauri 时，必须复用同一后端应用服务和 DTO，不能另建一套业务逻辑。
+Web API 不得开放真实交易、钱包、签名、任意 SQL、任意 shell 或任意文件路径接口，
+`LIVE_TRADING_ENABLED=false` 保持不变。
+
+## D-048 自动 K/J runtime 与通用 Paper session 暂时分账展示
+
+**时间：2026-07-21 14:46 Asia/Singapore**
+
+组合公共 feed 在同一 `ReceiveClock` 下生成 K/J point-in-time context，并复用现有 K/J paper
+engine 与可恢复 journal；通用 Paper session 继续负责人工模拟订单、部分成交、撤单、改价、
+到期、仓位和结算。两者尚未建立统一资金协调协议，因此前端必须分开展示各自钱包和事件，
+不得把两套余额、PnL 或成交相加后冒充统一账本。
+
+后续整合必须先定义唯一资金真相、幂等键、事件归属和恢复顺序，并补跨 journal/session 的恢复
+与回放测试；在此之前不复制第三套策略或执行引擎，也不改变 `LIVE_TRADING_ENABLED=false`。
+
+## D-047 Tauri 持有唯一长期 Paper host，采用私有 stdio IPC
+
+**时间：2026-07-21 14:30 Asia/Singapore**
+
+实时行情、快照缓存和 Paper engine 需要跨前端命令保持进程内状态，因此不能继续用每次调用都退出
+的 Node CLI 冒充实时宿主。桌面应用由 Rust/Tauri 持有一个固定 Node child，通过闭合命令枚举、
+requestId 对应、输入/输出上限和超时的 stdin/stdout NDJSON 协议串行调用；应用退出、子进程异常、
+响应超时或身份不匹配时终止 child。当前不创建 Unix socket，不提供外部或多客户端入口。
+
+构造和 host-status 不执行网络。只有独立 start-public-feed 命令携带精确 BTC 5m slug 与显式联网
+批准时才启动 Gamma/CLOB/Binance 公共 feed；session start 不能隐式启动 feed。Tauri 只执行仓内
+canonical 的固定脚本，生产禁止任意 `POLYMARKET_BACKEND_CLI` override、URL、路径和环境注入。
+
+## D-046 实时 Paper 只接公开无认证行情，主机生命周期由调用方显式管理
+
+**时间：2026-07-21 14:12 Asia/Singapore**
+
+实时 Paper 行情准备只允许公开无认证来源：Gamma 市场发现、CLOB REST 盘口和 CLOB market
+WebSocket；market channel 订阅使用 asset/token IDs，并保留 PING/PONG、book、price_change、
+tick_size_change、new_market 与 market_resolved 等公开事件的审计边界。当前不连接需要 API
+credential 的 user channel，也不引入钱包、签名、builder、relayer、CTF 或真实订单提交。
+
+`PaperMarketHost` 构造时不执行 I/O，只有调用方显式 start 才能启动注入的只读 feed；stop 后迟到
+回调不得污染状态。桌面短命令进程不能冒充长期行情宿主，host 不可用时 start/resume 必须 fail
+closed。即使未来保留真实交易 port，也必须与 Paper 实现物理隔离，并经过新的授权与阶段门。
+
+## D-045 桌面前端只通过固定命令消费无路径 DTO
+
+**时间：2026-07-21 13:44 Asia/Singapore**
+
+生产 React renderer 不读取数据库、原始历史文件或绝对路径，也不接受任意 shell/SQL。Tauri 只调用
+固定 allowlist 中的 Node 后端命令，并设置超时、stdout/stderr 上限和清空后的最小环境。策略版本、
+数据集 manifest/SHA 验证、回测 worker、结果完整性、Paper 会话状态和 Kill Switch 均由后端拥有；
+renderer 只解析严格、禁止额外字段的版本化 DTO。
+
+历史回测使用现有 Python K/J/L 离线引擎，不复制第二套核算；任务状态和结果写在仓外 data root，
+结果附 SHA-256 后才进入 `verified-local` read-model。实时公共数据 adapter 采用 caller-managed
+生命周期；未经当次联网批准不得由桌面命令隐式启动。真实交易继续没有命令、凭据、钱包或签名路径。
+
+## D-044 前端以设计稿为只读规格并通过数据端口解耦
+
+**时间：2026-07-21 09:52 Asia/Singapore**
+
+`frontend/polymarket_btc5m_workbench_fusion_v3.html` 只作为视觉和交互参考，React 生产实现不得
+导入、读取、解析或在运行时嵌入该文件。工作台按 app shell、页面模块、共享组件、框架无关
+domain/reducer、数据源 port 和 adapter 分层；页面只消费版本化 read-model，不直接访问文件、
+数据库、网络、Tauri command 或后端具体实现。
+
+在真实只读数据源完成前，界面可以使用独立预览 adapter 验证布局，但必须持续显式标记
+`PREVIEW DATA`，不得把预览指标描述为真实行情、收益或研究证据。真实接入必须通过 schema、
+新鲜度和来源校验；缺失数据应显示 unavailable，而不是静默回退成示例值。
+
+## D-043 目录收敛采用 frontend/backend/strategies，Tauri 保持轻量
+
+**时间：2026-07-21 08:51 Asia/Singapore**
+
+用户纠正 D-042 中过度复杂的分层：目标顶层使用 `frontend/`、`src-tauri/`、`backend/`、
+`strategies/`、`tests/`、`data/` 和 `docs/`。`src-tauri` 只承担配置、启动、系统能力和轻量
+命令桥接；主要业务进入模块化 backend。策略必须是独立业务模块，以标准输入输出供回测、
+paper 和后续执行共同调用，不得依赖 UI、Tauri、数据库实现、网络或下单逻辑。
+
+本决定只修正目标目录与职责，不授权大规模搬迁。现有 `execution/`、`research/` 在逐项清点、
+接口冻结和测试证明前保持原位；不为模板创建空目录。当前先修复半完成变更并恢复可构建状态。
+D-042 中“Rust 承担主要后端”和 `modules/typescript|python` 目标路径由本决定取代；其主仓唯一、
+渐进保留合格 TS/Python 和安全边界仍有效。
+
+## D-042 主项目采用 Tauri + React + Rust，现有 TS/Python 通过接口渐进收敛
+
+**时间：2026-07-21 08:02 Asia/Singapore**
+
+**目录与职责已被 D-043 取代。** 本节只保留当时形成渐进迁移原则的历史背景。
+
+用户明确指定 `polymarket-money` 为唯一主项目，桌面外壳采用 Tauri，前端采用 React +
+TypeScript + TSX，新增主要后端与性能敏感能力优先使用 Rust。现有 TypeScript 执行/paper
+内核和 Python 离线研究模块若功能完整、边界清楚且测试可用，则先保留并通过版本化 DTO、
+Tauri command 和受控模块/子进程边界接入，不为了语言统一盲目重写。
+
+参考项目保持只读，迁移前必须核对功能、依赖、测试、许可证和行为；不整体复制旧项目。
+目录重排不得制造第二套策略、费用、账本、回放或产品入口。第一条纵向链先实现只读桌面
+health/safety 状态，证明 React → Tauri → Rust 边界后再移动现有模块。该决定不改变
+`LIVE_TRADING_ENABLED=false`、无凭据、无签名、无订单和联网采集需单独批准的边界。
+
 ## D-041 文档按唯一权威来源和全局唯一文档名治理
 
 **时间：2026-07-20 20:42 Asia/Singapore**

@@ -7,12 +7,12 @@ import test from "node:test";
 import {
   createEnvelopeDraftV2,
   type RawEventEnvelopeDraftV2,
-} from "../../execution/src/domain/raw-event.js";
+} from "../../backend/core/src/domain/raw-event.js";
 import {
   DatasetManifestWriter,
   RawSegmentWriter,
   type ClosedSegment,
-} from "../../execution/src/storage/raw-segment.js";
+} from "../../backend/core/src/storage/raw-segment.js";
 
 const DATE = "2026-07-15";
 const RECEIVE = `${DATE}T00:00:00.100Z`;

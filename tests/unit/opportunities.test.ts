@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { observeCompleteSet, observeMakerEnvelope, type OpportunityBook } from "../../execution/src/runtime/opportunities.js";
+import { observeCompleteSet, observeMakerEnvelope, type OpportunityBook } from "../../backend/core/src/runtime/opportunities.js";
 
 const book: OpportunityBook = {
   marketId: "m1", observedAt: "2026-07-16T00:00:00.000Z",

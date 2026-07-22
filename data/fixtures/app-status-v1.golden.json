@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "app-status-v1",
+  "generatedAtUtc": "2026-07-21T00:00:00Z",
+  "appVersion": "0.1.0",
+  "mode": "paper-only",
+  "liveTradingEnabled": false,
+  "dataRootConfigured": false,
+  "modules": [
+    {
+      "moduleId": "typescript-execution",
+      "availability": "available"
+    },
+    {
+      "moduleId": "python-research",
+      "availability": "unavailable",
+      "reason": "Python development environment is unavailable"
+    },
+    {
+      "moduleId": "tauri-bridge",
+      "availability": "available"
+    }
+  ]
+}

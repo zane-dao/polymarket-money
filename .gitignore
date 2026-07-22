@@ -72,6 +72,7 @@ research/reports/generated/
 runtime-data/
 smoke-data/
 review-packs/
+.local/
 
 # Temporary files
 .cache/

@@ -29,7 +29,12 @@
     "frontend:build": "vite build --config frontend/vite.config.ts",
     "frontend:test": "vitest run --config frontend/vite.config.ts",
     "frontend:e2e": "playwright test --config frontend/playwright.config.ts",
-    "web:serve": "npm run build && npm run frontend:build && node dist/scripts/workbench-web-server.js"
+    "web:serve": "npm run build && npm run frontend:build && node dist/scripts/workbench-web-server.js",
+    "release:candidate": "node scripts/local-environments.mjs build-candidate",
+    "release:promote": "node scripts/local-environments.mjs promote",
+    "sim:production": "node scripts/local-environments.mjs serve production",
+    "sim:staging": "node scripts/local-environments.mjs serve staging",
+    "dev": "node scripts/local-environments.mjs dev"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

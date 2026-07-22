@@ -183,3 +183,14 @@
   各演示模块已经接入真实数据。
 - 验证：前端 TypeScript 通过，Vitest `23/23`，Vite production build 通过，Playwright
   桌面/移动 `4/4`，全仓 Node `252/252`，`git diff --check` 通过。
+
+# 2026-07-22 本地服务器模拟补充
+
+- 4173/4273 分别固定为 stable/candidate 模拟环境；4174只作 Vite 热更新并代理到4273。
+- `.local/releases/<releaseId>/` 保存不可变前端、后端和 Python 回测运行材料；Git 忽略该目录。
+- `production-sim` 与 `staging-sim` 数据根由后端环境校验隔离，交叉配置测试为拒绝。
+- 验证：`npm test` 为 `253/253`；前端 Vitest `23/23`；TypeScript typecheck 与 Vite build 通过。
+- 运行冒烟：4273返回 `staging-sim` 和 candidate release；4174代理返回同一身份；为避开用户现有
+  4173进程，在4373临时验证相同 stable release 返回 `production-sim` 后关闭。没有公网采集。
+- 用户随后批准终止旧4173/4174工作区进程。promotion 与 production-sim 进一步限制为只接受干净
+  main checkout 构建的release；当前主题分支不得冒充stable，4173保持停止等待合并后最终验证。

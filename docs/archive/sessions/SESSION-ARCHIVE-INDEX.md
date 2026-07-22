@@ -4,6 +4,7 @@
 
 | 时间 | 主题 | 摘要 | 状态 |
 |---|---|---|---|
+| 2026-07-22 15:06 Asia/Singapore | 本地 stable/candidate 服务器模拟 | `2026-07-22-local-server-simulation.md` | 双环境与不可变 release 完成；旧4173待用户确认后接管 |
 | 2026-07-22 11:01 Asia/Singapore | Fusion V3 静态资产保护与锁定演示 | `2026-07-22-fusion-v3-demo-asset-preservation.md` | 页面级演示隔离完成；模块级真实接线已进入 Backlog |
 | 2026-07-22 05:56 Asia/Singapore | Web 策略与 Paper 执行工作台收口 | `2026-07-22-web-strategy-paper-workbench.md` | Web 工程链通过；真实交易关闭，公开联网运行证据待单独批准 |
 | 2026-07-21 09:52 Asia/Singapore | Fusion V3 React 工作台实现 | `2026-07-21-fusion-v3-react-workbench.md` | 第一版完成；桌面/移动浏览器验收通过，真实数据接入待续 |

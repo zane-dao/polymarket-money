@@ -1,10 +1,11 @@
-import type { PropsWithChildren } from "react";
+import { useEffect, useState, type PropsWithChildren } from "react";
 
 import { useWorkbench } from "../app/WorkbenchContext.js";
 import { WORKBENCH_ROUTE_IDS, type WorkbenchRouteId } from "../domain/workbench.js";
 import { Badge } from "../components/ui.js";
 import { useTheme, type ThemePreference } from "../app/ThemeContext.js";
 import { useWorkbenchData } from "../app/WorkbenchDataContext.js";
+import { useWorkbenchCommands } from "../app/WorkbenchCommandContext.js";
 
 const labels: Record<WorkbenchRouteId, readonly [string, string]> = {
   overview: ["总览", "O"], live: ["实时驾驶舱", "L"], decisions: ["决策记录", "D"],
@@ -16,6 +17,19 @@ export function AppShell({ children }: PropsWithChildren) {
   const { state, dispatch } = useWorkbench();
   const { preference, setPreference } = useTheme();
   const { sourceKind } = useWorkbenchData();
+  const commands = useWorkbenchCommands();
+  const [runtimeIdentity, setRuntimeIdentity] = useState("BACKEND DISCONNECTED");
+  useEffect(() => {
+    if (commands === null) return;
+    let active = true;
+    commands.getAppStatus().then((status) => {
+      if (!active) return;
+      const environment = status.modules.find((module) => module.moduleId.startsWith("runtime-environment:"))?.moduleId.split(":")[1] ?? "local-development";
+      const release = status.modules.find((module) => module.moduleId.startsWith("release:"))?.moduleId.split(":")[1] ?? status.appVersion;
+      setRuntimeIdentity(`${environment.toUpperCase()} · ${release}`);
+    }).catch(() => { if (active) setRuntimeIdentity("BACKEND DISCONNECTED"); });
+    return () => { active = false; };
+  }, [commands]);
   return <div className="app-shell">
     <aside className="sidebar">
       <div className="brand"><div className="brand__mark">P</div><div><strong>BTC 5m Workbench</strong><span>Research & Paper Simulation</span></div></div>
@@ -33,6 +47,7 @@ export function AppShell({ children }: PropsWithChildren) {
         </div>
         {sourceKind === "verified-local" && <label className="data-view-picker"><span>页面数据</span><select aria-label="页面数据视图" value={state.dataView} onChange={(event) => dispatch({ type: "set-data-view", dataView: event.target.value as "auto" | "verified" | "demo" })}><option value="auto">自动</option><option value="verified">真实数据</option><option value="demo">界面演示</option></select></label>}
         <label className="theme-picker"><span aria-hidden="true">◐</span><select aria-label="页面颜色主题" value={preference} onChange={(event) => setPreference(event.target.value as ThemePreference)}><option value="system">随系统</option><option value="light">白天</option><option value="dark">夜晚</option><option value="glass">毛玻璃</option></select></label>
+        <Badge tone={runtimeIdentity === "BACKEND DISCONNECTED" ? "warn" : "info"}>{runtimeIdentity}</Badge>
         <Badge tone="info">PAPER ONLY · LIVE OFF</Badge>
         <button className="icon-button" aria-label="帮助" onClick={() => dispatch({ type: "set-help-open", open: true })}>?</button>
       </header>

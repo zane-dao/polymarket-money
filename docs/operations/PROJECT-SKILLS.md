@@ -11,3 +11,12 @@
 
 新增或更新项目 Skill 时，必须审计来源和安全范围，并登记触发条件、输入、输出、禁止事项
 和版本；不得包含凭据或默认 live 操作。
+
+## `merge-pr`
+
+- 位置：`.agents/skills/merge-pr/`
+- 版本：项目内初版
+- 触发：`$merge-pr`、merge、合并 PR、该 merge merge、完成当前 PR。
+- 输入：当前 Git 分支、唯一 GitHub PR、当次明确合并授权、现有验证与风险。
+- 输出：`MERGED`、`NOT MERGED` 或 `BLOCKED`，以及 PR、检查、merge commit 和遗留事项。
+- 禁止：无当次授权自动合并、绕过失败/等待中的必需检查、强推、绕过分支保护、输出认证信息。

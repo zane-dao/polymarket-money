@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merge Pull Request"
+  short_description: "Safely verify and merge this repository PR"
+  default_prompt: "Use $merge-pr to verify the current branch PR and merge it only when I explicitly authorize merge."

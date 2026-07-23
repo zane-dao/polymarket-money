@@ -16,9 +16,25 @@ export interface StrategyInput {
   readonly balances: readonly Balance[];
   readonly openOrders: readonly Order[];
   readonly parameters: Readonly<Record<string, number | string | boolean>>;
+  readonly market?: Readonly<{ marketId: string; intervalStart: Timestamp; intervalEnd: Timestamp; remainingSeconds: number }>;
+  readonly btcFeatures?: Readonly<{ currentPrice: string; openingPrice: string; logReturn: string; volatilityFast: string | null; volatilitySlow: string | null; trend: string | null; volume: string | null }>;
+  readonly account?: Readonly<{ cash: string; totalExposure: string; currentMarketExposure: string }>;
 }
 
-/** A deterministic strategy has no UI, Tauri, network, storage, or order-side effects. */
+export type TargetPositionDecision = Readonly<{
+  action: "NO_TRADE" | "TARGET_POSITION";
+  token: "YES" | "NO" | null;
+  probabilityYes: string;
+  netEdge: string | null;
+  targetPositionQuantity: string;
+  maximumAcceptablePrice: string | null;
+  reason: string;
+}>;
+
+/** New historical and Paper runners use target-position decisions. */
+export type TargetPositionStrategy = (input: Readonly<StrategyInput>) => Readonly<TargetPositionDecision>;
+
+/** @deprecated Compatibility for legacy callers pending their next reviewed strategy migration. */
 export type Strategy = (input: Readonly<StrategyInput>) => Readonly<SignalDecision>;
 
 export class StrategyRegistry {

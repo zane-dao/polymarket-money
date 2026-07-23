@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, readdir, realpath, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { scanDatasetPublicationRoots, scanDatasets, type DatasetSummaryV1 } from "../market-data/dataset-catalog.js";
@@ -10,7 +10,7 @@ const UTC_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u;
 const MAX_DATASETS = 1024;
 
 export type DatasetListItemV1 = Readonly<{
-  schemaVersion: "dataset-list-item-v1";
+  schemaVersion: "dataset-list-item-v2";
   datasetId: string;
   versionHash: string;
   format: "normalized-events-v1" | "external-historical-v1";
@@ -20,23 +20,29 @@ export type DatasetListItemV1 = Readonly<{
   rowCount: number;
   quarantineCount: number;
   status: "available";
+  displayName: string;
+  description: string;
+  publishedAtUtc: string | null;
+  source: string;
+  tags: readonly string[];
+  management: "managed" | "read-only";
 }>;
 
 export type DatasetDetailV1 = Readonly<Omit<DatasetListItemV1, "schemaVersion"> & {
-  schemaVersion: "dataset-detail-v1";
+  schemaVersion: "dataset-detail-v2";
   selectionReady: true;
   rawDataPolicy: "read-only-not-copied";
 }>;
 
 export type DatasetScanV1 = Readonly<{
-  schemaVersion: "dataset-scan-v1";
+  schemaVersion: "dataset-scan-v2";
   scannedAtUtc: string;
   datasetCount: number;
   datasets: readonly DatasetListItemV1[];
 }>;
 
 export type DatasetListV1 = Readonly<{
-  schemaVersion: "dataset-list-v1";
+  schemaVersion: "dataset-list-v2";
   scannedAtUtc: string;
   datasets: readonly DatasetListItemV1[];
 }>;
@@ -157,7 +163,7 @@ export class FileDatasetSourceRegistry {
   }
 }
 
-function listItem(value: DatasetSummaryV1): DatasetListItemV1 {
+function listItem(value: DatasetSummaryV1, management: "managed" | "read-only"): DatasetListItemV1 {
   if (value.schemaVersion !== "dataset-summary-v1") throw new Error("scanner returned an unsupported dataset summary");
   validateIdentity(value.datasetId, value.versionHash);
   if (value.format !== "normalized-events-v1" && value.format !== "external-historical-v1") throw new Error("dataset format is invalid");
@@ -167,7 +173,7 @@ function listItem(value: DatasetSummaryV1): DatasetListItemV1 {
   if (value.startTimeUtc !== null && value.endTimeUtc !== null && Date.parse(value.startTimeUtc) > Date.parse(value.endTimeUtc)) throw new Error("dataset time range is invalid");
   if (!Number.isSafeInteger(value.rowCount) || value.rowCount < 0 || !Number.isSafeInteger(value.quarantineCount) || value.quarantineCount < 0) throw new Error("dataset counts are invalid");
   return Object.freeze({
-    schemaVersion: "dataset-list-item-v1",
+    schemaVersion: "dataset-list-item-v2",
     datasetId: value.datasetId,
     versionHash: value.versionHash,
     format: value.format,
@@ -177,12 +183,18 @@ function listItem(value: DatasetSummaryV1): DatasetListItemV1 {
     rowCount: value.rowCount,
     quarantineCount: value.quarantineCount,
     status: value.status,
+    displayName: value.displayName,
+    description: value.description,
+    publishedAtUtc: value.publishedAtUtc,
+    source: value.source,
+    tags: value.tags,
+    management,
   });
 }
 
 function detail(value: DatasetListItemV1): DatasetDetailV1 {
   return Object.freeze({
-    schemaVersion: "dataset-detail-v1",
+    schemaVersion: "dataset-detail-v2",
     datasetId: value.datasetId,
     versionHash: value.versionHash,
     format: value.format,
@@ -192,6 +204,12 @@ function detail(value: DatasetListItemV1): DatasetDetailV1 {
     rowCount: value.rowCount,
     quarantineCount: value.quarantineCount,
     status: value.status,
+    displayName: value.displayName,
+    description: value.description,
+    publishedAtUtc: value.publishedAtUtc,
+    source: value.source,
+    tags: value.tags,
+    management: value.management,
     selectionReady: true,
     rawDataPolicy: "read-only-not-copied",
   });
@@ -206,6 +224,7 @@ export class DatasetApplicationService {
   readonly #scanner: DatasetScanner;
   readonly #clock: Clock;
   readonly #sourceRegistry: FileDatasetSourceRegistry;
+  readonly #defaultScanner: boolean;
   #snapshot: ReadonlyMap<string, DatasetListItemV1> | null = null;
   #scannedAtUtc: string | null = null;
   #scanQueue: Promise<void> = Promise.resolve();
@@ -214,6 +233,7 @@ export class DatasetApplicationService {
     if (!isAbsolute(dataRoot)) throw new Error("dataRoot must be absolute");
     this.#dataRoot = resolve(dataRoot);
     this.#scanner = options.scanner ?? scanDatasets;
+    this.#defaultScanner = options.scanner === undefined;
     this.#clock = options.clock ?? (() => new Date().toISOString());
     this.#sourceRegistry = new FileDatasetSourceRegistry(this.#dataRoot, options.repositoryRoot ?? process.cwd(), this.#clock);
   }
@@ -224,11 +244,13 @@ export class DatasetApplicationService {
     let output: DatasetScanV1 | undefined;
     const operation = this.#scanQueue.then(async () => {
       const fixed = await this.#scanner(this.#dataRoot);
+      const managed = this.#defaultScanner ? await scanDatasetPublicationRoots([resolve(this.#dataRoot, "normalized")]) : fixed;
+      const managedKeys = new Set(managed.map((item) => this.#key(item.datasetId, item.versionHash)));
       const registeredRoots = await this.#sourceRegistry.roots();
       const registered = registeredRoots.length === 0 ? [] : await scanDatasetPublicationRoots(registeredRoots);
       const scanned = [...fixed, ...registered];
       if (!Array.isArray(scanned) || scanned.length > MAX_DATASETS) throw new Error("dataset scan result exceeds application limit");
-      const items = scanned.map(listItem).sort((left, right) => left.datasetId.localeCompare(right.datasetId) || left.versionHash.localeCompare(right.versionHash));
+      const items = scanned.map((item) => listItem(item, managedKeys.has(this.#key(item.datasetId, item.versionHash)) ? "managed" : "read-only")).sort((left, right) => left.datasetId.localeCompare(right.datasetId) || left.versionHash.localeCompare(right.versionHash));
       const snapshot = new Map<string, DatasetListItemV1>();
       for (const item of items) {
         const key = this.#key(item.datasetId, item.versionHash);
@@ -239,7 +261,7 @@ export class DatasetApplicationService {
       validateUtc("scannedAtUtc", scannedAtUtc);
       this.#snapshot = snapshot;
       this.#scannedAtUtc = scannedAtUtc;
-      output = Object.freeze({ schemaVersion: "dataset-scan-v1", scannedAtUtc, datasetCount: items.length, datasets: Object.freeze(items) });
+      output = Object.freeze({ schemaVersion: "dataset-scan-v2", scannedAtUtc, datasetCount: items.length, datasets: Object.freeze(items) });
     });
     this.#scanQueue = operation.catch(() => undefined);
     await operation;
@@ -249,7 +271,7 @@ export class DatasetApplicationService {
 
   list(): DatasetListV1 {
     const snapshot = this.#requireSnapshot();
-    return Object.freeze({ schemaVersion: "dataset-list-v1", scannedAtUtc: this.#scannedAtUtc!, datasets: Object.freeze([...snapshot.values()]) });
+    return Object.freeze({ schemaVersion: "dataset-list-v2", scannedAtUtc: this.#scannedAtUtc!, datasets: Object.freeze([...snapshot.values()]) });
   }
 
   get(datasetId: string, versionHash: string): DatasetDetailV1 {
@@ -288,6 +310,20 @@ export class DatasetApplicationService {
     const validatedAtUtc = this.#clock();
     validateUtc("validatedAtUtc", validatedAtUtc);
     return Object.freeze({ schemaVersion: "validated-dataset-selection-v1", datasetId: input.datasetId, versionHash: input.versionHash, validatedAtUtc });
+  }
+
+  async deleteManagedPublication(datasetId: string, versionHash: string, confirmation: string): Promise<void> {
+    validateIdentity(datasetId, versionHash);
+    if (confirmation !== `${datasetId}:${versionHash}`) throw new Error("dataset deletion confirmation does not match");
+    const root = resolve(this.#dataRoot, "normalized");
+    const available = await scanDatasetPublicationRoots([root]);
+    if (!available.some((item) => item.datasetId === datasetId && item.versionHash === versionHash)) throw new Error("only a workbench-managed normalized publication can be deleted");
+    const candidate = resolve(root, `dataset_id=${datasetId}`, `version=${versionHash}`);
+    const canonicalRoot = await realpath(root); const canonicalCandidate = await realpath(candidate);
+    if (!isInside(canonicalRoot, canonicalCandidate) || canonicalCandidate !== candidate) throw new Error("dataset deletion target is unsafe");
+    const info = await lstat(canonicalCandidate); if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("dataset deletion target is unsafe");
+    await rm(canonicalCandidate, { recursive: true });
+    this.#snapshot = null; this.#scannedAtUtc = null;
   }
 
   #key(datasetId: string, versionHash: string): string { return `${datasetId}\u0000${versionHash}`; }

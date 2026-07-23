@@ -29,6 +29,7 @@ import {
   kjPaperWarmupSignalFingerprint,
   kjPaperWarmupSignalIdentity,
   type KJOfficialSettlement,
+  type KJPaperEngineConfig,
 } from "../runtime/kj-paper-engine.js";
 import {
   createKJStrategyContext,
@@ -398,8 +399,8 @@ function validateContext(value: unknown): KJStrategyContextV1 {
   }
 }
 
-function headerPayload(): Readonly<Record<string, unknown>> {
-  const config = { ...DEFAULT_KJ_PAPER_ENGINE_CONFIG };
+function headerPayload(overrides: Partial<KJPaperEngineConfig> = {}): Readonly<Record<string, unknown>> {
+  const config = { ...DEFAULT_KJ_PAPER_ENGINE_CONFIG, ...overrides };
   return Object.freeze({
     engineVersion: KJ_PAPER_ENGINE_VERSION,
     configHash: sha256(stableJson(config)),
@@ -550,22 +551,26 @@ export class KJPaperJournal {
   #state: "OPEN" | "FAILED" | "CLOSED" = "OPEN";
   #tail: Promise<void> = Promise.resolve();
 
-  private constructor(path: string, handle: FileHandle) {
+  readonly #engineConfig: Readonly<KJPaperEngineConfig>;
+
+  private constructor(path: string, handle: FileHandle, config: Partial<KJPaperEngineConfig>) {
     this.#path = path;
     this.#handle = handle;
-    this.engine = new KJPaperEngine();
+    this.#engineConfig = Object.freeze({ ...DEFAULT_KJ_PAPER_ENGINE_CONFIG, ...config });
+    this.engine = new KJPaperEngine(this.#engineConfig);
   }
 
-  static async open(path: string): Promise<KJPaperJournal> {
+  static async open(path: string, config: Partial<KJPaperEngineConfig> = {}): Promise<KJPaperJournal> {
     const absolute = resolve(path);
     const { handle } = await openJournalFile(absolute);
-    const journal = new KJPaperJournal(absolute, handle);
+    let journal: KJPaperJournal | null = null;
     try {
+      journal = new KJPaperJournal(absolute, handle, config);
       await journal.#recover();
       const checkpoint = await loadCheckpoint(absolute);
       if (journal.#recordCount === 0) {
         if (checkpoint !== null) throw new Error("K/J journal was truncated behind its checkpoint");
-        await journal.#appendRaw("HEADER", headerPayload());
+        await journal.#appendRaw("HEADER", headerPayload(journal.#engineConfig));
       } else {
         if (checkpoint === null) {
           if (journal.#recordCount === 1) await journal.#publishCurrentCheckpoint();
@@ -585,7 +590,7 @@ export class KJPaperJournal {
       }
       return journal;
     } catch (error) {
-      journal.#state = "FAILED";
+      if (journal !== null) journal.#state = "FAILED";
       try {
         await handle.close();
       } catch (closeError) {
@@ -662,7 +667,7 @@ export class KJPaperJournal {
     for (let ordinal = 0; ordinal < lines.length; ordinal += 1) {
       const record = parseRecord(lines[ordinal]!, ordinal, this.#lastHash);
       if (ordinal === 0) {
-        if (record.payloadType !== "HEADER" || stableJson(record.payload) !== stableJson(headerPayload())) {
+        if (record.payloadType !== "HEADER" || stableJson(record.payload) !== stableJson(headerPayload(this.#engineConfig))) {
           throw new Error("K/J journal header does not match the current engine contract");
         }
       } else if (record.payloadType === "CONTEXT") {

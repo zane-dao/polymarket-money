@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline";
+import { randomUUID } from "node:crypto";
 import { writeSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -23,9 +24,10 @@ import {
 } from "../backend/paper-session/index.js";
 import type { PaperOrderRequest, PaperToken } from "../backend/paper-simulation/index.js";
 import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
-import { kjPaperContextFingerprint, type KJPaperEvent } from "../backend/core/src/runtime/kj-paper-engine.js";
+import { kjPaperContextFingerprint, type KJPaperEngineConfig, type KJPaperEvent } from "../backend/core/src/runtime/kj-paper-engine.js";
 import type { KJStrategyContextV1 } from "../strategies/src/kj-context.js";
 import type { PublicBtcFiveMinuteMarket } from "../backend/core/src/adapters/market-data/public-sources.js";
+import { GammaResolutionPending } from "../backend/core/src/adapters/settlement/gamma-resolution.js";
 
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const SAFE_REQUEST_ID = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/u;
@@ -35,6 +37,14 @@ export const DESKTOP_KJ_RISK = Object.freeze({
   schemaVersion: "paper-risk-config-v1" as const, maximumQuoteAgeMs: 15_000, minimumNetEdge: "0.05",
   maximumOrderNotional: "400", maximumMarketExposure: "400", maximumTotalExposure: "4000",
 });
+type PaperRunnerConfig = Readonly<{
+  strategyId: "J_FEE_AWARE" | "K_DUAL_VOL";
+  strategyVersion: string;
+  initialCash: string;
+  maximumPosition: string;
+  minimumNetEdge: string;
+  strategyParameters: Readonly<Record<string, string | number | boolean>>;
+}>;
 type HostTimer = ReturnType<typeof setTimeout>;
 export type PaperHostRuntimeOptions = Readonly<{
   feedFactory?: (slug: string) => PublicPaperMarketFeed;
@@ -104,6 +114,8 @@ export class PaperHostRuntime {
   #settlementGeneration = 0;
   #settlementTail: Promise<void> = Promise.resolve();
   #publicNetworkApproved = false;
+  #runner: PaperRunnerConfig | null = null;
+  #accounts: Readonly<Record<"J_FEE_AWARE" | "K_DUAL_VOL", string>> = DESKTOP_KJ_ACCOUNTS;
 
   constructor(dataRoot: string, adapter: CallerManagedPublicMarketAdapter = unavailableAdapter(), options: PaperHostRuntimeOptions = {}) {
     this.#dataRoot = dataRoot;
@@ -146,12 +158,45 @@ export class PaperHostRuntime {
       case "start-public-feed": {
         if (payload.explicitNetworkApproval !== true) throw new Error("explicit network approval is required");
         if (this.#host !== null) throw new Error("public Paper market host is already configured");
-        const slug = text(payload.slug, "slug");
+        const runnerInput = payload.runner === undefined ? null : object(payload.runner, "runner");
+        if (runnerInput !== null) {
+          const strategyId = text(runnerInput.strategyId, "runner.strategyId");
+          if (strategyId !== "J_FEE_AWARE" && strategyId !== "K_DUAL_VOL") throw new Error("selected strategy is not Paper-ready");
+          const decimal = (value: unknown, field: string, allowZero = false): string => {
+            const result = text(value, field);
+            if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(result) || (allowZero ? Number(result) < 0 : Number(result) <= 0)) throw new Error(`${field} is invalid`);
+            return result;
+          };
+          const strategyParameters = runnerInput.strategyParameters === undefined
+            ? Object.freeze({})
+            : Object.freeze({ ...object(runnerInput.strategyParameters, "runner.strategyParameters") }) as Readonly<Record<string, string | number | boolean>>;
+          this.#runner = Object.freeze({ strategyId, strategyVersion: text(runnerInput.strategyVersion, "runner.strategyVersion"), initialCash: decimal(runnerInput.initialCash, "runner.initialCash"), maximumPosition: decimal(runnerInput.maximumPosition, "runner.maximumPosition"), minimumNetEdge: decimal(runnerInput.minimumNetEdge, "runner.minimumNetEdge", true), strategyParameters });
+          const runIdentity = `${strategyId.toLowerCase().replaceAll("_", "-")}-${this.#nowMs()}-${randomUUID().slice(0, 8)}`;
+          this.#accounts = Object.freeze({ J_FEE_AWARE: `${runIdentity}-j`, K_DUAL_VOL: `${runIdentity}-k` });
+        }
+        const slug = payload.slug === undefined
+          ? `btc-updown-5m-${Math.floor(this.#nowMs() / 300_000) * 300}`
+          : text(payload.slug, "slug");
         const feed = this.#feedFactory(slug);
         const directory = join(this.#dataRoot, "workbench", "paper-host");
         await mkdir(directory, { recursive: true, mode: 0o700 });
-        const journalFileName = `${slug}.kj-input-journal.jsonl`;
-        const journal = await KJPaperJournal.open(join(directory, journalFileName));
+        const runner = this.#runner;
+        const versionParameter = (name: string, fallback: string): string => {
+          const value = runner?.strategyParameters[name];
+          return typeof value === "number" && Number.isFinite(value) ? String(value) : fallback;
+        };
+        const engineConfig: Partial<KJPaperEngineConfig> = runner === null ? {} : {
+          initialCash: runner.initialCash,
+          edgeThreshold: versionParameter("edgeThreshold", "0.05"),
+          maxEdge: versionParameter("maxEdge", "0.25"),
+          maximumStakeAmount: runner.maximumPosition,
+          bookParticipation: versionParameter("bookParticipation", "0.5"),
+        };
+        const safeVersion = runner?.strategyVersion.replace(/[^a-zA-Z0-9._-]/gu, "-");
+        const journalFileName = runner === null
+          ? `${slug}.kj-input-journal.jsonl`
+          : `${slug}.${runner.strategyId.toLowerCase()}.${safeVersion}.${this.#nowMs()}.kj-input-journal.jsonl`;
+        const journal = await KJPaperJournal.open(join(directory, journalFileName), engineConfig);
         this.#journal = journal;
         this.#journalFileName = journalFileName;
         this.#strategyError = null;
@@ -200,11 +245,12 @@ export class PaperHostRuntime {
           this.#strategyLifecycle = "RUNNING";
           this.#paper = new PaperSessionService(host, this.#store);
           await this.#paper.initialize();
+          await this.#waitForHostReady(host);
           await this.#ensureCanonicalSessions();
-          const coordinator = new KJPaperExecutionCoordinator(this.#paper, new FileKJExecutionOutboxStore(this.#dataRoot), DESKTOP_KJ_ACCOUNTS);
+          const coordinator = new KJPaperExecutionCoordinator(this.#paper, new FileKJExecutionOutboxStore(this.#dataRoot), this.#accounts);
           await coordinator.initialize();
           this.#coordinator = coordinator;
-          const official = new OfficialGammaPaperSettlementCoordinator(this.#paper, new FileOfficialPaperSettlementStore(this.#dataRoot), DESKTOP_KJ_ACCOUNTS, this.#gammaSource);
+          const official = new OfficialGammaPaperSettlementCoordinator(this.#paper, new FileOfficialPaperSettlementStore(this.#dataRoot), this.#accounts, this.#gammaSource);
           await official.initialize(); this.#officialSettlementCoordinator = official;
           for (const context of journal.contexts()) { this.#rememberContextFee(context); this.#rememberSettlementMarket(context); }
           await this.#strategyTail;
@@ -220,8 +266,15 @@ export class PaperHostRuntime {
       case "stop-public-feed": {
         if (this.#host === null) return this.#status();
         this.#clearSettlementTimers(); this.#publicNetworkApproved = false;
-        const status = await this.#host.stop();
+        const activeHost = this.#host;
+        const status = await activeHost.stop();
         await Promise.all([this.#strategyTail, this.#settlementTail, this.#orderLifecycleTail]);
+        for (const accountId of Object.values(this.#accounts)) {
+          const session = (await this.#paper.list()).find((item) => item.sessionId === accountId);
+          if (session?.status === "RUNNING") await this.#paper.stop(accountId, utcNow());
+        }
+        if (this.#journal !== null) await this.#journal.close();
+        this.#host = null; this.#coordinator = null; this.#officialSettlementCoordinator = null;
         this.#strategyLifecycle = "STOPPED";
         return status;
       }
@@ -260,18 +313,31 @@ export class PaperHostRuntime {
     }
   }
 
+  async #waitForHostReady(host: PaperMarketHost): Promise<void> {
+    const deadline = Date.now() + 15_000;
+    while (!host.isReady() && Date.now() < deadline) {
+      await new Promise<void>((resolveReady) => setTimeout(resolveReady, 100));
+    }
+    if (!host.isReady()) {
+      const status = host.status();
+      const last = status.events.at(-1)?.detail ?? "no public snapshot arrived";
+      throw new Error(`public market feed did not become ready: ${last}`);
+    }
+  }
+
   async #strategyStatus(): Promise<Readonly<Record<string, unknown>>> {
     const journal = this.#journal;
     if (journal === null) return offlineStrategyStatus(this.#strategyError);
     const events = journal.engine.events();
-    const canonicalAccounts = await Promise.all((["J_FEE_AWARE", "K_DUAL_VOL"] as const).map(async (strategy) => Object.freeze({ strategy, session: await this.#paper.status(DESKTOP_KJ_ACCOUNTS[strategy]) })));
+    const visibleStrategies = this.#runner === null ? (["J_FEE_AWARE", "K_DUAL_VOL"] as const) : [this.#runner.strategyId];
+    const canonicalAccounts = await Promise.all(visibleStrategies.map(async (strategy) => Object.freeze({ strategy, session: await this.#paper.status(this.#accounts[strategy]) })));
     return Object.freeze({
       schemaVersion: "paper-strategy-runtime-v2",
       status: this.#strategyError === null && this.#settlementError === null ? this.#strategyLifecycle : "DEGRADED",
       executionAuthority: "PAPER_SESSION",
       planner: Object.freeze({ engineVersion: "kj-paper-engine-v2", journalRecordCount: journal.recordCount, recoveredInputCount: journal.recoveredInputCount, lastRecordHash: journal.lastRecordHash, error: this.#strategyError ?? this.#settlementError }),
       canonicalAccounts: Object.freeze(canonicalAccounts),
-      executionLinks: this.#coordinator?.links() ?? Object.freeze([]),
+      executionLinks: Object.freeze((this.#coordinator?.links() ?? []).filter((link) => this.#runner === null || link.strategy === this.#runner.strategyId)),
       shadow: Object.freeze({ nonAuthoritative: true, snapshot: journal.engine.snapshot(), events: Object.freeze(events.slice(Math.max(0, events.length - 500))) }),
     });
   }
@@ -279,8 +345,10 @@ export class PaperHostRuntime {
   async #ensureCanonicalSessions(): Promise<void> {
     const existing = new Map((await this.#paper.list()).map((session) => [session.sessionId, session]));
     for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) {
-      const sessionId = DESKTOP_KJ_ACCOUNTS[strategy]; const current = existing.get(sessionId);
-      if (current === undefined) await this.#paper.start({ schemaVersion: "paper-session-start-v1", sessionId, initialCash: DESKTOP_KJ_INITIAL_CASH, risk: DESKTOP_KJ_RISK, startedAtUtc: utcNow() });
+      const sessionId = this.#accounts[strategy]; const current = existing.get(sessionId);
+      const runner = this.#runner;
+      const risk = runner === null ? DESKTOP_KJ_RISK : Object.freeze({ ...DESKTOP_KJ_RISK, minimumNetEdge: runner.minimumNetEdge, maximumOrderNotional: runner.maximumPosition, maximumMarketExposure: runner.maximumPosition, maximumTotalExposure: runner.maximumPosition });
+      if (current === undefined) await this.#paper.start({ schemaVersion: "paper-session-start-v1", sessionId, initialCash: runner?.initialCash ?? DESKTOP_KJ_INITIAL_CASH, risk, startedAtUtc: utcNow() });
       else if (current.status === "STOPPED") await this.#paper.resume(sessionId, utcNow());
     }
   }
@@ -320,7 +388,9 @@ export class PaperHostRuntime {
       this.#settlementError = null;
     } catch (error: unknown) {
       if (generation !== this.#settlementGeneration || !this.#publicNetworkApproved || this.#strategyLifecycle !== "RUNNING") return;
-      this.#settlementError = error instanceof Error ? `official settlement ${market.marketId}: ${error.message}` : `official settlement ${market.marketId} failed`;
+      if (!(error instanceof GammaResolutionPending)) {
+        this.#settlementError = error instanceof Error ? `official settlement ${market.marketId}: ${error.message}` : `official settlement ${market.marketId} failed`;
+      }
       this.#scheduleSettlement(market, retryIndex + 1);
     }
   }
@@ -336,6 +406,7 @@ export class PaperHostRuntime {
     const events = journal.engine.events();
     while (this.#strategyEventCursor < events.length) {
       const event = events[this.#strategyEventCursor]!;
+      if (event.strategy !== null && this.#runner !== null && event.strategy !== this.#runner.strategyId) { this.#strategyEventCursor += 1; continue; }
       if (event.eventType === "INTENT") { const intentId = event.details.intentId; if (typeof intentId === "string") this.#intents.set(intentId, event); this.#strategyEventCursor += 1; continue; }
       if (event.eventType !== "FILL") { this.#strategyEventCursor += 1; continue; }
       const intentId = event.details.intentId; if (typeof intentId !== "string") throw new Error("K/J FILL lacks intentId");
@@ -345,7 +416,7 @@ export class PaperHostRuntime {
       await coordinator.coordinate(kjExecutionProposalFromEvents(intent, event, Object.freeze({
         schemaVersion: "paper-fee-evidence-v1", model: "POLYMARKET_TAKER_CURVE_V1",
         conditionId: context.market.conditionId, rate: context.feeEvidence.rate,
-        effectiveFromUtc: context.market.intervalStart, effectiveToUtc: context.market.intervalEnd,
+        effectiveFromUtc: new Date(Date.parse(context.market.intervalStart)).toISOString(), effectiveToUtc: new Date(Date.parse(context.market.intervalEnd)).toISOString(),
         evidenceStatus: "UNVERIFIED", evidenceReference: context.feeEvidence.reference,
       })));
       this.#strategyEventCursor += 1;
@@ -377,7 +448,7 @@ export class PaperHostRuntime {
         continuity: context.book.continuity, bookAgeMs: age(context.book.receiveStamp.localWallReceiveTime), signalAgeMs: age(context.signal.receiveTime),
         up: Object.freeze({ ...context.book.up }), down: Object.freeze({ ...context.book.down }),
         signal: Object.freeze({ provider: context.signal.provider, price: context.signal.price, sourceTime: context.signal.sourceTime, serverTime: context.signal.serverTime, receiveTime: context.signal.receiveTime }),
-        feeEvidence: Object.freeze({ schemaVersion:"paper-fee-evidence-v1", model:"POLYMARKET_TAKER_CURVE_V1", conditionId:context.market.conditionId, rate:context.feeEvidence.rate, effectiveFromUtc:context.market.intervalStart, effectiveToUtc:context.market.intervalEnd, evidenceStatus:"UNVERIFIED", evidenceReference:context.feeEvidence.reference }),
+        feeEvidence: Object.freeze({ schemaVersion:"paper-fee-evidence-v1", model:"POLYMARKET_TAKER_CURVE_V1", conditionId:context.market.conditionId, rate:context.feeEvidence.rate, effectiveFromUtc:new Date(Date.parse(context.market.intervalStart)).toISOString(), effectiveToUtc:new Date(Date.parse(context.market.intervalEnd)).toISOString(), evidenceStatus:"UNVERIFIED", evidenceReference:context.feeEvidence.reference }),
       }),
     });
   }

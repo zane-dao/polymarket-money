@@ -19,6 +19,17 @@ describe("workbench application", () => {
     expect(document.querySelector(".demo-surface")).toHaveAttribute("inert");
   });
 
+  it("keeps the original static React view available inside developer diagnostics", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={{ sourceKind: "verified-local", decisions: [], runs: [], chartSeries: { raw: [], calibrated: [], bid: [], ask: [], pnl: [], brier: [] } }} />);
+    expect(screen.getByText("DEMO DATA · 非真实数据")).toBeInTheDocument();
+    await user.click(screen.getByText("开发者视图"));
+    await user.selectOptions(screen.getByLabelText("页面数据视图"), "verified");
+    expect(screen.queryByText("DEMO DATA · 非真实数据")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("页面数据视图"), "demo");
+    expect(screen.getByText("DEMO DATA · 非真实数据")).toBeInTheDocument();
+  });
+
   it("renders and navigates across every independent page module", async () => {
     const user = userEvent.setup();
     render(<App initialData={PREVIEW_WORKBENCH_DATA} />);

@@ -89,7 +89,7 @@ export function buildWorkbenchViewV1(
   const diagnostics = reader.listDiagnostics(dataRoot);
   const backtests = reader.listBacktests(dataRoot);
   const colors = ["blue", "green", "purple", "amber"] as const;
-  const persistedRuns = backtests.slice(0, 4).map((item, index) => ({ id: item.runId, name: `${item.request.strategyId} · ${item.runId}`, pnl: item.metrics.netPnl, drawdown: item.metrics.maxDrawdown, brier: item.metrics.brier ?? "—", color: colors[index] ?? "blue" }));
+  const persistedRuns = backtests.slice(0, 4).map((item, index) => ({ id: item.runId, name: item.request.displayName ?? `${item.request.strategyId} · ${item.runId}`, pnl: item.metrics.netPnl, drawdown: item.metrics.maxDrawdown, brier: item.metrics.brier ?? "—", color: colors[index] ?? "blue" }));
   const diagnosticRuns = diagnostics.slice(0, Math.max(0, 4 - persistedRuns.length)).map((item, index) => ({
     id: `${item.runId}:${item.strategy}`,
     name: `${item.strategy} · ${item.runId}`,

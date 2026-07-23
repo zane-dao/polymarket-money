@@ -1,9 +1,13 @@
 # 会话摘要索引
 
+- [2026-07-22 自动 Paper Runner 收口](2026-07-22-automatic-paper-runner.md)
+
 这里只登记经过提炼的项目会话摘要，不复制 Codex/Claude 原始 JSONL。条目按最新在上排列；新增条目必须写精确时间并插入表格最上方。历史条目缺少具体时刻时，明确标注为“历史记录；具体时刻未记录”，不补造时间。
 
 | 时间 | 主题 | 摘要 | 状态 |
 |---|---|---|---|
+| 2026-07-22 17:58 Asia/Singapore | 市场回放、策略竞技场与回测默认值修复 | `2026-07-22-replay-arena-ui-fix.md` | 布局、有效默认值、自动版本号与同组比较门槛已修复；待批准部署候选版本 |
+| 2026-07-22 16:09 Asia/Singapore | 前端信息层级与紧凑表单 | `2026-07-22-frontend-information-hierarchy.md` | 数据集/策略/回测三页完成；全仓与桌面/移动验证通过 |
 | 2026-07-22 15:06 Asia/Singapore | 本地 stable/candidate 服务器模拟 | `2026-07-22-local-server-simulation.md` | 双环境与不可变 release 完成；旧4173待用户确认后接管 |
 | 2026-07-22 11:01 Asia/Singapore | Fusion V3 静态资产保护与锁定演示 | `2026-07-22-fusion-v3-demo-asset-preservation.md` | 页面级演示隔离完成；模块级真实接线已进入 Backlog |
 | 2026-07-22 05:56 Asia/Singapore | Web 策略与 Paper 执行工作台收口 | `2026-07-22-web-strategy-paper-workbench.md` | Web 工程链通过；真实交易关闭，公开联网运行证据待单独批准 |

@@ -1,0 +1,191 @@
+version = 2
+project_name = "polymarket-money"
+state_root_env = "POLYMARKET_CONTEXT_ROOT"
+generated_dir = "codex-context"
+
+[budget]
+session_context_chars = 850
+route_context_chars = 1050
+recovery_context_chars = 950
+subagent_context_chars = 520
+checkpoint_prompt_chars = 900
+checkpoint_assistant_chars = 550
+checkpoint_file_limit = 50
+continuation_chars = 1050
+
+[lifecycle]
+max_routes_per_prompt = 2
+inject_narrow_route = false
+reinject_when_sources_change = true
+canonical_first_write_guard = true
+semantic_writeback_mode = "explicit_or_high_confidence"
+semantic_score_threshold = 8
+semantic_explicit_min_score = 5
+urgent_score_threshold = 11
+semantic_cooldown_minutes = 360
+maintenance_interval_hours = 24
+checkpoint_compress_after_days = 7
+checkpoint_retention_days = 45
+state_retention_days = 30
+log_retention_days = 14
+
+[maintenance]
+current_soft_chars = 14000
+index_soft_chars = 12000
+canonical_doc_soft_chars = 26000
+
+[commands]
+force_refresh_tags = ["#ctx:refresh", "#上下文:刷新"]
+disable_route_tags = ["#ctx:none", "#上下文:无"]
+persist_tags = ["#ctx:persist", "#记忆:持久化"]
+root_approval_tags = ["#ctx:root-ok", "#根目录:批准", "批准在根目录", "同意在根目录", "approved root"]
+
+[documents]
+repo_index = "docs/INDEX.md"
+current = "docs/plan/CURRENT.md"
+decisions = "docs/decisions/DECISIONS.md"
+batch_index = "docs/batches/BATCHES-INDEX.md"
+reports_index = "reports/REPORTS-INDEX.md"
+operations_doc = "docs/operations/CODEX-CONTEXT.md"
+canonical_paths = [
+  "AGENTS.md",
+  "docs/plan/CURRENT.md",
+  "docs/spec/",
+  "docs/goals/",
+  "docs/decisions/",
+  "docs/batches/",
+  "reports/batches/",
+  ".agents/skills/",
+  ".codex/"
+]
+canonical_guard_paths = [
+  "AGENTS.md",
+  "docs/plan/CURRENT.md",
+  "docs/spec/",
+  "docs/decisions/",
+  "docs/batches/",
+  "reports/batches/",
+  ".agents/skills/",
+  ".codex/"
+]
+source_paths = [
+  "backend/",
+  "frontend/",
+  "src-tauri/",
+  "strategies/",
+  "contracts/",
+  "research/",
+  "experiments/",
+  "data/",
+  "scripts/",
+  "tests/"
+]
+critical_paths = [
+  "backend/core/src/domain/",
+  "backend/core/src/risk/",
+  "backend/core/src/adapters/",
+  "contracts/",
+  "src-tauri/"
+]
+policy_paths = [
+  "AGENTS.md",
+  ".codex/context-policy.toml",
+  ".codex/hooks.json",
+  ".codex/hooks/context_orchestrator.py",
+  ".agents/skills/"
+]
+
+[safety]
+block_message = "Blocked by the repository paper-only or credential-safety boundary. Use public data, deterministic fixtures, replay, or paper abstractions instead."
+block_patterns = [
+  "(?i)LIVE_TRADING_ENABLED\\s*=\\s*(true|1|yes)",
+  "(?i)(cat|type|more|head|tail|sed|grep|rg|findstr|Get-Content)\\s+[^\\n]*(?:[/\\\\])?\\.env(?!\\.example)",
+  "(?i)(cat|type|more|head|tail|sed|grep|rg|findstr|Get-Content)\\s+[^\\n]*(private[-_ ]?key|seed[-_ ]?phrase|mnemonic|wallet[-_ ]?key)",
+  "(?i)git\\s+reset\\s+--hard",
+  "(?i)git\\s+clean\\s+-[^\\n]*[xX]",
+  "(?i)rm\\s+-rf\\s+/(?:\\s|$)"
+]
+
+[[routes]]
+name = "context-memory"
+priority = 110
+keywords = [
+  "memory", "context", "document", "docs", "archive", "compress", "handoff", "current", "decision", "roadmap", "batch", "skill", "hook", "codex",
+  "记忆", "上下文", "文档", "归档", "压缩", "覆写", "交接", "当前状态", "决策", "路线", "批次", "路由", "钩子"
+]
+path_prefixes = ["docs/", "reports/", ".codex/", ".agents/"]
+docs = ["docs/INDEX.md", "docs/plan/CURRENT.md", "docs/operations/CODEX-CONTEXT.md"]
+skills = ["polymarket-context-router"]
+instruction = "For cross-cutting state or documentation work, route through the index and only the directly relevant canonical document. Narrow code work should stay file-local."
+
+[[routes]]
+name = "paper-runtime"
+priority = 100
+keywords = [
+  "paper", "runtime", "journal", "settlement", "position", "fill", "orderbook", "replay", "shadow", "smoke", "mvp", "campaign", "adapter", "wallet",
+  "模拟盘", "纸面", "运行时", "日志链", "结算", "持仓", "成交", "订单簿", "回放", "影子", "验收", "适配器", "钱包"
+]
+path_prefixes = ["backend/", "strategies/", "scripts/", "tests/"]
+docs = ["docs/plan/CURRENT.md", "docs/batches/BATCHES-INDEX.md"]
+skills = ["polymarket-paper-safety", "polymarket-context-router"]
+instruction = "Keep all behavior public-data and paper-only. Start from target code and tests; read current or batch documents only when scope, acceptance, or durable state matters."
+
+[[routes]]
+name = "domain-contracts"
+priority = 95
+keywords = [
+  "domain", "risk", "schema", "contract", "interface", "invariant", "architecture", "timestamp", "event", "model",
+  "领域", "风控", "模式", "契约", "接口", "不变量", "架构", "时间戳", "事件", "模型"
+]
+path_prefixes = ["backend/core/src/domain/", "backend/core/src/risk/", "backend/core/src/adapters/", "contracts/"]
+docs = ["docs/architecture/ARCHITECTURE.md", "docs/spec/PROJECT-SPEC.md", "docs/decisions/DECISIONS.md"]
+skills = ["polymarket-context-router"]
+instruction = "Treat public interfaces, invariants, domain fields, and safety contracts as durable. Load architecture or decisions only when the local contract is actually changing."
+
+[[routes]]
+name = "frontend-desktop"
+priority = 85
+keywords = [
+  "frontend", "react", "ui", "ux", "tauri", "desktop", "component", "screen", "state management", "ipc",
+  "前端", "界面", "桌面", "组件", "页面", "状态管理", "跨语言"
+]
+path_prefixes = ["frontend/", "src-tauri/"]
+docs = ["docs/architecture/ARCHITECTURE.md", "docs/plan/CURRENT.md"]
+skills = ["polymarket-context-router"]
+instruction = "Start from the affected screen, component, command, or bridge and its tests. Read architecture only for cross-language or system-boundary changes."
+
+[[routes]]
+name = "research-data"
+priority = 80
+keywords = [
+  "research", "backtest", "dataset", "feature", "ewma", "volatility", "strategy", "experiment", "notebook", "analysis",
+  "研究", "回测", "数据集", "特征", "波动率", "策略", "实验", "笔记本", "分析"
+]
+path_prefixes = ["research/", "experiments/", "data/", "strategies/"]
+docs = ["docs/plan/CURRENT.md", "docs/batches/BATCHES-INDEX.md", "reports/REPORTS-INDEX.md"]
+skills = ["polymarket-context-router"]
+instruction = "Read only the named strategy, dataset, experiment, and matching evidence. Exploratory findings stay out of canonical state until validated."
+
+[[routes]]
+name = "validation"
+priority = 75
+keywords = [
+  "test", "typecheck", "validation", "verify", "failure", "golden", "integration", "unit test", "acceptance", "report", "lint",
+  "测试", "类型检查", "验证", "失败", "黄金", "集成", "单元测试", "验收", "报告", "检查"
+]
+path_prefixes = ["tests/", "reports/"]
+docs = ["reports/REPORTS-INDEX.md", "docs/batches/BATCHES-INDEX.md"]
+skills = ["polymarket-context-router"]
+instruction = "Load the affected test contract and current acceptance criteria only. Persist concise validation evidence in the existing batch report when it changes completion confidence."
+
+[[routes]]
+name = "public-polymarket-protocol"
+priority = 70
+keywords = [
+  "gamma", "clob", "chainlink", "websocket", "token id", "condition id", "fee", "polymarket api", "market data", "public api",
+  "行情接口", "公开接口", "代币id", "条件id", "手续费", "链上公开数据", "公开api"
+]
+path_prefixes = []
+docs = ["docs/spec/PROJECT-SPEC.md", "docs/plan/CURRENT.md"]
+skills = ["polymarket-paper-safety", "web3-polymarket"]
+instruction = "Use public read-only protocol facts only. The web3-polymarket skill is explicit-only here and never authorizes credentials, signing, order submission, cancellation, deposits, withdrawals, or live wallets."

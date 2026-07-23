@@ -1,0 +1,122 @@
+{
+  "description": "Cache-aware context routing, paper-only guardrails, and selective private recovery for polymarket-money.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 20,
+            "statusMessage": "Saving recovery and checking durable memory"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 15,
+            "statusMessage": "Saving a private recovery checkpoint"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 15,
+            "statusMessage": "Loading bounded project context"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/context_orchestrator.py\"",
+            "commandWindows": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$r=(git rev-parse --show-toplevel); py -3 (Join-Path $r '.codex/hooks/context_orchestrator.py')\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

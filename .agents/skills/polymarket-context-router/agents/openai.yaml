@@ -1,0 +1,6 @@
+interface:
+  display_name: "Polymarket context router"
+  short_description: "Route cross-cutting work to minimal project sources"
+  default_prompt: "Use $polymarket-context-router to select the smallest sufficient project context for this cross-cutting task."
+policy:
+  allow_implicit_invocation: true

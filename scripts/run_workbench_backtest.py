@@ -65,6 +65,7 @@ def _public_payload(event: dict[str, Any], kind: str, base: str) -> dict[str, st
 def build_public_events(source_events: list[dict[str, Any]], run_id: str, initial_cash: Decimal) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     events: list[dict[str, Any]] = []
     equity = [{"timeUtc": source_events[0]["decision_time"], "equity": str(initial_cash)}] if source_events else []
+    current_equity = str(initial_cash)
     for ordinal, event in enumerate(source_events, 1):
         base = f"{run_id}-{ordinal}"
         events.append({"eventId": f"decision-{base}", "eventTimeUtc": event["decision_time"], "kind": "decision", "payload": _public_payload(event, "decision", base)})
@@ -73,7 +74,13 @@ def build_public_events(source_events: list[dict[str, Any]], run_id: str, initia
         if event["status"] == "FILLED":
             events.append({"eventId": f"fill-{base}", "eventTimeUtc": event["fill_time"], "kind": "fill", "payload": _public_payload(event, "fill", base)})
             events.append({"eventId": f"settlement-{base}", "eventTimeUtc": event["settlement_evidence_time"], "kind": "settlement", "payload": _public_payload(event, "settlement", base)})
-            equity.append({"timeUtc": event["settlement_evidence_time"], "equity": event["bankroll_after"]})
+            current_equity = str(event["bankroll_after"])
+            equity.append({"timeUtc": event["settlement_evidence_time"], "equity": current_equity})
+        else:
+            # NO_TRADE is still an observed account state. Keeping the unchanged balance on the
+            # common decision timeline makes the cash baseline a real horizontal comparison line.
+            current_equity = str(event.get("bankroll_after", current_equity))
+            equity.append({"timeUtc": event["decision_time"], "equity": current_equity})
     return events, equity
 
 

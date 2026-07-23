@@ -9,6 +9,7 @@ export const PUBLIC_ENDPOINTS = Object.freeze({
   clobMarketWebSocket: "wss://ws-subscriptions-clob.polymarket.com/ws/market",
   rtdsWebSocket: "wss://ws-live-data.polymarket.com",
   binanceSpotBookTickerWebSocket: "wss://data-stream.binance.vision/ws/btcusdt@bookTicker",
+  binanceSpotBookTickerRest: "https://data-api.binance.vision/api/v3/ticker/bookTicker?symbol=BTCUSDT",
   binancePerpetualBookTickerWebSocket: "wss://fstream.binance.com/ws/btcusdt@bookTicker",
 });
 

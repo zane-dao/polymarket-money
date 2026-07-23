@@ -10,23 +10,29 @@ import { FileBacktestResultStore, type BacktestJobV1, type BacktestRequestV1, ty
 const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}$/u;
 type PersistedJob = Readonly<{ schemaVersion: "desktop-backtest-job-v1"; job: BacktestJobV1; request: BacktestRequestV1; workerPid: number | null }>;
 
-function publicJob(value: PersistedJob): BacktestJobV1 { return Object.freeze({ ...value.job }); }
+function publicJob(value: PersistedJob): BacktestJobV1 { return Object.freeze({ ...value.job, strategyId: value.request.strategyId, strategyVersion: value.request.strategyVersion, ...(value.request.comparisonGroupId === undefined ? {} : { comparisonGroupId: value.request.comparisonGroupId }) }); }
 
 export class DesktopBacktestService {
   readonly #dataRoot: string; readonly #root: string; readonly #repo: string;
   constructor(dataRoot: string, repositoryRoot = process.cwd()) { if (!isAbsolute(dataRoot) || !isAbsolute(repositoryRoot)) throw new Error("desktop backtest roots must be absolute"); this.#dataRoot = resolve(dataRoot); this.#root = resolve(dataRoot, "workbench", "backtest-jobs"); this.#repo = resolve(repositoryRoot); }
   async start(request: BacktestRequestV1): Promise<BacktestJobV1> {
-    const normalized = this.#withPresentation(request);
+    const wantsBaselines = request.includeBaselines ?? !/^B[0-3]_/u.test(request.strategyId);
+    const groupId = wantsBaselines ? request.comparisonGroupId ?? request.requestId : request.comparisonGroupId;
+    const normalized = this.#withPresentation({ ...request, ...(groupId === undefined ? {} : { comparisonGroupId: groupId }) });
     await this.#validate(normalized);
+    const baselines = wantsBaselines ? this.#baselineRequests(normalized) : [];
+    for (const baseline of baselines) await this.#validate(baseline);
     await mkdir(this.#root, { recursive: true, mode: 0o700 });
     for (const value of await this.#all()) if (value.request.requestId === normalized.requestId) return publicJob(value);
     const runId = `bt-${Date.now()}-${randomUUID().slice(0, 8)}`; const directory = join(this.#root, runId); await mkdir(directory, { mode: 0o700 });
-    const job: BacktestJobV1 = Object.freeze({ schemaVersion: "backtest-job-v1", runId, requestId: normalized.requestId, ...(normalized.displayName === undefined ? {} : { displayName: normalized.displayName }), status: "queued", progressPermille: 0, error: null });
+    const job: BacktestJobV1 = Object.freeze({ schemaVersion: "backtest-job-v1", runId, requestId: normalized.requestId, ...(normalized.displayName === undefined ? {} : { displayName: normalized.displayName }), strategyId: normalized.strategyId, strategyVersion: normalized.strategyVersion, status: "queued", progressPermille: 0, error: null });
     await this.#write(runId, { schemaVersion: "desktop-backtest-job-v1", job, request: normalized, workerPid: null });
     const worker = resolve(this.#repo, "dist", "scripts", "workbench-backtest-worker.js"); if (!existsSync(worker)) { await this.#update(runId, { ...job, status: "failed", error: "backtest worker is unavailable; run npm run build" }, null); return this.get(runId); }
     const child = spawn("/usr/local/bin/node", [worker, runId], { cwd: this.#repo, detached: true, stdio: "ignore", env: { PATH: "/usr/bin:/bin", POLYMARKET_DATA_ROOT: this.#dataRoot } });
     if (child.pid === undefined) { await this.#update(runId, { ...job, status: "failed", error: "failed to start backtest worker" }, null); return this.get(runId); }
-    await this.#update(runId, job, child.pid); child.unref(); return this.get(runId);
+    await this.#update(runId, job, child.pid); child.unref();
+    for (const baseline of baselines) await this.start(baseline);
+    return this.get(runId);
   }
   async get(runId: string): Promise<BacktestJobV1> { return publicJob(await this.#read(runId)); }
   async list(): Promise<readonly BacktestJobV1[]> { return Object.freeze((await this.#all()).map(publicJob).sort((a, b) => b.runId.localeCompare(a.runId))); }
@@ -61,6 +67,14 @@ export class DesktopBacktestService {
     const displayName = request.displayName?.trim() || `${definition.displayName} · ${dataset} · ${split}`;
     const description = request.description?.trim() || `${definition.displayName} ${request.strategyVersion} 在 ${dataset} 上的 ${split}回测；费用 ${request.feeModel}，执行延迟 ${request.latencyMs} ms。`;
     return Object.freeze({ ...request, displayName, description });
+  }
+  #baselineRequests(request: BacktestRequestV1): readonly BacktestRequestV1[] {
+    const catalog = createDefaultStrategyCatalog();
+    return ["B0_NO_TRADE", "B1_MARKET_PROBABILITY", "B2_GBM_BINANCE_PROXY", "B3_MARKET_PRIOR_LOGISTIC"].map((strategyId) => {
+      const definition = catalog.get(strategyId); const strategyVersion = catalog.builtInVersions(strategyId).at(-1);
+      if (strategyVersion === undefined) throw new Error(`baseline has no frozen version: ${strategyId}`);
+      return this.#withPresentation({ ...request, requestId: `${request.requestId}-${strategyId.slice(0, 2)}`, strategyId, strategyVersion, includeBaselines: false, displayName: `${definition.displayName} · 自动对照`, description: `与 ${request.displayName ?? request.strategyId} 使用同一数据、资金、费用和延迟假设的自动研究对照。` });
+    });
   }
   async #all(): Promise<PersistedJob[]> { const entries = await readdir(this.#root, { withFileTypes: true }).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? [] : Promise.reject(error)); const values: PersistedJob[] = []; for (const entry of entries) if (entry.isDirectory() && SAFE_ID.test(entry.name)) { try { values.push(await this.#read(entry.name)); } catch { /* Incomplete or corrupt jobs are not surfaced. */ } } return values; }
   async #read(runId: string): Promise<PersistedJob> { if (!SAFE_ID.test(runId)) throw new Error("invalid runId"); const value: unknown = JSON.parse(await readFile(join(this.#root, runId, "job.json"), "utf8")); if (typeof value !== "object" || value === null || Array.isArray(value) || (value as PersistedJob).schemaVersion !== "desktop-backtest-job-v1" || (value as PersistedJob).job.runId !== runId) throw new Error("invalid persisted backtest job"); return value as PersistedJob; }

@@ -7,6 +7,7 @@ import { PaperHostRuntime, type PaperHostIpcRequestV1 } from "./paper-market-hos
 import { PaperRuntimeEvidenceStore } from "../backend/paper-session/runtime-evidence.js";
 import { BackendQueryService, type PageRequestV1, type SystemStatusSource } from "../backend/query/index.js";
 import { FileBacktestResultStore } from "../backend/backtest/jobs.js";
+import { createDefaultStrategyCatalog, FileStrategyVersionStore } from "../backend/strategy-management/index.js";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MAX_STATIC_BYTES = 16 * 1024 * 1024;
@@ -28,6 +29,7 @@ const BACKEND_COMMANDS: Readonly<Record<string, string>> = Object.freeze({
   list_strategy_definitions_v1: "list-strategy-definitions", list_strategy_versions_v1: "list-strategy-versions",
   get_strategy_version_v1: "get-strategy-version", validate_strategy_parameters_v1: "validate-strategy-parameters",
   save_strategy_version_v1: "save-strategy-version", register_dataset_source_v1: "register-dataset-source",
+  delete_strategy_version_v1: "delete-strategy-version", delete_dataset_v1: "delete-dataset", delete_backtest_v1: "delete-backtest",
   normalize_raw_dataset_v1: "normalize-raw-dataset",
   scan_datasets_v1: "scan-datasets", list_datasets_v1: "list-datasets", get_dataset_v1: "get-dataset",
   validate_dataset_selection_v1: "validate-dataset-selection", start_backtest_v1: "start-backtest",
@@ -90,7 +92,14 @@ export class WorkbenchWebApplication {
     }
     const paper=PAPER_COMMANDS[command];if(paper!==undefined){
       try{
-        const result=await this.#paper.execute({schemaVersion:"paper-host-ipc-request-v1",requestId:`web-${++this.#sequence}`,command:paper,payload});
+        let paperPayload=payload;
+        if(paper==="start-public-feed"&&payload.runner!==undefined){
+          const runner=payload.runner as Readonly<Record<string,unknown>>;const strategyId=String(runner.strategyId??"");const strategyVersion=String(runner.strategyVersion??"");const catalog=createDefaultStrategyCatalog();const definition=catalog.get(strategyId);
+          if(!definition.allowedModes.includes("paper"))throw new Error("selected strategy is not approved for Paper");
+          const version=await new FileStrategyVersionStore(this.dataRoot).load(catalog,strategyId,strategyVersion);
+          paperPayload=Object.freeze({...payload,runner:Object.freeze({...runner,strategyParameters:version.parameters})});
+        }
+        const result=await this.#paper.execute({schemaVersion:"paper-host-ipc-request-v1",requestId:`web-${++this.#sequence}`,command:paper,payload:paperPayload});
         const status=await this.#paper.execute({schemaVersion:"paper-host-ipc-request-v1",requestId:`web-${++this.#sequence}`,command:"host-status",payload:{}});
         await this.#evidence.observeHost(status as never,now);
         if(paper==="get-paper-market-runtime")await this.#evidence.observeSnapshot(result,now);

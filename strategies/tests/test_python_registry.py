@@ -64,11 +64,9 @@ class PythonStrategyRegistryTest(unittest.TestCase):
         self.assertEqual(result, {"runs": {}, "events": []})
         self.assertEqual(calls[0][2], {"threshold": 0.1})
 
-    def test_strategy_without_workbench_adapter_fails_closed(self) -> None:
-        with self.assertRaisesRegex(ValueError, "has no offline workbench runner"):
-            run_registered_workbench_backtest(
-                "B0_NO_TRADE", object(), (), {}, Decimal("100"), Decimal("5")
-            )
+    def test_all_frozen_baselines_have_workbench_adapters(self) -> None:
+        for strategy_id in ("B0_NO_TRADE", "B1_MARKET_PROBABILITY", "B2_GBM_BINANCE_PROXY", "B3_MARKET_PRIOR_LOGISTIC"):
+            self.assertIsNotNone(resolve_strategy(strategy_id).workbench_backtest)
 
     def test_l_v2_workbench_uses_frozen_train_selected_candidate(self) -> None:
         captured: dict[str, object] = {}

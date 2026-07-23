@@ -10,6 +10,13 @@ test("strategy and backtest DTO parsers reject extra renderer-facing fields", ()
   assert.throws(() => parseBacktestJobV1({ schemaVersion: "backtest-job-v1", runId: "bt-1", requestId: "r-1", status: "live", progressPermille: 0, error: null }), /invalid/);
 });
 
+test("backtest jobs preserve their actual strategy identity independently from a stale display name", () => {
+  const parsed = parseBacktestJobV1({ schemaVersion: "backtest-job-v1", runId: "bt-k", requestId: "r-k", displayName: "旧的 J 名称", strategyId: "K_DUAL_VOL", strategyVersion: "2.0.0", status: "succeeded", progressPermille: 1000, error: null });
+  assert.equal(parsed.displayName, "旧的 J 名称");
+  assert.equal(parsed.strategyId, "K_DUAL_VOL");
+  assert.equal(parsed.strategyVersion, "2.0.0");
+});
+
 test("strategy validation accepts backend-owned research warnings without treating them as errors", () => {
   const parsed = parseStrategyValidationV1({ schemaVersion: "strategy-validation-v1", valid: true, errors: [], warnings: [{ code: "NARROW_EDGE_WINDOW", severity: "warning", message: "可交易优势区间很窄" }] });
   assert.equal(parsed.valid, true);

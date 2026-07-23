@@ -10,6 +10,8 @@ export type BacktestRequestV1 = Readonly<{
   /** Backend-owned presentation metadata; absent only on legacy persisted requests. */
   displayName?: string;
   description?: string;
+  includeBaselines?: boolean;
+  comparisonGroupId?: string;
   strategyId: string;
   strategyVersion: string;
   datasetId: string;
@@ -62,6 +64,10 @@ export type BacktestJobV1 = Readonly<{
   runId: string;
   requestId: string;
   displayName?: string;
+  /** Present for persisted Web jobs; optional only for legacy/in-memory callers. */
+  strategyId?: string;
+  strategyVersion?: string;
+  comparisonGroupId?: string;
   status: "queued" | "running" | "stopping" | "succeeded" | "failed" | "cancelled";
   progressPermille: number;
   error: string | null;
@@ -83,6 +89,8 @@ function validateRequest(input: BacktestRequestV1): void {
   }
   if (input.feeModel.trim() === "" || input.strategyVersion.trim() === "") throw new Error("feeModel and strategyVersion are required");
   if (input.evaluationSplit !== undefined && input.evaluationSplit !== "VALIDATION" && input.evaluationSplit !== "FINAL_TEST") throw new Error("evaluationSplit is invalid");
+  if (input.includeBaselines !== undefined && typeof input.includeBaselines !== "boolean") throw new Error("includeBaselines is invalid");
+  if (input.comparisonGroupId !== undefined && !SAFE_ID.test(input.comparisonGroupId)) throw new Error("comparisonGroupId is invalid");
   for (const [field, value] of [["displayName", input.displayName], ["description", input.description]] as const) {
     if (value !== undefined && (value.trim() === "" || value.length > 240 || /[\u0000-\u001f]/u.test(value))) throw new Error(`${field} is invalid`);
   }
@@ -136,7 +144,7 @@ export class BacktestJobService {
     if (existing !== undefined) return this.get(existing);
     const runId = `bt-${Date.now()}-${++this.#ordinal}`;
     const controller = new AbortController();
-    const state = { view: Object.freeze({ schemaVersion: "backtest-job-v1" as const, runId, requestId: input.requestId, ...(input.displayName === undefined ? {} : { displayName: input.displayName }), status: "queued" as const, progressPermille: 0, error: null }), controller };
+    const state = { view: Object.freeze({ schemaVersion: "backtest-job-v1" as const, runId, requestId: input.requestId, ...(input.displayName === undefined ? {} : { displayName: input.displayName }), strategyId: input.strategyId, strategyVersion: input.strategyVersion, status: "queued" as const, progressPermille: 0, error: null }), controller };
     this.#jobs.set(runId, state); this.#requests.set(input.requestId, runId);
     queueMicrotask(() => void this.#execute(input, state));
     return state.view;

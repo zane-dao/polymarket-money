@@ -1,0 +1,6 @@
+interface:
+  display_name: "Polymarket memory maintainer"
+  short_description: "Perform rare, minimal semantic write-back"
+  default_prompt: "Use $polymarket-memory-maintainer for one focused durable-memory review after a completed change."
+policy:
+  allow_implicit_invocation: false

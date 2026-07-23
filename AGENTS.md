@@ -4,11 +4,15 @@
 
 ## 项目上下文与渐进读取
 
-- 本仓是代码、工程文档和项目管理文档的唯一主仓；项目入口为 [docs/INDEX.md](docs/INDEX.md)。
-每个实质性项目任务开始前，完整读取： `docs/INDEX.md`,`docs/goals/PROJECT-GOALS.md`,`docs/plan/CURRENT.md`,首次进入项目、任务涉及历史原因、已有资产或项目边界不清时，再读取 `docs/background/PROJECT-BACKGROUND.md`。涉及具体 Batch 时，继续读取 `docs/batches/BATCHES-INDEX.md` 和对应 Batch 设计；随后按照 `docs/INDEX.md`，仅按任务需要读取规格、架构、决策、报告或归档。
-- `docs/plan/CURRENT.md` 是当前状态的唯一来源；`docs/decisions/DECISIONS.md` 是跨会话决定的唯一来源。
-- 原始会话、原始数据、凭据和大体积产物不入 Git；提炼的历史会话摘要只放 `docs/archive/sessions/`。
-
+<!-- codex-context-orchestrator:start -->
+- 本仓是代码、工程文档和项目管理文档的唯一主仓；`docs/INDEX.md` 是跨文档任务的调度入口，但**不作为每个任务的固定前置**。
+- 窄范围代码任务先读取目标文件和邻近测试。只有任务涉及当前阶段、授权边界、跨模块影响、具体 Batch、长期决定或语义文档时，才按 Hook 路由渐进读取最多两个入口。
+- 需要项目级路由时，顺序为：`docs/INDEX.md`，再按需读取 `docs/plan/CURRENT.md`、对应 Batch、规格、架构、决定或报告。不得为了“了解全貌”扫描全部历史、全部 Skill 或整个文档树。
+- `.codex/hooks/context_orchestrator.py` 提供确定性路由和仓外私有检查点；相同路由且来源未变化时不重复注入。检查点只用于恢复未提交意图，不得覆盖代码或规范文档。
+- `$polymarket-context-router` 仅用于跨文档编排；普通文件内改动不必加载。语义写回只在用户明确要求或高置信度持久变化时，通过显式 `$polymarket-memory-maintainer` 做一次最小审查。
+- `docs/plan/CURRENT.md` 是当前状态的唯一来源；`docs/decisions/DECISIONS.md` 是跨会话决定的唯一来源。普通修复、短期调试、失败实验和重复表述只进入私有检查点。
+- 特殊标签：`#ctx:refresh` 强制刷新路由，`#ctx:none` 本轮不注入路由，`#ctx:persist` 明确请求持久审查，`#ctx:root-ok` 表示用户已批准根目录新建项。
+<!-- codex-context-orchestrator:end -->
 ## 指令优先级与文档分层
 
 - 用户最新的明确要求优先于旧仓库指引，但不得违背更高层安全规则或已验证事实。若发生冲突，应在同一任务内更新或明确标注被替代的文档，避免留下两套有效规则。

@@ -77,6 +77,19 @@ HTML、CSS、JavaScript 和 source map；它不是数据库，也不是源码目
 | `npm run sim:staging` | `4273` | 运行构建后的候选 release | `/root/polymarket-money-data/staging-sim` |
 | `npm run sim:production` | `4173` | 运行已晋升、不可变的 stable release | `/root/polymarket-money-data/production-sim` |
 
+日常可用一个本机快捷器统一管理三个端口；它只管理自己的 user systemd 临时服务，若端口被其他
+进程占用会拒绝误杀：
+
+```bash
+npm run ports:start     # 启动 4173、4273、4174；单个失败不妨碍继续尝试其余端口
+npm run ports:status    # 查看三个 unit 和端口状态
+npm run ports:restart   # 只重启快捷器管理的三个服务
+npm run ports:stop      # 只停止快捷器管理的三个服务
+```
+
+4173 仍会执行 production-sim 安全门：没有来自干净 `main` 的已晋升 stable release 时会拒绝启动，
+快捷器不会绕过该限制。服务启动本身不会批准或启动公开行情采集。
+
 候选发布流程：
 
 ```bash

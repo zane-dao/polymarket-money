@@ -16,6 +16,11 @@ const summary: DatasetSummaryV1 = {
   rowCount: 10,
   quarantineCount: 0,
   status: "available",
+  displayName: "BTC five minute",
+  description: "Test dataset",
+  publishedAtUtc: "2026-07-21T00:00:00Z",
+  source: "test",
+  tags: ["test"],
 };
 const now = "2026-07-21T00:00:00Z";
 

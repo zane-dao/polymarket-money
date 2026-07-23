@@ -1,0 +1,6 @@
+interface:
+  display_name: "Polymarket paper safety"
+  short_description: "Keep protocol and runtime work paper-only"
+  default_prompt: "Use $polymarket-paper-safety to keep this runtime or protocol task public-data and paper-only."
+policy:
+  allow_implicit_invocation: true

@@ -10,6 +10,8 @@ const pointersRoot = resolve(localRoot, "pointers");
 const dataBase = process.env.POLYMARKET_SIM_DATA_BASE ?? "/root/polymarket-money-data";
 const candidateUnit = "polymarket-staging-4273.service";
 const candidatePort = 4273;
+const developmentFrontendUnit = "polymarket-vite-4174.service";
+const developmentFrontendPort = 4174;
 
 function run(command, args, options = {}) {
   return new Promise((resolveRun, rejectRun) => {
@@ -56,7 +58,7 @@ async function buildCandidate() {
   const commit = await output("git", ["rev-parse", "--short=12", "HEAD"]);
   const sourceBranch = await output("git", ["branch", "--show-current"]);
   const clean = (await output("git", ["status", "--porcelain"])) === "";
-  const fingerprint = await artifactFingerprint([resolve(repositoryRoot, "dist"), resolve(repositoryRoot, "frontend", "dist"), resolve(repositoryRoot, "scripts"), resolve(repositoryRoot, "strategies"), resolve(repositoryRoot, "research", "polymarket_money")]);
+  const fingerprint = await artifactFingerprint([resolve(repositoryRoot, "dist"), resolve(repositoryRoot, "frontend", "dist"), resolve(repositoryRoot, "contracts"), resolve(repositoryRoot, "scripts"), resolve(repositoryRoot, "strategies"), resolve(repositoryRoot, "research", "polymarket_money")]);
   const releaseId = `${commit}-${fingerprint}`;
   const releaseRoot = resolve(releasesRoot, releaseId);
   const temporary = resolve(releasesRoot, `.partial-${process.pid}-${releaseId}`);
@@ -66,6 +68,7 @@ async function buildCandidate() {
   await mkdir(resolve(temporary, "scripts"), { mode: 0o700 });
   await cp(resolve(repositoryRoot, "dist"), resolve(temporary, "dist"), { recursive: true, errorOnExist: true });
   await cp(resolve(repositoryRoot, "frontend", "dist"), resolve(temporary, "frontend", "dist"), { recursive: true, errorOnExist: true });
+  await cp(resolve(repositoryRoot, "contracts"), resolve(temporary, "contracts"), { recursive: true, errorOnExist: true });
   await cp(resolve(repositoryRoot, "scripts", "run_workbench_backtest.py"), resolve(temporary, "scripts", "run_workbench_backtest.py"));
   await cp(resolve(repositoryRoot, "strategies"), resolve(temporary, "strategies"), { recursive: true, filter: (source) => !source.includes("__pycache__") });
   await cp(resolve(repositoryRoot, "research"), resolve(temporary, "research"), { recursive: true, filter: (source) => !source.includes("__pycache__") && !source.includes("datasets") });
@@ -120,12 +123,42 @@ async function assertWarningRegression() {
 }
 
 async function restartOrStartCandidateService() {
-  try {
-    await run("systemctl", ["--user", "restart", candidateUnit]);
-    return;
-  } catch {
-    await run("systemd-run", ["--user", "--unit=polymarket-staging-4273", "--collect", `--property=WorkingDirectory=${repositoryRoot}`, "--setenv=PATH=/usr/local/bin:/usr/bin:/bin", "/usr/local/bin/node", resolve(repositoryRoot, "scripts", "local-environments.mjs"), "serve", "staging"]);
+  await run("systemctl", ["--user", "stop", candidateUnit]).catch(() => undefined);
+  const proxyEnvironment = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"]
+    .flatMap((name) => process.env[name] === undefined ? [] : [`--setenv=${name}=${process.env[name]}`]);
+  let lastError = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await run("systemd-run", ["--user", "--unit=polymarket-staging-4273", "--collect", `--property=WorkingDirectory=${repositoryRoot}`, "--setenv=PATH=/usr/local/bin:/usr/bin:/bin", ...proxyEnvironment, "/usr/local/bin/node", resolve(repositoryRoot, "scripts", "local-environments.mjs"), "serve", "staging"]);
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+    }
   }
+  throw lastError ?? new Error("candidate service could not be restarted");
+}
+
+async function restartActiveDevelopmentFrontend() {
+  try {
+    if (await output("systemctl", ["--user", "is-active", developmentFrontendUnit]) !== "active") return false;
+  } catch {
+    return false;
+  }
+  await run("systemctl", ["--user", "restart", developmentFrontendUnit]);
+  let lastError = "development frontend did not answer";
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${developmentFrontendPort}/`, { signal: AbortSignal.timeout(1_000) });
+      const html = await response.text();
+      if (response.ok && html.includes('id="root"')) return true;
+      lastError = `development frontend returned HTTP ${response.status} or an unexpected document`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+  throw new Error(`active development frontend was not verified on 127.0.0.1:${developmentFrontendPort}: ${lastError}`);
 }
 
 async function refreshCandidate() {
@@ -133,7 +166,9 @@ async function refreshCandidate() {
   await restartOrStartCandidateService();
   await waitForCandidateRelease(releaseId);
   await assertWarningRegression();
+  const developmentFrontendRestarted = await restartActiveDevelopmentFrontend();
   process.stdout.write(`Candidate refreshed and verified: ${releaseId} on 127.0.0.1:${candidatePort}\n`);
+  if (developmentFrontendRestarted) process.stdout.write(`Active development frontend restarted and verified on 127.0.0.1:${developmentFrontendPort}\n`);
 }
 
 async function pointer(name) {
@@ -163,7 +198,7 @@ async function serve(kind) {
   const port = production ? "4173" : "4273";
   const dataRoot = resolve(dataBase, environment);
   await mkdir(dataRoot, { recursive: true, mode: 0o700 });
-  await run("/usr/local/bin/node", [resolve(releaseRoot, "dist", "scripts", "workbench-web-server.js")], { cwd: releaseRoot, env: { PATH: "/usr/bin:/bin", POLYMARKET_ENV: environment, POLYMARKET_RELEASE_ID: releaseId, POLYMARKET_DATA_ROOT: dataRoot, POLYMARKET_WEB_PORT: port } });
+  await run("/usr/local/bin/node", ["--use-env-proxy", resolve(releaseRoot, "dist", "scripts", "workbench-web-server.js")], { cwd: releaseRoot, env: { ...process.env, PATH: "/usr/bin:/bin", POLYMARKET_ENV: environment, POLYMARKET_RELEASE_ID: releaseId, POLYMARKET_DATA_ROOT: dataRoot, POLYMARKET_WEB_PORT: port } });
 }
 
 async function dev() {
@@ -171,7 +206,7 @@ async function dev() {
   const dataRoot = resolve(dataBase, "staging-sim");
   await mkdir(dataRoot, { recursive: true, mode: 0o700 });
   const environment = { ...process.env, POLYMARKET_ENV: "staging-sim", POLYMARKET_RELEASE_ID: "workspace", POLYMARKET_DATA_ROOT: dataRoot, POLYMARKET_WEB_PORT: "4273", POLYMARKET_DEV_BACKEND: "http://127.0.0.1:4273" };
-  const backend = spawn("/usr/local/bin/node", [resolve(repositoryRoot, "dist", "scripts", "workbench-web-server.js")], { cwd: repositoryRoot, stdio: "inherit", env: environment });
+  const backend = spawn("/usr/local/bin/node", ["--use-env-proxy", resolve(repositoryRoot, "dist", "scripts", "workbench-web-server.js")], { cwd: repositoryRoot, stdio: "inherit", env: environment });
   const vite = spawn("npm", ["run", "frontend:dev"], { cwd: repositoryRoot, stdio: "inherit", env: environment });
   const stop = () => { backend.kill("SIGTERM"); vite.kill("SIGTERM"); };
   process.once("SIGINT", stop); process.once("SIGTERM", stop);

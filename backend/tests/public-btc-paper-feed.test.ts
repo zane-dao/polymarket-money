@@ -16,7 +16,8 @@ test("combined BTC feed publishes execution snapshots only while both public sou
   clob.observation={market:{marketId:"btc-5m",conditionId:"condition",slug:"btc-updown-5m-1753106400",intervalStart:"2026-07-21T14:00:00.000Z",intervalEnd:"2026-07-21T14:05:00.000Z",upTokenId:"1",downTokenId:"2",active:true,closed:false,acceptingOrders:true,collectible:true,takerFeeRate:"0.01",rawPayload:"{}"},receivedAtUtc:NOW,state:"ACTIVE_UNVERIFIED",continuity:"UNVERIFIED",up:{bid:"0.49",ask:"0.5",bidSize:"1",askSize:"1"},down:{bid:"0.49",ask:"0.5",bidSize:"1",askSize:"1"}};
   clob.observer?.connection(true,NOW,"clob"); clob.observer?.snapshot(snapshot); assert.equal(snapshots.length,0);
   binance.observer?.connection(true,NOW,"binance"); binance.value=ticker; binance.observer?.ticker(ticker); assert.equal(snapshots.length,1); assert.equal(contexts.length,1); assert.equal(contexts[0]?.book.receiveStamp.clockDomain,"combined-test"); assert.equal(contexts[0]?.signal.receiveStamp.clockDomain,"combined-test"); assert.deepEqual(connections,[true]);
-  now="2026-07-21T14:00:01.001Z"; clob.observer?.snapshot(snapshot); assert.equal(snapshots.length,1); assert.equal(combined.latestBinance(),null);
+  now="2026-07-21T14:00:00.500Z";const freshTicker={...ticker,receivedAtUtc:now,updateId:"2"};binance.value=freshTicker;binance.observer?.ticker(freshTicker);clob.observer?.snapshot(snapshot);assert.equal(snapshots.length,1,"standardized strategy input is emitted at most once per second");
+  now="2026-07-21T14:00:01.001Z"; clob.observer?.snapshot(snapshot); assert.equal(snapshots.length,2);now="2026-07-21T14:00:01.501Z";assert.equal(combined.latestBinance(),null);
   binance.observer?.connection(false,now,"disconnect"); assert.deepEqual(connections,[true,false]); await combined.stop();
 });
 

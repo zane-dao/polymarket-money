@@ -1,13 +1,50 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createWorkbenchCommands, parseBacktestJobV1, parseDatasetDetailV1, parseDatasetScanV1, parsePaperMarketRuntimeV1, parseStrategyDefinitionV1, parseStrategyVersionV1 } from "../src/workbench/services/workbench-commands.js";
+import { createWorkbenchCommands, parseBacktestJobV1, parseBacktestResultV1, parseDatasetDetailV1, parseDatasetScanV1, parsePaperMarketRuntimeV1, parseRunComparisonsV1, parseStrategyDefinitionV1, parseStrategyValidationV1, parseStrategyVersionV1 } from "../src/workbench/services/workbench-commands.js";
 import type { WorkbenchCommandTransport } from "../src/workbench/services/tauri-workbench-data-source.js";
 
 test("strategy and backtest DTO parsers reject extra renderer-facing fields", () => {
   assert.throws(() => parseStrategyDefinitionV1({ strategyId: "k", displayName: "K", runtime: "python", allowedModes: ["backtest", "paper"], parameters: {}, databasePath: "/secret/db" }), /unexpected or missing fields/);
   assert.throws(() => parseStrategyVersionV1({ schemaVersion: "strategy-version-v1", strategyId: "k", version: "1.0.0", description: "test", parameters: {}, createdAtUtc: "2026-07-21T00:00:00Z", sourcePath: "/secret" }), /unexpected or missing fields/);
   assert.throws(() => parseBacktestJobV1({ schemaVersion: "backtest-job-v1", runId: "bt-1", requestId: "r-1", status: "live", progressPermille: 0, error: null }), /invalid/);
+});
+
+test("backtest jobs preserve their actual strategy identity independently from a stale display name", () => {
+  const parsed = parseBacktestJobV1({ schemaVersion: "backtest-job-v1", runId: "bt-k", requestId: "r-k", displayName: "旧的 J 名称", strategyId: "K_DUAL_VOL", strategyVersion: "2.0.0", status: "succeeded", progressPermille: 1000, error: null });
+  assert.equal(parsed.displayName, "旧的 J 名称");
+  assert.equal(parsed.strategyId, "K_DUAL_VOL");
+  assert.equal(parsed.strategyVersion, "2.0.0");
+});
+
+test("strategy validation accepts backend-owned research warnings without treating them as errors", () => {
+  const parsed = parseStrategyValidationV1({ schemaVersion: "strategy-validation-v1", valid: true, errors: [], warnings: [{ code: "NARROW_EDGE_WINDOW", severity: "warning", message: "可交易优势区间很窄" }] });
+  assert.equal(parsed.valid, true);
+  assert.equal(parsed.warnings[0]?.severity, "warning");
+  assert.throws(() => parseStrategyValidationV1({ schemaVersion: "strategy-validation-v1", valid: true, errors: [], warnings: [{ code: "invented", severity: "warning", message: "x" }] }), /invalid/);
+});
+
+test("strategy definitions preserve backend-owned labels, defaults and research status", () => {
+  const parsed = parseStrategyDefinitionV1({ strategyId: "L_ADAPTIVE_EXECUTION_V2", displayName: "L Adaptive Execution V2", summary: "只用于研究", researchStatus: "RESEARCH_ONLY", runtime: "python", allowedModes: ["backtest"], parameters: { maxStakeUsdc: { type: "number", required: true, defaultValue: 400, minimum: 1, maximum: 100000, displayName: "单次最大投入", description: "模拟名义金额上限", unit: "USDC" } } });
+  assert.equal(parsed.researchStatus, "RESEARCH_ONLY");
+  assert.equal(parsed.parameters.maxStakeUsdc?.displayName, "单次最大投入");
+  assert.equal(parsed.parameters.maxStakeUsdc?.unit, "USDC");
+  assert.equal(parsed.parameters.maxStakeUsdc?.defaultValue, 400);
+  const historical = parseStrategyDefinitionV1({ strategyId: "L_ADAPTIVE_EXECUTION_V1", displayName: "自适应执行（L V1 · 历史门失败）", family: "自适应执行", researchStatus: "RESEARCH_GATE_FAILED", riskLevel: "HIGH", runtime: "python", allowedModes: [], parameters: {} });
+  assert.equal(historical.researchStatus, "RESEARCH_GATE_FAILED");
+  assert.equal(historical.allowedModes.length, 0);
+});
+
+test("backtest and comparison DTOs preserve an unavailable win rate when there are no fills", () => {
+  const metrics = { netPnl: "0", fees: "0", maxDrawdown: "0", fillRate: "0", winRate: null, brier: "0.25" };
+  const request = { schemaVersion: "backtest-request-v1" as const, requestId: "request-1", displayName: "费用感知概率策略 · BTC 验证", description: "用于验证集的纸面回测。", strategyId: "J_FEE_AWARE", strategyVersion: "1.0.0", datasetId: "btc", datasetVersionHash: "a".repeat(64), feeModel: "fee-v2", latencyMs: 1000, initialCash: "100", maxPosition: "10" };
+  const result = parseBacktestResultV1({ schemaVersion: "backtest-result-v1", runId: "run-1", request, startedAtUtc: "2026-07-21T00:00:00Z", completedAtUtc: "2026-07-21T00:01:00Z", metrics, equityCurve: [], events: [] });
+  const evaluationScope = { schemaVersion: "backtest-evaluation-scope-v1", split: "FINAL_TEST", horizonSeconds: 30, scenario: "BASE_1S", cohortHash: "c".repeat(64), cohortSize: 10 };
+  const comparisons = parseRunComparisonsV1([{ schemaVersion: "run-comparison-v1", runId: "run-1", displayName: request.displayName, description: request.description, strategyId: "J_FEE_AWARE", strategyVersion: "1.0.0", datasetId: "btc", completedAtUtc: "2026-07-21T00:01:00Z", evaluationScope, metrics }]);
+  assert.equal(result.metrics.winRate, null);
+  assert.equal(comparisons[0]?.metrics.winRate, null);
+  assert.equal(comparisons[0]?.evaluationScope.cohortSize, 10);
+  assert.equal(comparisons[0]?.displayName, request.displayName);
 });
 
 test("dataset DTO parsers enforce path-free detail and internally consistent scans", () => {

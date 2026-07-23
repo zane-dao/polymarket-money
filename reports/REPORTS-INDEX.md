@@ -14,4 +14,4 @@
 | Batch 4B-R1 | `batches/batch-04b-r1/BATCH-4B-R1-VERDICT.md` |
 | Batch 4B-R2 | `batches/batch-04b-r2/BATCH-4B-R2-VERDICT.md` |
 | Batch 06 K/J paper | `batches/batch-06-kj-paper/RESULT.md` |
-| Batch 07 桌面架构整合 | `batches/batch-07-desktop-consolidation/BATCH-07-CONSOLIDATION-AUDIT.md` |
+| Batch 07 桌面架构整合 | `batches/batch-07-desktop-consolidation/BATCH-07-CONSOLIDATION-AUDIT.md`；前端信息架构证据见 `batches/batch-07-desktop-consolidation/FRONTEND-INFORMATION-ARCHITECTURE.md` |

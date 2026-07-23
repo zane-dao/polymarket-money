@@ -26,3 +26,31 @@ test("public Binance Spot feed is inert, allowlisted, fail-closed on disconnect 
   await new Promise((resolve) => setImmediate(resolve)); assert.deepEqual(ticks, ["67000"]); assert.deepEqual(errors, []);
   await feed.stop();
 });
+
+test("public Binance Spot feed uses credential-free REST polling while WebSocket is unavailable", async () => {
+  const socket = new FakeSocket();
+  const intervals: Array<() => void> = [];
+  const connections: string[] = [];
+  const ticks: string[] = [];
+  const feed = new PublicBinanceSpotFeed({
+    now: () => "2026-07-21T14:00:00.000Z",
+    randomId: () => "binance-rest-1",
+    createWebSocket: () => socket,
+    fetch: async (input, init) => {
+      assert.equal(String(input), "https://data-api.binance.vision/api/v3/ticker/bookTicker?symbol=BTCUSDT");
+      assert.equal(init?.method, "GET");
+      return new Response(JSON.stringify({ symbol: "BTCUSDT", bidPrice: "67000", bidQty: "1", askPrice: "67001", askQty: "2" }), { status: 200 });
+    },
+    setInterval: (callback) => { intervals.push(callback); return callback; },
+    clearInterval: () => undefined,
+  });
+  await feed.start({
+    ticker: (value) => ticks.push(value.bid),
+    connection: (connected, _at, detail) => connections.push(`${connected}:${detail}`),
+    error: (error) => { throw error; },
+  });
+  assert.deepEqual(ticks, ["67000"]);
+  assert.match(connections[0] ?? "", /true:public Binance Spot REST polling active/);
+  assert.equal(intervals.length, 1);
+  await feed.stop();
+});

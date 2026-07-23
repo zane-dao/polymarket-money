@@ -33,10 +33,14 @@ export type EquityPointV1 = Readonly<{
 export type RunComparisonV1 = Readonly<{
   schemaVersion: "run-comparison-v1";
   runId: string;
+  /** Backend-owned presentation fields; absent only for legacy runs. */
+  displayName?: string;
+  description?: string;
   strategyId: string;
   strategyVersion: string;
   datasetId: string;
   completedAtUtc: string;
+  evaluationScope: NonNullable<BacktestResultV1["evaluationScope"]>;
   metrics: BacktestResultV1["metrics"];
 }>;
 
@@ -78,7 +82,7 @@ export interface SystemStatusSource {
 }
 
 const PUBLIC_FIELDS: Readonly<Record<PublicBacktestEventV1["kind"], ReadonlySet<string>>> = Object.freeze({
-  decision: new Set(["decisionId", "marketId", "tokenId", "action", "direction", "reason", "reasonCode", "probability", "edge", "outcome", "pnl"]),
+  decision: new Set(["decisionId", "marketId", "tokenId", "action", "direction", "reason", "reasonCode", "probability", "edge", "netEdge", "requiredEdge", "outcome", "pnl", "decisionAsk", "executablePrice", "feeRate", "estimatedFee", "intendedQuantity", "intendedStake", "targetPositionQuantity", "currentPositionQuantity", "openOrderQuantity", "approvedOrderQuantity", "riskStatus", "riskReasonCodes", "visibleAskQuantity", "decisionVisibleAskQuantity", "bookParticipation"]),
   order: new Set(["orderId", "decisionId", "marketId", "tokenId", "side", "direction", "price", "quantity", "status", "timeInForce", "expiresAtUtc"]),
   fill: new Set(["fillId", "orderId", "marketId", "tokenId", "side", "direction", "price", "quantity", "fee", "status"]),
   settlement: new Set(["settlementId", "marketId", "tokenId", "outcome", "quantity", "payout", "fee", "pnl", "status"]),
@@ -117,6 +121,10 @@ function validateResult(result: BacktestResultV1, runId: string): void {
   validateSafeId("persisted runId", result.runId);
   validateUtc("completedAtUtc", result.completedAtUtc);
   if (!Array.isArray(result.events) || !Array.isArray(result.equityCurve)) throw new Error("invalid persisted backtest result");
+}
+
+function validateEvaluationScope(scope:NonNullable<BacktestResultV1["evaluationScope"]>):void {
+  if(scope.schemaVersion!=="backtest-evaluation-scope-v1"||!["TRAIN","VALIDATION","FINAL_TEST"].includes(scope.split)||!["BASE_1S","STRESS_1S_PLUS_TICK"].includes(scope.scenario)||!Number.isSafeInteger(scope.horizonSeconds)||scope.horizonSeconds<=0||!Number.isSafeInteger(scope.cohortSize)||scope.cohortSize<=0||!/^[0-9a-f]{64}$/u.test(scope.cohortHash))throw new Error("backtest evaluation cohort evidence is invalid");
 }
 
 function publicEvent(event: BacktestEventV1): PublicBacktestEventV1 | null {
@@ -194,6 +202,11 @@ export class BackendQueryService {
     for (const runId of runIds) validateSafeId("runId", runId);
     const results = await Promise.all(runIds.map((runId) => this.#load(runId)));
     const baseline = results[0]?.request;
+    const baselineScope = results[0]?.evaluationScope;
+    if (baselineScope === undefined || results.some((result) => result.evaluationScope === undefined)) {
+      throw new Error("backtest runs are not comparable: verified evaluation cohort evidence is missing");
+    }
+    for(const result of results)validateEvaluationScope(result.evaluationScope!);
     if (baseline !== undefined) {
       for (const result of results.slice(1)) {
         const request = result.request;
@@ -201,6 +214,12 @@ export class BackendQueryService {
           request.feeModel !== baseline.feeModel || request.latencyMs !== baseline.latencyMs ||
           request.initialCash !== baseline.initialCash || request.maxPosition !== baseline.maxPosition) {
           throw new Error("backtest runs are not comparable: dataset, fee, latency, cash and position assumptions must match");
+        }
+        const scope = result.evaluationScope!;
+        if (scope.split !== baselineScope.split || scope.horizonSeconds !== baselineScope.horizonSeconds ||
+          scope.scenario !== baselineScope.scenario || scope.cohortHash !== baselineScope.cohortHash ||
+          scope.cohortSize !== baselineScope.cohortSize) {
+          throw new Error("backtest runs are not comparable: split, horizon, scenario and evaluated cohort must match");
         }
       }
     }
@@ -212,10 +231,13 @@ export class BackendQueryService {
       return Object.freeze({
         schemaVersion: "run-comparison-v1" as const,
         runId: result.runId,
+        ...(result.request.displayName === undefined ? {} : { displayName: result.request.displayName }),
+        ...(result.request.description === undefined ? {} : { description: result.request.description }),
         strategyId: result.request.strategyId,
         strategyVersion: result.request.strategyVersion,
         datasetId: result.request.datasetId,
         completedAtUtc: result.completedAtUtc,
+        evaluationScope: Object.freeze({ ...result.evaluationScope! }),
         metrics: Object.freeze({
           netPnl: result.metrics.netPnl,
           fees: result.metrics.fees,

@@ -57,8 +57,8 @@ export interface ParsedBinanceBookTicker {
   readonly bidSize: string;
   readonly ask: string;
   readonly askSize: string;
-  readonly sourceTime: string;
-  readonly serverTime: string;
+  readonly sourceTime: string | null;
+  readonly serverTime: string | null;
   readonly updateId: string;
 }
 
@@ -107,6 +107,10 @@ function millisecondTimestamp(value: unknown, field: string): string {
   return new Date(value as number).toISOString();
 }
 
+function optionalMillisecondTimestamp(value: unknown, field: string): string | null {
+  return value === undefined ? null : millisecondTimestamp(value, field);
+}
+
 export function parseBinanceBookTicker(rawPayload: string): ParsedBinanceBookTicker {
   const value = record(JSON.parse(rawPayload) as unknown, "bookTicker");
   if (value.s !== "BTCUSDT") throw new Error("bookTicker.s must be BTCUSDT");
@@ -116,7 +120,7 @@ export function parseBinanceBookTicker(rawPayload: string): ParsedBinanceBookTic
   const askSize = canonicalPositiveDecimal(value.A, "bookTicker.A");
   if (compareDecimalStrings(bid, ask) > 0) throw new Error("bookTicker is crossed");
   if (!Number.isSafeInteger(value.u) || (value.u as number) < 0) throw new Error("bookTicker.u must be a non-negative safe integer");
-  return Object.freeze({ symbol: "BTCUSDT", bid, bidSize, ask, askSize, sourceTime: millisecondTimestamp(value.T, "bookTicker.T"), serverTime: millisecondTimestamp(value.E, "bookTicker.E"), updateId: String(value.u) });
+  return Object.freeze({ symbol: "BTCUSDT", bid, bidSize, ask, askSize, sourceTime: optionalMillisecondTimestamp(value.T, "bookTicker.T"), serverTime: optionalMillisecondTimestamp(value.E, "bookTicker.E"), updateId: String(value.u) });
 }
 
 function decimalParts(value: string): readonly [string, string] {

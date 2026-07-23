@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { Money, minimumMoney } from "../domain/money.js";
+import { reviewTargetPositionV1 } from "../risk/index.js";
 import type { KJStrategyContextV1 } from "../../../../strategies/src/kj-context.js";
 import type { KJPaperWarmupSignalV1 } from "../../../../strategies/src/kj-warmup.js";
 
@@ -883,23 +884,52 @@ export class KJPaperEngine {
       minimumMoney(available.times(fraction), inclusiveCap),
       minimumMoney(Money.from(this.#config.maximumStakeAmount), marketBudget),
     );
-    const quantity = minimumMoney(
-      stake.dividedBy(ask),
-      askSize.times(Money.from(this.#config.bookParticipation)),
-    );
-    const intendedStake = quantity.times(ask);
-    if (intendedStake.comparedTo(Money.from(this.#config.minimumStake)) < 0) return;
     const maximumFillPrice = minimumMoney(
       ask.plus(Money.from(this.#config.maximumSlippage)),
       Money.from("1"),
     );
-    const maximumFillFee = rate
-      .times(maximumFillPrice)
-      .times(Money.from("1").minus(maximumFillPrice))
-      .times(quantity);
-    const reserved = maximumFillPrice.times(quantity).plus(maximumFillFee);
-    if (reserved.comparedTo(available) > 0) return;
     const tokenId = outcome === "UP" ? session.upTokenId : session.downTokenId;
+    const currentPosition = wallet.position(tokenId);
+    const openQuantity = [...this.#pending.values()]
+      .filter((pending) => pending.strategy === strategy && pending.tokenId === tokenId)
+      .reduce((total, pending) => total.plus(pending.intendedQuantity), Money.from("0"));
+    const targetQuantity = stake.dividedBy(ask);
+    const risk = reviewTargetPositionV1({
+      requestedTargetQuantity: targetQuantity.toCanonical(),
+      currentPositionQuantity: currentPosition.toCanonical(),
+      openOrderQuantity: openQuantity.toCanonical(),
+      executablePrice: ask.toCanonical(),
+      maximumFillPrice: maximumFillPrice.toCanonical(),
+      feeRate: rate.toCanonical(),
+      visibleAskQuantity: askSize.toCanonical(),
+      bookParticipation: this.#config.bookParticipation,
+      availableCash: available.toCanonical(),
+      currentMarketNotional: ledger.spent.plus(ledger.fees).toCanonical(),
+      currentTotalNotional: ledger.spent.plus(ledger.fees).toCanonical(),
+      maximumOrderNotional: this.#config.maximumStakeAmount,
+      // The strategy has already computed its dynamic target under its own
+      // Kelly and per-market budget. Risk receives the independent hard cap
+      // here, so it can still reduce/reject without reinterpreting the model.
+      maximumMarketNotional: this.#config.maximumStakeAmount,
+      maximumTotalNotional: this.#config.maximumStakeAmount,
+    });
+    const quantity = Money.from(risk.approvedOrderQuantity);
+    const intendedStake = quantity.times(ask);
+    if (!quantity.isPositive() || intendedStake.comparedTo(Money.from(this.#config.minimumStake)) < 0) {
+      this.#events.push(event("DECISION", strategy, session.marketId, context.decisionTime, {
+        action: "NO_TRADE",
+        reason: risk.reasonCodes.join(","),
+        outcome,
+        probabilityUp: probability.toCanonical(),
+        netEdge: edge.minus(feePerShare).minus(spreadBuffer).toCanonical(),
+        targetPositionQuantity: risk.requestedTargetQuantity,
+        currentPositionQuantity: risk.coveredQuantity,
+        riskStatus: risk.status,
+        riskApprovedQuantity: risk.approvedOrderQuantity,
+      }));
+      return;
+    }
+    const reserved = Money.from(risk.reservedAmount);
     const intentId = hash(
       "intent",
       strategy,
@@ -916,7 +946,17 @@ export class KJPaperEngine {
       probabilityUp: probability.toCanonical(),
       sigma: sigma.toString(),
       edge: edge.toCanonical(),
+      netEdge: edge.minus(feePerShare).minus(spreadBuffer).toCanonical(),
       requiredEdge: required.toCanonical(),
+      targetPositionQuantity: risk.requestedTargetQuantity,
+      currentPositionQuantity: currentPosition.toCanonical(),
+      openOrderQuantity: openQuantity.toCanonical(),
+      targetGapQuantity: risk.requestedOrderQuantity,
+      riskStatus: risk.status,
+      riskReasonCodes: risk.reasonCodes.join(","),
+      riskApprovedQuantity: risk.approvedOrderQuantity,
+      estimatedAveragePrice: risk.estimatedAveragePrice,
+      estimatedFee: risk.estimatedFee,
       intendedQuantity: quantity.toCanonical(),
       contextHash,
     }));
@@ -943,6 +983,12 @@ export class KJPaperEngine {
       maximumFillPrice: maximumFillPrice.toCanonical(),
       intendedQuantity: quantity.toCanonical(),
       reservedAmount: reserved.toCanonical(),
+      targetPositionQuantity: risk.requestedTargetQuantity,
+      currentPositionQuantity: currentPosition.toCanonical(),
+      riskStatus: risk.status,
+      riskReasonCodes: risk.reasonCodes.join(","),
+      estimatedAveragePrice: risk.estimatedAveragePrice,
+      estimatedFee: risk.estimatedFee,
       availableAfterReservation: wallet.available().toCanonical(),
       contextHash,
       signalInputHash: context.signal.inputHash,

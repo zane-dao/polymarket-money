@@ -312,953 +312,134 @@ export function LivePage() {
   );
 }
 
-function VerifiedLivePage({
-  commands,
-}: {
-  commands: WorkbenchCommands | null;
-}) {
-  const [sessions, setSessions] = useState<readonly PaperSessionViewV1[]>([]);
-  const [control, setControl] = useState<PaperSystemControlV1 | null>(null);
-  const [host, setHost] = useState<PaperMarketHostStatusV1 | null>(null);
-  const [marketRuntime, setMarketRuntime] =
-    useState<PaperMarketRuntimeV1 | null>(null);
-  const [strategyRuntime, setStrategyRuntime] =
-    useState<PaperStrategyRuntimeV1 | null>(null);
-  const [marketSlug, setMarketSlug] = useState("");
-  const [networkApproval, setNetworkApproval] = useState(false);
-  const [detail, setDetail] = useState<PaperSessionDetailV1 | null>(null);
-  const [orderMarketId, setOrderMarketId] = useState("");
-  const [orderToken, setOrderToken] = useState<"YES" | "NO">("YES");
-  const [orderPrice, setOrderPrice] = useState("0.5");
-  const [orderQuantity, setOrderQuantity] = useState("1");
-  const [modelProbabilityYes, setModelProbabilityYes] = useState("0.6");
-  const [timeInForce, setTimeInForce] = useState<"GTC" | "GTD" | "FAK" | "FOK">(
-    "GTC",
-  );
-  const [expiresAtUtc, setExpiresAtUtc] = useState("");
-  const [sessionId, setSessionId] = useState("");
+function VerifiedLivePage({ commands }: { commands: WorkbenchCommands | null }) {
+  const [definitions, setDefinitions] = useState<readonly import("../services/workbench-commands.js").StrategyDefinitionV1[]>([]);
+  const [strategyId, setStrategyId] = useState<"J_FEE_AWARE" | "K_DUAL_VOL">("J_FEE_AWARE");
+  const [versions, setVersions] = useState<readonly string[]>([]);
+  const [strategyVersion, setStrategyVersion] = useState("");
   const [initialCash, setInitialCash] = useState("10000");
-  const [paperError, setPaperError] = useState<string | null>(
-    commands === null ? "本地命令桥接不可用；实时模拟保持关闭。" : null,
-  );
+  const [maximumPosition, setMaximumPosition] = useState("400");
+  const [minimumNetEdge, setMinimumNetEdge] = useState("0.05");
+  const [host, setHost] = useState<PaperMarketHostStatusV1 | null>(null);
+  const [market, setMarket] = useState<PaperMarketRuntimeV1 | null>(null);
+  const [runtime, setRuntime] = useState<PaperStrategyRuntimeV1 | null>(null);
+  const [detail, setDetail] = useState<PaperSessionDetailV1 | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(commands === null ? "本地后端不可用，Paper Runner 保持关闭。" : "选择策略版本和风险后即可启动。");
 
   async function refresh() {
     if (commands === null) return;
-    const [
-      nextSessions,
-      nextControl,
-      nextHost,
-      nextMarketRuntime,
-      nextRuntime,
-    ] = await Promise.all([
-      commands.listPaperSessions(),
-      commands.getPaperSystemControl(),
-      commands.getPaperMarketHostStatus(),
-      commands.getPaperMarketRuntime(),
-      commands.getPaperStrategyRuntime(),
-    ]);
-    setSessions(nextSessions);
-    setControl(nextControl);
-    setHost(nextHost);
-    setMarketRuntime(nextMarketRuntime);
-    setStrategyRuntime(nextRuntime);
+    const [nextHost, nextMarket, nextRuntime] = await Promise.all([commands.getPaperMarketHostStatus(), commands.getPaperMarketRuntime(), commands.getPaperStrategyRuntime()]);
+    setHost(nextHost); setMarket(nextMarket); setRuntime(nextRuntime);
+    const account = nextRuntime.canonicalAccounts.find((item) => item.strategy === strategyId);
+    setDetail(account === undefined ? null : await commands.getPaperSessionDetail(account.session.sessionId));
   }
-
   useEffect(() => {
     if (commands === null) return;
     let active = true;
-    Promise.all([
-      commands.listPaperSessions(),
-      commands.getPaperSystemControl(),
-      commands.getPaperMarketHostStatus(),
-      commands.getPaperMarketRuntime(),
-      commands.getPaperStrategyRuntime(),
-    ])
-      .then(
-        ([
-          nextSessions,
-          nextControl,
-          nextHost,
-          nextMarketRuntime,
-          nextRuntime,
-        ]) => {
-          if (active) {
-            setSessions(nextSessions);
-            setControl(nextControl);
-            setHost(nextHost);
-            setMarketRuntime(nextMarketRuntime);
-            setStrategyRuntime(nextRuntime);
-            setPaperError(null);
-          }
-        },
-      )
-      .catch((error: unknown) => {
-        if (active)
-          setPaperError(message(error, "Paper 状态不可用；实时模拟保持关闭。"));
-      });
-    return () => {
-      active = false;
-    };
+    commands.listStrategyDefinitions().then((items) => {
+      if (active) setDefinitions(items.filter((item) => item.allowedModes.includes("paper")));
+    }).catch((error: unknown) => { if (active) setNotice(message(error, "策略目录不可用。")); });
+    void refresh().catch((error: unknown) => { if (active) setNotice(message(error, "Paper Runner 状态不可用。")); });
+    return () => { active = false; };
   }, [commands]);
   useEffect(() => {
-    const market = marketRuntime?.market;
-    if (market === null || market === undefined) return;
-    setOrderMarketId((current) => (current === "" ? market.marketId : current));
-    setOrderPrice((current) =>
-      current === "0.5"
-        ? orderToken === "YES"
-          ? market.up.ask
-          : market.down.ask
-        : current,
-    );
-  }, [marketRuntime?.market?.marketId]);
+    if (commands === null) return;
+    let active = true;
+    commands.listStrategyVersions(strategyId).then((items) => { if (active) { setVersions(items); setStrategyVersion(items.at(-1) ?? ""); } }).catch((error: unknown) => { if (active) setNotice(message(error, "策略版本不可用。")); });
+    return () => { active = false; };
+  }, [commands, strategyId]);
+  useEffect(() => {
+    if (commands === null) return;
+    let active = true;
+    let timer = 0;
+    const poll = async () => {
+      try { await refresh(); }
+      catch { /* Keep the last verified view; the next bounded poll retries. */ }
+      finally { if (active) timer = window.setTimeout(() => void poll(), 1_000); }
+    };
+    timer = window.setTimeout(() => void poll(), 1_000);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [commands, strategyId]);
 
-  async function run(action: () => Promise<unknown>, success: string) {
+  async function run(operation: () => Promise<unknown>, success: string) {
     setBusy(true);
-    setPaperError(null);
-    try {
-      const result = await action();
-      await refresh();
-      setPaperError(typeof result === "string" ? result : success);
-    } catch (error: unknown) {
-      setPaperError(message(error, "操作被后端拒绝；实时模拟保持关闭。"));
-    } finally {
-      setBusy(false);
-    }
+    try { await operation(); await refresh(); setNotice(success); }
+    catch (error: unknown) { setNotice(message(error, "操作被后端拒绝。")); }
+    finally { setBusy(false); }
   }
+  function validMoney(value: string, allowZero = false) { return /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(value) && (allowZero ? Number(value) >= 0 : Number(value) > 0); }
+  function startRunner() {
+    if (commands === null || strategyVersion === "") { setNotice("必须选择已有策略版本。"); return; }
+    if (!validMoney(initialCash) || !validMoney(maximumPosition) || !validMoney(minimumNetEdge, true)) { setNotice("资金、最大仓位和最低净优势必须是有效数值。"); return; }
+    void run(() => commands.startPaperRunner({ strategyId, strategyVersion, initialCash, maximumPosition, minimumNetEdge }), "Paper Runner 已启动；市场发现、行情、决策、风控、模拟成交、结算和轮转均由后端自动完成。");
+  }
+  const decision = [...(runtime?.shadow.events ?? [])].reverse().find((event) => event.eventType === "DECISION" && event.strategy === strategyId);
+  const lifecycle = [...(runtime?.shadow.events ?? [])].reverse().find((event) => event.eventType === "MARKET_STATE");
+  const waitingForNextMarket = decision === undefined && lifecycle?.details.reason === "MISSED_SIGNAL_OPEN_ANCHOR";
+  const running = host?.lifecycle === "RUNNING";
+  const markValue = detail?.positions.reduce((total, position) => {
+    const current = market?.market;
+    const bid = current?.marketId === position.marketId
+      ? Number(position.token === "YES" ? current.up.bid : current.down.bid)
+      : Number(position.cost) / Number(position.quantity);
+    return total + Number(position.quantity) * bid;
+  }, 0) ?? 0;
+  const pnl = detail === null ? "—" : (Number(detail.session.cash) + markValue - Number(initialCash)).toFixed(2);
+  return <>
+    <PageHeader title="自动 Paper Runner" subtitle="选择策略和风险，启动后由系统自动跨 BTC 五分钟市场运行；全程 PAPER ONLY。" action={<div className="toolbar"><button className="button" disabled={busy || !running} onClick={() => commands && void run(() => commands.stopPublicPaperMarketHost(), "Paper Runner 已停止。")}>停止</button><button className="button button--danger" disabled={busy || commands === null} onClick={() => commands && void run(async () => { await commands.setPaperKillSwitch(true, "OPERATOR_EMERGENCY_STOP"); return commands.stopPublicPaperMarketHost(); }, "紧急停止已启用，模拟执行与公开行情均已停止。")}>紧急停止</button></div>} />
+    <Panel title="运行设置" english="Strategy & Risk">
+      <div className="form-grid form-grid--12">
+        <label className="field span-4"><span>策略</span><select aria-label="Paper 策略" value={strategyId} disabled={busy || running} onChange={(event) => setStrategyId(event.target.value as typeof strategyId)}>{definitions.map((item) => <option key={item.strategyId} value={item.strategyId}>{item.displayName}</option>)}</select></label>
+        <label className="field span-2"><span>版本</span><select aria-label="Paper 策略版本" value={strategyVersion} disabled={busy || running} onChange={(event) => setStrategyVersion(event.target.value)}>{versions.map((version) => <option key={version}>{version}</option>)}</select></label>
+        <label className="field span-2"><span>初始资金 USDC</span><input value={initialCash} disabled={busy || running} onChange={(event) => setInitialCash(event.target.value)} /></label>
+        <label className="field span-2"><span>最大仓位 USDC</span><input value={maximumPosition} disabled={busy || running} onChange={(event) => setMaximumPosition(event.target.value)} /></label>
+        <label className="field span-2"><span>最低净优势</span><input value={minimumNetEdge} disabled={busy || running} onChange={(event) => setMinimumNetEdge(event.target.value)} /></label>
+      </div>
+      <div className="toolbar"><button className="button button--primary" disabled={busy || running || commands === null || strategyVersion === ""} onClick={startRunner}>启动自动 Paper</button><Badge tone={running ? "good" : "warn"}>{running ? "运行中" : "已停止"}</Badge><span>{notice}</span></div>
+    </Panel>
+    <div className="metrics-grid live-metrics">
+      <MetricCard label="模型概率" value={String(decision?.details.probabilityUp ?? "—")} />
+      <MetricCard label="净优势" value={String(decision?.details.netEdge ?? decision?.details.edge ?? "—")} />
+      <MetricCard label="目标仓位" value={String(decision?.details.targetPositionQuantity ?? "0")} />
+      <MetricCard label="风控结果" value={String(decision?.details.riskStatus ?? decision?.details.reason ?? (waitingForNextMarket ? "等待下一市场" : "等待决策"))} />
+      <MetricCard label="Paper 现金" value={detail?.session.cash ?? "—"} />
+      <MetricCard label="估值 PnL" value={pnl} tone={pnl !== "—" && Number(pnl) >= 0 ? "positive" : "negative"} />
+    </div>
+    <div className="split-grid">
+      <Panel title="当前决策" english="Decision → Risk → Fill"><div className="inspector"><Badge tone={decision?.details.action === "INTENT" ? "good" : "info"}>{String(decision?.details.action ?? "NO_TRADE")}</Badge><h3>{String(decision?.details.reason ?? (waitingForNextMarket ? "当前市场已开始，自动等待下一个完整 5 分钟市场" : "等待标准化市场输入"))}</h3><dl><dt>概率</dt><dd>{String(decision?.details.probabilityUp ?? "—")}</dd><dt>净优势</dt><dd>{String(decision?.details.netEdge ?? decision?.details.edge ?? "—")}</dd><dt>最大可接受价格</dt><dd>{String(decision?.details.maximumFillPrice ?? "—")}</dd><dt>风险批准数量</dt><dd>{String(decision?.details.riskApprovedQuantity ?? "0")}</dd></dl></div></Panel>
+      <Panel title="订单、成交与持仓" english="Authoritative Paper Ledger">{detail === null ? <EmptyState title="等待 Runner 建立账本" detail="启动后会自动建立内部会话。" /> : <div className="validation-list"><span>订单 <b>{detail.orders.length}</b></span><span>成交 <b>{detail.fills.length}</b></span><span>持仓 <b>{detail.positions.length}</b></span><span>结算 <b>{detail.settlements.length}</b></span></div>}</Panel>
+    </div>
+    <details className="panel"><summary>开发者诊断</summary><div className="validation-list"><span>当前市场 <b>{market?.market?.slug ?? "尚未发现"}</b></span><span>行情状态 <b>{market?.status ?? "STOPPED"}</b></span><span>内部会话 <b>{detail?.session.sessionId ?? "未创建"}</b></span><span>Journal 记录 <b>{runtime?.planner.journalRecordCount ?? 0}</b></span><span>Outbox 链接 <b>{runtime?.executionLinks.length ?? 0}</b></span><span>LIVE_TRADING_ENABLED <b>false</b></span></div></details>
+  </>;
+}
 
-  async function toggleKillSwitch() {
-    if (commands === null || control === null) return;
-    await run(
-      () =>
-        commands.setPaperKillSwitch(
-          !control.killSwitchEnabled,
-          control.killSwitchEnabled
-            ? "OPERATOR_RESUME_FROM_WORKBENCH"
-            : "OPERATOR_EMERGENCY_STOP_FROM_WORKBENCH",
-        ),
-      control.killSwitchEnabled
-        ? "Kill Switch 已解除。"
-        : "Kill Switch 已启用。",
-    );
-  }
-
-  function start() {
-    if (commands === null) return;
-    const normalizedSessionId = sessionId.trim();
-    if (
-      normalizedSessionId === "" ||
-      !/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(initialCash) ||
-      Number(initialCash) <= 0
-    ) {
-      setPaperError("会话 ID 和正数初始资金为必填项；未启动任何会话。");
-      return;
-    }
-    void run(
-      () =>
-        commands.startPaperSession({
-          schemaVersion: "paper-session-start-v1",
-          sessionId: normalizedSessionId,
-          initialCash,
-          risk: DEFAULT_RISK,
-          startedAtUtc: new Date().toISOString(),
-        }),
-      "Paper 会话已由后端启动。",
-    );
-  }
-
-  const disabled = commands === null || busy;
-  function startHost() {
-    if (commands === null) return;
-    const slug = marketSlug.trim();
-    if (!/^btc-updown-5m-[0-9]+$/u.test(slug) || !networkApproval) {
-      setPaperError(
-        "必须填写精确 BTC 五分钟 slug，并明确批准本次公开行情联网采集；尚未启动。",
-      );
-      return;
-    }
-    void run(
-      () =>
-        commands
-          .startPublicPaperMarketHost(slug, true)
-          .then((value) => setHost(value)),
-      "公开只读行情 host 已启动。",
-    );
-  }
-  function loadDetail(id: string) {
-    if (commands === null) return;
-    void run(async () => {
-      setDetail(await commands.getPaperSessionDetail(id));
-    }, `会话 ${id} 账本已刷新。`);
-  }
-  function feeEvidence(marketId: string) {
-    const market = marketRuntime?.market;
-    if (market === null || market === undefined || market.marketId !== marketId)
-      return null;
-    return market.feeEvidence;
-  }
-  function submitOrder() {
-    if (commands === null || detail === null) return;
-    const marketId = orderMarketId.trim(),
-      fee = feeEvidence(marketId);
-    if (fee === null) {
-      setPaperError("当前市场没有后端费用证据，Paper 下单已拒绝。");
-      return;
-    }
-    const expiry = timeInForce === "GTD" ? expiresAtUtc.trim() : null;
-    if (
-      timeInForce === "GTD" &&
-      (expiry === null || expiry === "" || Number.isNaN(Date.parse(expiry)))
-    ) {
-      setPaperError("GTD 必须提供有效 UTC 到期时间。");
-      return;
-    }
-    const ordinal = `${Date.now()}`;
-    void run(async () => {
-      const order = await commands.submitPaperOrder(detail.session.sessionId, {
-        schemaVersion: "paper-order-request-v2",
-        idempotencyKey: `ui-${ordinal}`,
-        clientOrderId: `ui-${ordinal}`,
-        marketId,
-        token: orderToken,
-        limitPrice: orderPrice,
-        quantity: orderQuantity,
-        timeInForce,
-        expiresAtUtc: expiry,
-        modelProbabilityYes,
-        feeEvidence: fee,
-      });
-      setDetail(await commands.getPaperSessionDetail(detail.session.sessionId));
-      return order.status === "REJECTED"
-        ? `订单被风控拒绝：${order.rejectionReason ?? "未提供原因"}`
-        : `Paper 订单状态：${order.status}`;
-    }, "Paper 订单已提交后端模拟执行。");
-  }
-  function repriceOrder(order: PaperSessionDetailV1["orders"][number]) {
-    if (commands === null || detail === null) return;
-    const fee = feeEvidence(order.marketId);
-    if (fee === null) {
-      setPaperError("当前市场没有后端费用证据，Paper 改价已拒绝。");
-      return;
-    }
-    const ordinal = `${Date.now()}`;
-    void run(async () => {
-      const replacement: Parameters<WorkbenchCommands["repricePaperOrder"]>[2] =
-        {
-          schemaVersion: "paper-order-request-v2",
-          idempotencyKey: `ui-reprice-${ordinal}`,
-          clientOrderId: `ui-reprice-${ordinal}`,
-          marketId: order.marketId,
-          token: order.token,
-          limitPrice: orderPrice,
-          quantity: order.remainingQuantity,
-          timeInForce: order.timeInForce,
-          expiresAtUtc: order.expiresAtUtc,
-          modelProbabilityYes,
-          feeEvidence: fee,
-        };
-      const next = await commands.repricePaperOrder(
-        detail.session.sessionId,
-        order.orderId,
-        replacement,
-      );
-      setDetail(await commands.getPaperSessionDetail(detail.session.sessionId));
-      return next.status === "REJECTED"
-        ? `改价被风控拒绝：${next.rejectionReason ?? "未提供原因"}`
-        : `订单 ${order.orderId} 已改价为 ${orderPrice}。`;
-    }, `订单 ${order.orderId} 已改价。`);
-  }
-  return (
-    <>
-      <PageHeader
-        title="实时驾驶舱（Live Cockpit）"
-        subtitle="只展示后端 Paper 会话状态；未获批准或行情主机不可用时安全关闭，不以历史或预览数据冒充实时行情。"
-        action={
-          <button
-            className="button"
-            disabled={disabled || control === null}
-            onClick={() => void toggleKillSwitch()}
-          >
-            {control?.killSwitchEnabled === true
-              ? "解除 Kill Switch"
-              : "启用 Kill Switch"}
-          </button>
-        }
-      />
-      <Panel title="Paper 系统控制" english="Paper Safety Control">
-        {control === null ? (
-          <EmptyState
-            title="Paper 控制状态不可用"
-            detail={paperError ?? "正在等待后端状态。"}
-          />
-        ) : (
-          <div className="validation-list">
-            <span>
-              Kill Switch{" "}
-              <b
-                className={control.killSwitchEnabled ? "negative" : "positive"}
-              >
-                {control.killSwitchEnabled ? "已启用" : "未启用"}
-              </b>
-            </span>
-            <span>
-              最后原因 <b>{control.reason}</b>
-            </span>
-            <span>
-              更新时间 <b>{control.updatedAtUtc}</b>
-            </span>
-            <span>
-              真实交易路径 <b className="positive">不存在</b>
-            </span>
-          </div>
-        )}
-      </Panel>
-      <Panel title="公开行情宿主" english="Public Market Host">
-        <div className="validation-list">
-          <span>
-            生命周期 <b>{host?.lifecycle ?? "UNAVAILABLE"}</b>
-          </span>
-          <span>
-            连接 <b>{host?.connection ?? "UNAVAILABLE"}</b>
-          </span>
-          <span>
-            可用快照 <b>{host?.ready === true ? "READY" : "NOT READY"}</b>
-          </span>
-          <span>
-            快照 / 缺口 / 错误{" "}
-            <b>
-              {host === null
-                ? "—"
-                : `${host.snapshotCount} / ${host.gapCount} / ${host.errorCount}`}
-            </b>
-          </span>
-        </div>
-        <div className="form-grid">
-          <label>
-            BTC 五分钟市场 slug
-            <input
-              aria-label="BTC 五分钟市场 slug"
-              value={marketSlug}
-              onChange={(event) => setMarketSlug(event.target.value)}
-              placeholder="btc-updown-5m-<epoch>"
-              disabled={disabled || host?.lifecycle === "RUNNING"}
-            />
-          </label>
-          <label>
-            <input
-              aria-label="批准公开行情联网采集"
-              type="checkbox"
-              checked={networkApproval}
-              onChange={(event) => setNetworkApproval(event.target.checked)}
-              disabled={disabled || host?.lifecycle === "RUNNING"}
-            />{" "}
-            我明确批准本次 Gamma/CLOB 公开行情采集
-          </label>
-        </div>
-        <div className="toolbar">
-          <button
-            className="button button--primary"
-            disabled={disabled || host?.lifecycle === "RUNNING"}
-            onClick={startHost}
-          >
-            启动公开行情 host
-          </button>
-          <button
-            className="button"
-            disabled={disabled || host?.lifecycle !== "RUNNING"}
-            onClick={() =>
-              void run(
-                () =>
-                  commands!
-                    .stopPublicPaperMarketHost()
-                    .then((value) => setHost(value)),
-                "公开行情 host 已停止。",
-              )
-            }
-          >
-            停止公开行情 host
-          </button>
-        </div>
-        <small>
-          只连接无认证 Gamma/CLOB market
-          数据；不连接用户频道、钱包、签名或真实订单。
-        </small>
-      </Panel>
-      <Panel title="实时公开盘口与信号" english="Public Market Runtime">
-        {marketRuntime?.market === null || marketRuntime === null ? (
-          <EmptyState
-            title="实时盘口不可用"
-            detail="后端尚未形成同时新鲜的 Polymarket 盘口与 Binance 信号；不会使用预览价格。"
-          />
-        ) : (
-          <>
-            <div className="validation-list">
-              <span>
-                状态 <b>{marketRuntime.status}</b>
-              </span>
-              <span>
-                市场 <b>{marketRuntime.market.slug}</b>
-              </span>
-              <span>
-                Binance 价格 <b>{marketRuntime.market.signal.price}</b>
-              </span>
-              <span>
-                盘口 / 信号年龄{" "}
-                <b>
-                  {marketRuntime.market.bookAgeMs ?? "不可用"} /{" "}
-                  {marketRuntime.market.signalAgeMs ?? "不可用"} ms
-                </b>
-              </span>
-              <span>
-                连续性{" "}
-                <b className="amber">{marketRuntime.market.continuity}</b>
-              </span>
-              <span>
-                决策时间 <b>{marketRuntime.market.decisionTime}</b>
-              </span>
-            </div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>方向</th>
-                  <th>Token</th>
-                  <th>买一 / 数量</th>
-                  <th>卖一 / 数量</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>YES / UP</td>
-                  <td>{marketRuntime.market.up.tokenId}</td>
-                  <td>
-                    {marketRuntime.market.up.bid} /{" "}
-                    {marketRuntime.market.up.bidSize}
-                  </td>
-                  <td>
-                    {marketRuntime.market.up.ask} /{" "}
-                    {marketRuntime.market.up.askSize}
-                  </td>
-                </tr>
-                <tr>
-                  <td>NO / DOWN</td>
-                  <td>{marketRuntime.market.down.tokenId}</td>
-                  <td>
-                    {marketRuntime.market.down.bid} /{" "}
-                    {marketRuntime.market.down.bidSize}
-                  </td>
-                  <td>
-                    {marketRuntime.market.down.ask} /{" "}
-                    {marketRuntime.market.down.askSize}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </>
-        )}
-      </Panel>
-      <Panel title="K/J 策略运行时" english="K/J Paper Strategy Runtime">
-        <p className="panel-note">
-          权威资金、订单和成交只来自独立的 J/K canonical Paper session。旧 K/J
-          wallet 与 FILL 保留为 non-authoritative 研究影子，不会计入余额或 PnL。
-        </p>
-        {strategyRuntime === null ? (
-          <EmptyState
-            title="K/J 运行时不可用"
-            detail="尚未收到通过严格契约校验的后端策略运行时数据。"
-          />
-        ) : (
-          <>
-            <div className="validation-list">
-              <span>
-                状态 <b>{strategyRuntime.status}</b>
-              </span>
-              <span>
-                执行权威 <b>{strategyRuntime.executionAuthority}</b>
-              </span>
-              <span>
-                规划引擎 <b>{strategyRuntime.planner.engineVersion}</b>
-              </span>
-              <span>
-                日志 / 恢复输入{" "}
-                <b>
-                  {strategyRuntime.planner.journalRecordCount} /{" "}
-                  {strategyRuntime.planner.recoveredInputCount}
-                </b>
-              </span>
-              <span>
-                错误 <b>{strategyRuntime.planner.error ?? "无"}</b>
-              </span>
-            </div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>策略</th>
-                  <th>Canonical 会话</th>
-                  <th>状态</th>
-                  <th>权威现金</th>
-                  <th>成交</th>
-                </tr>
-              </thead>
-              <tbody>
-                {strategyRuntime.canonicalAccounts.map((account) => (
-                  <tr key={account.strategy}>
-                    <td>{account.strategy}</td>
-                    <td>{account.session.sessionId}</td>
-                    <td>{account.session.status}</td>
-                    <td>{account.session.cash}</td>
-                    <td>{account.session.fillCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="validation-list">
-              <span>
-                协调 links <b>{strategyRuntime.executionLinks.length}</b>
-              </span>
-              <span>
-                已提交{" "}
-                <b>
-                  {
-                    strategyRuntime.executionLinks.filter(
-                      (link) => link.state === "SUBMITTED",
-                    ).length
-                  }
-                </b>
-              </span>
-              <span>
-                影子权威性{" "}
-                <b className="amber">
-                  {strategyRuntime.shadow.nonAuthoritative
-                    ? "NON-AUTHORITATIVE"
-                    : "INVALID"}
-                </b>
-              </span>
-            </div>
-            {strategyRuntime.shadow.snapshot === null ? (
-              <EmptyState
-                title="尚无 K/J 影子快照"
-                detail="后端运行时尚未生成真实策略输入；页面不使用演示快照。"
-              />
-            ) : (
-              <div className="validation-list">
-                <span>
-                  影子 J 现金{" "}
-                  <b>
-                    {strategyRuntime.shadow.snapshot.wallets.J_FEE_AWARE.cash}
-                  </b>
-                </span>
-                <span>
-                  影子 K 现金{" "}
-                  <b>
-                    {strategyRuntime.shadow.snapshot.wallets.K_DUAL_VOL.cash}
-                  </b>
-                </span>
-                <span>
-                  影子事件 <b>{strategyRuntime.shadow.snapshot.eventCount}</b>
-                </span>
-              </div>
-            )}
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>时间</th>
-                  <th>影子事件</th>
-                  <th>策略</th>
-                  <th>市场</th>
-                  <th>详情</th>
-                </tr>
-              </thead>
-              <tbody>
-                {strategyRuntime.shadow.events
-                  .slice(-20)
-                  .reverse()
-                  .map((event) => (
-                    <tr key={event.eventId}>
-                      <td>{event.eventTime}</td>
-                      <td>{event.eventType}</td>
-                      <td>{event.strategy ?? "SYSTEM"}</td>
-                      <td>{event.marketId}</td>
-                      <td>
-                        {Object.entries(event.details)
-                          .map(([key, value]) => `${key}=${String(value)}`)
-                          .join(" · ") || "—"}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </>
-        )}
-      </Panel>
-      <Panel title="启动实时模拟" english="Start Live Paper Session">
-        <div className="form-grid">
-          <label>
-            会话 ID
-            <input
-              aria-label="Paper 会话 ID"
-              value={sessionId}
-              onChange={(event) => setSessionId(event.target.value)}
-              placeholder="例如 btc-paper-001"
-              disabled={disabled}
-            />
-          </label>
-          <label>
-            初始资金（USDC）
-            <input
-              aria-label="Paper 初始资金"
-              value={initialCash}
-              onChange={(event) => setInitialCash(event.target.value)}
-              inputMode="decimal"
-              disabled={disabled}
-            />
-          </label>
-        </div>
-        <div className="toolbar">
-          <button
-            className="button button--primary"
-            disabled={disabled || control?.killSwitchEnabled === true}
-            onClick={start}
-          >
-            启动 Paper 会话
-          </button>
-          <button
-            className="button"
-            disabled={disabled}
-            onClick={() => void run(refresh, "状态已刷新。")}
-          >
-            刷新状态
-          </button>
-        </div>
-        <p
-          className={paperError?.includes("已") ? "positive" : "negative"}
-          role="status"
-        >
-          {paperError ??
-            "启动命令只请求后端连接已批准的公共行情主机；前端不会直接联网或访问数据库。"}
-        </p>
-      </Panel>
-      <Panel title="实时模拟会话" english="Live Paper Sessions">
-        {sessions.length === 0 ? (
-          <EmptyState
-            title="实时快照不可用"
-            detail="没有运行中的后端 Paper 会话。若公共行情采集尚未获批准或行情主机离线，启动请求会被后端拒绝。"
-          />
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>会话</th>
-                <th>适配器</th>
-                <th>状态</th>
-                <th>现金</th>
-                <th>挂单</th>
-                <th>成交</th>
-                <th>控制</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.map((session) => (
-                <tr key={session.sessionId}>
-                  <td>{session.sessionId}</td>
-                  <td>{session.adapterId}</td>
-                  <td>{session.status}</td>
-                  <td>{session.cash}</td>
-                  <td>{session.openOrderCount}</td>
-                  <td>{session.fillCount}</td>
-                  <td>
-                    <div className="toolbar">
-                      <button
-                        className="button"
-                        disabled={disabled || session.status !== "RUNNING"}
-                        onClick={() =>
-                          void run(
-                            () => commands!.stopPaperSession(session.sessionId),
-                            `会话 ${session.sessionId} 已停止。`,
-                          )
-                        }
-                      >
-                        停止
-                      </button>
-                      <button
-                        className="button"
-                        disabled={
-                          disabled ||
-                          session.status !== "STOPPED" ||
-                          control?.killSwitchEnabled === true
-                        }
-                        onClick={() =>
-                          void run(
-                            () =>
-                              commands!.resumePaperSession(session.sessionId),
-                            `会话 ${session.sessionId} 已恢复。`,
-                          )
-                        }
-                      >
-                        恢复
-                      </button>
-                      <button
-                        className="button"
-                        disabled={disabled}
-                        onClick={() => loadDetail(session.sessionId)}
-                      >
-                        账本
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Panel>
-      <Panel title="Paper 模拟订单与账本" english="Paper Orders & Ledger">
-        {detail === null ? (
-          <EmptyState
-            title="尚未选择 Paper 会话"
-            detail="从上方会话表点击“账本”；所有订单、成交、仓位和结算均由后端返回。"
-          />
-        ) : (
-          <>
-            <div className="form-grid">
-              <label>
-                市场 ID
-                <input
-                  aria-label="Paper 市场 ID"
-                  value={orderMarketId}
-                  onChange={(event) => setOrderMarketId(event.target.value)}
-                />
-              </label>
-              <label>
-                方向 / 手动结算胜方
-                <select
-                  aria-label="Paper 方向"
-                  value={orderToken}
-                  onChange={(event) =>
-                    setOrderToken(event.target.value as "YES" | "NO")
-                  }
-                >
-                  <option>YES</option>
-                  <option>NO</option>
-                </select>
-              </label>
-              <label>
-                限价 / 改价目标
-                <input
-                  aria-label="Paper 限价"
-                  value={orderPrice}
-                  onChange={(event) => setOrderPrice(event.target.value)}
-                />
-              </label>
-              <label>
-                数量
-                <input
-                  aria-label="Paper 数量"
-                  value={orderQuantity}
-                  onChange={(event) => setOrderQuantity(event.target.value)}
-                />
-              </label>
-              <label>
-                模型 YES 概率
-                <input
-                  aria-label="模型 YES 概率"
-                  value={modelProbabilityYes}
-                  onChange={(event) =>
-                    setModelProbabilityYes(event.target.value)
-                  }
-                />
-              </label>
-              <label>
-                后端手续费证据
-                <input
-                  aria-label="后端手续费证据"
-                  value={feeEvidence(orderMarketId.trim())?.rate ?? "不可用"}
-                  readOnly
-                />
-              </label>
-              <label>
-                有效期
-                <select
-                  aria-label="Paper 有效期"
-                  value={timeInForce}
-                  onChange={(event) =>
-                    setTimeInForce(
-                      event.target.value as "GTC" | "GTD" | "FAK" | "FOK",
-                    )
-                  }
-                >
-                  <option>GTC</option>
-                  <option>GTD</option>
-                  <option>FAK</option>
-                  <option>FOK</option>
-                </select>
-              </label>
-              {timeInForce === "GTD" ? (
-                <label>
-                  到期时间（UTC ISO）
-                  <input
-                    aria-label="Paper 到期时间"
-                    value={expiresAtUtc}
-                    onChange={(event) => setExpiresAtUtc(event.target.value)}
-                    placeholder="2026-07-22T12:00:00.000Z"
-                  />
-                </label>
-              ) : null}
-            </div>
-            <div className="toolbar">
-              <button
-                className="button button--primary"
-                disabled={
-                  disabled ||
-                  control?.killSwitchEnabled === true ||
-                  orderMarketId.trim() === "" ||
-                  feeEvidence(orderMarketId.trim()) === null
-                }
-                onClick={submitOrder}
-              >
-                创建 Paper 订单
-              </button>
-              <button
-                className="button"
-                disabled={disabled}
-                onClick={() =>
-                  void run(async () => {
-                    const expired = await commands!.expirePaperOrders(
-                      detail.session.sessionId,
-                    );
-                    setDetail(
-                      await commands!.getPaperSessionDetail(
-                        detail.session.sessionId,
-                      ),
-                    );
-                    return `过期检查完成：${expired.length} 个订单已过期。`;
-                  }, "订单过期检查已完成。")
-                }
-              >
-                检查过期订单
-              </button>
-              <button
-                className="button"
-                disabled={disabled || orderMarketId.trim() === ""}
-                onClick={() =>
-                  void run(async () => {
-                    const settlement = await commands!.settlePaperMarket(
-                      detail.session.sessionId,
-                      orderMarketId.trim(),
-                      orderToken,
-                      "MANUAL_PAPER_TEST",
-                    );
-                    setDetail(
-                      await commands!.getPaperSessionDetail(
-                        detail.session.sessionId,
-                      ),
-                    );
-                    return `市场 ${settlement.marketId} 已按 ${settlement.winningToken} 手动模拟结算，派彩 ${settlement.payout}。`;
-                  }, "手动模拟结算已完成。")
-                }
-              >
-                手动模拟结算
-              </button>
-            </div>
-            <small>
-              创建和改价使用当前市场的 V2 后端手续费证据；GTD
-              到期时间由后端校验。手动结算只允许 MANUAL_PAPER_TEST，不会触发真实市场结算。
-            </small>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>订单</th>
-                  <th>市场</th>
-                  <th>方向</th>
-                  <th>限价 / 数量</th>
-                  <th>成交</th>
-                  <th>状态</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.orders.map((order) => (
-                  <tr key={order.orderId}>
-                    <td>{order.orderId}</td>
-                    <td>{order.marketId}</td>
-                    <td>{order.token}</td>
-                    <td>
-                      {order.limitPrice} / {order.quantity}
-                    </td>
-                    <td>{order.filledQuantity}</td>
-                    <td>
-                      {order.status}
-                      {order.rejectionReason === null
-                        ? ""
-                        : ` · ${order.rejectionReason}`}
-                    </td>
-                    <td>
-                      <div className="toolbar">
-                        <button
-                          className="button"
-                          disabled={
-                            disabled ||
-                            !(
-                              order.status === "OPEN" ||
-                              order.status === "PARTIALLY_FILLED"
-                            ) ||
-                            feeEvidence(order.marketId) === null
-                          }
-                          onClick={() => repriceOrder(order)}
-                        >
-                          改价
-                        </button>
-                        <button
-                          className="button"
-                          disabled={
-                            disabled ||
-                            !(
-                              order.status === "OPEN" ||
-                              order.status === "PARTIALLY_FILLED"
-                            )
-                          }
-                          onClick={() =>
-                            void run(async () => {
-                              await commands!.cancelPaperOrder(
-                                detail.session.sessionId,
-                                order.orderId,
-                                "OPERATOR_CANCEL_FROM_WORKBENCH",
-                              );
-                              setDetail(
-                                await commands!.getPaperSessionDetail(
-                                  detail.session.sessionId,
-                                ),
-                              );
-                            }, `订单 ${order.orderId} 已撤销。`)
-                          }
-                        >
-                          撤单
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="validation-list">
-              <span>
-                成交 <b>{detail.fills.length}</b>
-              </span>
-              <span>
-                仓位 <b>{detail.positions.length}</b>
-              </span>
-              <span>
-                结算 <b>{detail.settlements.length}</b>
-              </span>
-              <span>
-                审计事件 <b>{detail.events.length}</b>
-              </span>
-            </div>
-          </>
-        )}
-      </Panel>
-    </>
-  );
+function StrategyDecisionExplanation({
+  events,
+}: {
+  events: PaperStrategyRuntimeV1["shadow"]["events"];
+}) {
+  const event = [...events]
+    .reverse()
+    .find((item) => item.eventType === "DECISION" && item.strategy !== null && item.details.riskStatus !== undefined);
+  if (event === undefined) return <EmptyState title="尚无可解释的动态策略判断" detail="等待后端策略生成包含概率、净优势、目标仓位和风控结果的真实事件；页面不会用示例数字补齐。" />;
+  const details = event.details;
+  const approved = details.riskStatus === "APPROVED" ? "批准" : details.riskStatus === "REDUCED" ? "已缩小" : "拒绝";
+  return <section className="strategy-explanation" aria-label="最近动态策略判断">
+    <header><div><strong>最近策略判断</strong><span>{event.strategy} · {event.eventTime}</span></div><Badge tone={details.riskStatus === "APPROVED" ? "good" : details.riskStatus === "REDUCED" ? "warn" : "bad"}>风控{approved}</Badge></header>
+    <p>{details.reason ?? details.riskReasonCodes ?? "后端未记录判断原因"}</p>
+    <div className="validation-list">
+      <span>模型概率 <b>{details.probabilityUp ?? "未记录"}</b></span>
+      <span>扣费后净优势 <b>{details.netEdge ?? "未记录"}</b></span>
+      <span>可执行价格 <b>{details.estimatedAveragePrice ?? details.decisionAsk ?? "未记录"}</b></span>
+      <span>预估手续费 <b>{details.estimatedFee ?? "未记录"}</b></span>
+      <span>目标总仓位 <b>{details.targetPositionQuantity ?? "未记录"}</b></span>
+      <span>已有 / 在途仓位 <b>{details.currentPositionQuantity ?? "0"} / {details.openOrderQuantity ?? "0"}</b></span>
+      <span>本次获准数量 <b>{details.riskApprovedQuantity ?? "0"}</b></span>
+      <span>风控原因 <b>{details.riskReasonCodes ?? details.reason ?? "未记录"}</b></span>
+    </div>
+    <small>价格为当前最佳可执行卖一价；当前输入仅包含可见一档深度，未观察到多档时不会伪称 VWAP。</small>
+  </section>;
 }
 
 function message(error: unknown, fallback: string): string {

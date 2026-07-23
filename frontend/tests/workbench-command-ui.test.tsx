@@ -100,6 +100,11 @@ function commands(): WorkbenchCommands {
       checkedAtUtc: "1970-01-01T00:00:00.000Z",
       market: null,
     })),
+    startPaperRunner: vi.fn(async () => ({
+      ...hostStatus,
+      lifecycle: "RUNNING" as const,
+      connection: "CONNECTED" as const,
+    })),
     startPublicPaperMarketHost: vi.fn(async () => ({
       ...hostStatus,
       lifecycle: "RUNNING" as const,
@@ -165,14 +170,15 @@ function commands(): WorkbenchCommands {
     })),
     listStrategyDefinitions: vi.fn(async () => [
       {
-        strategyId: "k-edge",
-        displayName: "K Edge",
+        strategyId: "J_FEE_AWARE",
+        displayName: "费用感知概率策略（J）",
         runtime: "python" as const,
         allowedModes: ["backtest", "paper"] as const,
         parameters: {
           threshold: {
             type: "number" as const,
             required: true,
+            defaultValue: 0.25,
             minimum: 0,
             maximum: 1,
           },
@@ -355,16 +361,36 @@ describe("workbench command interactions", () => {
         .getByRole("navigation", { name: "主导航" })
         .querySelectorAll("button")[3]!,
     );
-    await screen.findByDisplayValue("K Edge · k-edge");
+    await screen.findByDisplayValue("费用感知概率策略（J）");
+    expect(screen.getByLabelText("版本")).toHaveValue("1.0.1");
+    expect(screen.getByLabelText("参数 threshold")).toHaveValue(0.25);
     await user.click(screen.getByRole("button", { name: "验证参数" }));
-    expect(client.validateStrategyParameters).toHaveBeenCalledWith("k-edge", {
-      threshold: 0,
+    expect(client.validateStrategyParameters).toHaveBeenCalledWith("J_FEE_AWARE", {
+      threshold: 0.25,
     });
     await user.click(screen.getByRole("button", { name: "保存版本" }));
     expect(client.saveStrategyVersion).toHaveBeenCalled();
     expect(
       await screen.findByText(/已由后端保存不可变版本/),
     ).toBeInTheDocument();
+  });
+
+  it("shows backend-owned research warnings without blocking a strategy version", async () => {
+    const client = commands();
+    vi.mocked(client.validateStrategyParameters).mockResolvedValue({
+      schemaVersion: "strategy-validation-v1",
+      valid: true,
+      errors: [],
+      warnings: [{ code: "NARROW_EDGE_WINDOW", severity: "warning", message: "可交易优势区间很窄" }],
+    });
+    const user = userEvent.setup();
+    render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
+    await user.click(screen.getByRole("navigation", { name: "主导航" }).querySelectorAll("button")[3]!);
+    await screen.findByDisplayValue("费用感知概率策略（J）");
+    await user.click(screen.getByRole("button", { name: "验证参数" }));
+    expect(await screen.findByLabelText("研究告警")).toHaveTextContent("可交易优势区间很窄");
+    await user.click(screen.getByRole("button", { name: "保存版本" }));
+    expect(client.saveStrategyVersion).toHaveBeenCalled();
   });
 
   it("reloads an immutable strategy version through the backend command client", async () => {
@@ -377,10 +403,12 @@ describe("workbench command interactions", () => {
         .querySelectorAll("button")[3]!,
     );
     await screen.findByRole("option", { name: "1.0.0" });
-    await user.click(screen.getByRole("button", { name: "版本操作" }));
-    expect(client.getStrategyVersion).toHaveBeenCalledWith("k-edge", "1.0.0");
+    await user.click(screen.getByRole("button", { name: "加载版本" }));
+    expect(client.getStrategyVersion).toHaveBeenCalledWith("J_FEE_AWARE", "1.0.0");
     expect(await screen.findByDisplayValue("后端保存版本")).toBeInTheDocument();
     expect(screen.getByLabelText("参数 threshold")).toHaveValue(0.4);
+    expect(screen.getByLabelText("版本")).toHaveValue("1.0.1");
+    expect(screen.getByLabelText("当前策略摘要")).toHaveTextContent("2026");
   });
 
   it("renders backend allowed modes and never invents Paper eligibility for L V2", async () => {
@@ -407,12 +435,32 @@ describe("workbench command interactions", () => {
     expect((modes as HTMLInputElement).value).not.toContain("paper");
   });
 
+  it("keeps frozen baselines and failed L V1 out of the editable strategy selector", async () => {
+    const client = commands();
+    vi.mocked(client.listStrategyDefinitions).mockResolvedValue([
+      { strategyId: "B0_NO_TRADE", displayName: "永不交易基线（B0）", summary: "冻结对照", researchStatus: "RESEARCH_ONLY", runtime: "python", allowedModes: [], parameters: {} },
+      { strategyId: "J_FEE_AWARE", displayName: "费用感知概率策略（J）", researchStatus: "PAPER_READY", runtime: "python", allowedModes: ["backtest", "paper"], parameters: { threshold: { type: "number", required: true, defaultValue: 0.25 } } },
+      { strategyId: "L_ADAPTIVE_EXECUTION_V1", displayName: "自适应执行（L V1 · 历史门失败）", summary: "保留用于审计，不能运行。", researchStatus: "RESEARCH_GATE_FAILED", runtime: "python", allowedModes: [], parameters: {} },
+    ]);
+    const user = userEvent.setup();
+    render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
+    await user.click(screen.getByRole("navigation", { name: "主导航" }).querySelectorAll("button")[3]!);
+    const selector = await screen.findByLabelText("策略 ID");
+    expect(selector).toHaveValue("J_FEE_AWARE");
+    expect(selector.querySelector('option[value="B0_NO_TRADE"]')).toBeNull();
+    expect(selector.querySelector('option[value="L_ADAPTIVE_EXECUTION_V1"]')).toBeNull();
+    expect(screen.queryByText("研究对照基线（B0–B3）")).not.toBeInTheDocument();
+    expect(screen.getByText("历史门失败策略（只读审计）")).toBeInTheDocument();
+    expect(screen.getByText("保留用于审计，不能运行。")).toBeInTheDocument();
+  });
+
   it("scans, inspects and validates a dataset only through backend commands", async () => {
     const client = commands();
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
     await user.click(screen.getByRole("button", { name: /数据集管理/ }));
-    await screen.findByText("btc");
+    await screen.findByRole("heading", { name: "Btc" });
+    expect(screen.getByText("生成时间").parentElement).toHaveTextContent("未记录");
     await user.click(screen.getByRole("button", { name: "重新扫描" }));
     expect(client.scanDatasets).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "详情与校验" }));
@@ -469,12 +517,33 @@ describe("workbench command interactions", () => {
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
     await user.click(screen.getByRole("button", { name: /回测实验室/ }));
+    expect(screen.getByLabelText("回测数据分组")).toHaveValue("VALIDATION");
     await user.click(screen.getByRole("button", { name: "运行回测" }));
-    expect(client.startBacktest).toHaveBeenCalled();
+    expect(client.startBacktest).toHaveBeenCalledWith(
+      expect.objectContaining({ evaluationSplit: "VALIDATION", displayName: expect.stringContaining("验证"), description: expect.any(String) }),
+    );
     expect(await screen.findByText(/后端已接受任务 bt-1/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "刷新状态" }));
     expect(client.getBacktestJob).toHaveBeenCalledWith("bt-1");
     expect(await screen.findByText(/running · 50%/)).toBeInTheDocument();
+  });
+
+  it("regenerates automatic backtest names after the selected strategy changes", async () => {
+    const client = commands();
+    vi.mocked(client.listStrategyDefinitions).mockResolvedValue([
+      { strategyId: "J_FEE_AWARE", displayName: "费用感知概率策略（J）", runtime: "python", allowedModes: ["backtest", "paper"], parameters: {} },
+      { strategyId: "K_DUAL_VOL", displayName: "双波动率概率策略（K）", runtime: "python", allowedModes: ["backtest", "paper"], parameters: {} },
+    ]);
+    const user = userEvent.setup();
+    render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
+    await user.click(screen.getByRole("button", { name: /回测实验室/ }));
+    await screen.findByDisplayValue("费用感知概率策略（J）");
+    await user.click(screen.getByRole("button", { name: "运行回测" }));
+    await user.selectOptions(screen.getByLabelText("回测策略"), "K_DUAL_VOL");
+    await user.click(screen.getByRole("button", { name: "运行回测" }));
+    const calls = vi.mocked(client.startBacktest).mock.calls;
+    expect(calls[0]?.[0].displayName).toContain("费用感知概率策略（J）");
+    expect(calls[1]?.[0].displayName).toContain("双波动率概率策略（K）");
   });
 
   it("shows and submits only the verified one-second execution latency", async () => {
@@ -514,350 +583,25 @@ describe("workbench command interactions", () => {
     expect(screen.getByText(/命令桥接不可用/)).toBeInTheDocument();
   });
 
-  it("requests a Paper session through the backend and shows fail-closed rejection", async () => {
+  it("starts one automatic Paper Runner without exposing internal orchestration", async () => {
     const client = commands();
-    vi.mocked(client.startPaperSession).mockRejectedValueOnce(
-      new Error("public market host is unavailable; collection does not start"),
-    );
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
     await user.click(screen.getByRole("button", { name: /实时驾驶舱/ }));
-    await user.type(
-      await screen.findByLabelText("Paper 会话 ID"),
-      "btc-paper-1",
-    );
-    await user.click(screen.getByRole("button", { name: "启动 Paper 会话" }));
-    expect(client.startPaperSession).toHaveBeenCalledWith(
-      expect.objectContaining({
-        schemaVersion: "paper-session-start-v1",
-        sessionId: "btc-paper-1",
-        initialCash: "10000",
-      }),
-    );
-    expect(
-      await screen.findByText(/public market host is unavailable/),
-    ).toBeInTheDocument();
-    expect(screen.getByText("实时快照不可用")).toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("67,842.31");
-  });
-
-  it("stops and resumes persisted Paper sessions only through backend commands", async () => {
-    const client = commands();
-    const running = {
-      schemaVersion: "paper-session-view-v1" as const,
-      sessionId: "paper-1",
-      status: "RUNNING" as const,
-      adapterId: "public-feed",
-      startedAtUtc: "2026-07-21T00:00:00Z",
-      updatedAtUtc: "2026-07-21T00:00:00Z",
-      cash: "100",
-      openOrderCount: 0,
-      fillCount: 0,
-      systemKillSwitchEnabled: false,
-    };
-    const stopped = { ...running, status: "STOPPED" as const };
-    vi.mocked(client.listPaperSessions)
-      .mockResolvedValueOnce([running])
-      .mockResolvedValueOnce([stopped])
-      .mockResolvedValueOnce([running]);
-    vi.mocked(client.stopPaperSession).mockResolvedValue(stopped);
-    vi.mocked(client.resumePaperSession).mockResolvedValue(running);
-    const user = userEvent.setup();
-    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /实时驾驶舱/ }));
-    await screen.findByText("paper-1");
-    await user.click(screen.getByRole("button", { name: "停止" }));
-    expect(client.stopPaperSession).toHaveBeenCalledWith("paper-1");
-    await user.click(await screen.findByRole("button", { name: "恢复" }));
-    expect(client.resumePaperSession).toHaveBeenCalledWith("paper-1");
-  });
-
-  it("runs the Paper order lifecycle only through backend commands", async () => {
-    const client = commands();
-    const session = {
-      schemaVersion: "paper-session-view-v1" as const,
-      sessionId: "paper-ledger",
-      status: "RUNNING" as const,
-      adapterId: "public-feed",
-      startedAtUtc: "2026-07-21T00:00:00Z",
-      updatedAtUtc: "2026-07-21T00:00:00Z",
-      cash: "100",
-      openOrderCount: 1,
-      fillCount: 0,
-      systemKillSwitchEnabled: false,
-    };
-    vi.mocked(client.getPaperMarketRuntime).mockResolvedValue(
-      READY_PAPER_MARKET,
-    );
-    const order = {
-      schemaVersion: "paper-order-v1" as const,
-      orderId: "paper-order-1",
-      clientOrderId: "client-1",
-      idempotencyKey: "idem-1",
-      marketId: "market-1",
-      token: "YES" as const,
-      limitPrice: "0.5",
-      quantity: "1",
-      filledQuantity: "0",
-      remainingQuantity: "1",
-      timeInForce: "GTC" as const,
-      expiresAtUtc: null,
-      status: "OPEN" as const,
-      rejectionReason: null,
-      createdAtUtc: "2026-07-21T00:00:00Z",
-      updatedAtUtc: "2026-07-21T00:00:00Z",
-    };
-    const detail = {
-      schemaVersion: "paper-session-detail-v1" as const,
-      session,
-      orders: [order],
-      fills: [],
-      positions: [],
-      settlements: [],
-      events: [],
-    };
-    vi.mocked(client.listPaperSessions).mockResolvedValue([session]);
-    vi.mocked(client.getPaperSessionDetail).mockResolvedValue(detail);
-    vi.mocked(client.submitPaperOrder).mockResolvedValue({
-      ...order,
-      status: "FILLED",
-      filledQuantity: "1",
-      remainingQuantity: "0",
-    });
-    vi.mocked(client.repricePaperOrder).mockResolvedValue({
-      ...order,
-      orderId: "paper-order-2",
-      limitPrice: "0.55",
-    });
-    vi.mocked(client.cancelPaperOrder).mockResolvedValue({
-      ...order,
-      status: "CANCELLED",
-    });
-    vi.mocked(client.expirePaperOrders).mockResolvedValue([
-      { ...order, status: "EXPIRED" },
-    ]);
-    vi.mocked(client.settlePaperMarket).mockResolvedValue({
-      marketId: "market-1",
-      winningToken: "YES",
-      payout: "1",
-      settledAtUtc: "2026-07-21T00:01:00Z",
-    });
-    const user = userEvent.setup();
-    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /实时驾驶舱/ }));
-    await screen.findByText("paper-ledger");
-    await user.click(screen.getByRole("button", { name: "账本" }));
-    await screen.findByText("paper-order-1");
-    await user.clear(screen.getByLabelText("Paper 限价"));
-    await user.type(screen.getByLabelText("Paper 限价"), "0.55");
-    await user.click(screen.getByRole("button", { name: "创建 Paper 订单" }));
-    expect(client.submitPaperOrder).toHaveBeenCalledWith(
-      "paper-ledger",
-      expect.objectContaining({ marketId: "market-1", token: "YES" }),
-    );
-    await user.click(screen.getByRole("button", { name: "改价" }));
-    expect(client.repricePaperOrder).toHaveBeenCalledWith(
-      "paper-ledger",
-      "paper-order-1",
-      expect.objectContaining({
-        marketId: "market-1",
-        limitPrice: "0.55",
-        quantity: "1",
-      }),
-    );
-    await user.click(screen.getByRole("button", { name: "撤单" }));
-    expect(client.cancelPaperOrder).toHaveBeenCalledWith(
-      "paper-ledger",
-      "paper-order-1",
-      "OPERATOR_CANCEL_FROM_WORKBENCH",
-    );
-    await user.click(screen.getByRole("button", { name: "检查过期订单" }));
-    expect(client.expirePaperOrders).toHaveBeenCalledWith("paper-ledger");
-    expect(await screen.findByText(/1 个订单已过期/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "手动模拟结算" }));
-    expect(client.settlePaperMarket).toHaveBeenCalledWith(
-      "paper-ledger",
-      "market-1",
-      "YES",
-      "MANUAL_PAPER_TEST",
-    );
-  });
-
-  it("keeps a backend risk rejection visible instead of replacing it with success text", async () => {
-    const client = commands();
-    const session = {
-      schemaVersion: "paper-session-view-v1" as const,
-      sessionId: "paper-reject",
-      status: "RUNNING" as const,
-      adapterId: "public-feed",
-      startedAtUtc: "2026-07-21T00:00:00Z",
-      updatedAtUtc: "2026-07-21T00:00:00Z",
-      cash: "100",
-      openOrderCount: 0,
-      fillCount: 0,
-      systemKillSwitchEnabled: false,
-    };
-    vi.mocked(client.getPaperMarketRuntime).mockResolvedValue(
-      READY_PAPER_MARKET,
-    );
-    const rejected = {
-      schemaVersion: "paper-order-v1" as const,
-      orderId: "rejected-1",
-      clientOrderId: "client-1",
-      idempotencyKey: "idem-1",
-      marketId: "market-1",
-      token: "YES" as const,
-      limitPrice: "0.5",
-      quantity: "1",
-      filledQuantity: "0",
-      remainingQuantity: "1",
-      timeInForce: "GTC" as const,
-      expiresAtUtc: null,
-      status: "REJECTED" as const,
-      rejectionReason: "NET_EDGE_BELOW_MINIMUM",
-      createdAtUtc: "2026-07-21T00:00:00Z",
-      updatedAtUtc: "2026-07-21T00:00:00Z",
-    };
-    vi.mocked(client.listPaperSessions).mockResolvedValue([session]);
-    vi.mocked(client.getPaperSessionDetail).mockResolvedValue({
-      schemaVersion: "paper-session-detail-v1",
-      session,
-      orders: [],
-      fills: [],
-      positions: [],
-      settlements: [],
-      events: [],
-    });
-    vi.mocked(client.submitPaperOrder).mockResolvedValue(rejected);
-    const user = userEvent.setup();
-    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /实时驾驶舱/ }));
-    await screen.findByText("paper-reject");
-    await user.click(screen.getByRole("button", { name: "账本" }));
-    await user.click(screen.getByRole("button", { name: "创建 Paper 订单" }));
-    expect(
-      await screen.findByText("订单被风控拒绝：NET_EDGE_BELOW_MINIMUM"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("Paper 订单已提交后端模拟执行。"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("renders only the K/J strategy runtime returned by the backend", async () => {
-    const client = commands();
-    vi.mocked(client.getPaperStrategyRuntime).mockResolvedValue({
-      schemaVersion: "paper-strategy-runtime-v2",
-      status: "RUNNING",
-      executionAuthority: "PAPER_SESSION",
-      planner: {
-        engineVersion: "kj-paper-engine-v2",
-        journalRecordCount: 3,
-        recoveredInputCount: 1,
-        lastRecordHash: "a".repeat(64),
-        error: null,
-      },
-      canonicalAccounts: [],
-      executionLinks: [],
-      shadow: {
-        nonAuthoritative: true,
-        snapshot: {
-          schemaVersion: "kj-paper-engine-snapshot-v1",
-          engineVersion: "kj-paper-engine-v2",
-          wallets: {
-            J_FEE_AWARE: {
-              cash: "9999",
-              available: "9998",
-              reserved: "1",
-              positions: {},
-            },
-            K_DUAL_VOL: {
-              cash: "9997",
-              available: "9997",
-              reserved: "0",
-              positions: { "token-k": "2" },
-            },
-          },
-          markets: [],
-          pendingIntents: [],
-          eventCount: "1",
-        },
-        events: [
-          {
-            schemaVersion: "kj-paper-engine-v2",
-            eventId: "kj-event-1",
-            eventType: "DECISION",
-            strategy: "J_FEE_AWARE",
-            marketId: "btc-market-real",
-            eventTime: "2026-07-21T00:00:01Z",
-            details: { reason: "EDGE_OK" },
-          },
-        ],
-      },
-    });
-    const user = userEvent.setup();
-    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /实时驾驶舱/ }));
-    expect(await screen.findByText("btc-market-real")).toBeInTheDocument();
-    expect(screen.getByText("9999")).toBeInTheDocument();
-    expect(screen.getByText("NON-AUTHORITATIVE")).toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("67,842.31");
-  });
-
-  it("renders the real public book, Binance signal and ages returned by the backend", async () => {
-    const client = commands();
-    vi.mocked(client.getPaperMarketRuntime).mockResolvedValue({
-      schemaVersion: "paper-market-runtime-v1",
-      status: "READY",
-      checkedAtUtc: "2026-07-21T00:00:01.000Z",
-      market: {
-        marketId: "market-real",
-        conditionId: "condition-real",
-        slug: "btc-updown-5m-1775181000",
-        intervalStart: "2026-07-21T00:00:00.000Z",
-        intervalEnd: "2026-07-21T00:05:00.000Z",
-        decisionTime: "2026-07-21T00:00:00.900Z",
-        continuity: "UNVERIFIED",
-        bookAgeMs: 8,
-        signalAgeMs: 5,
-        up: {
-          tokenId: "1",
-          bid: "0.49",
-          ask: "0.5",
-          bidSize: "10",
-          askSize: "11",
-        },
-        down: {
-          tokenId: "2",
-          bid: "0.5",
-          ask: "0.51",
-          bidSize: "12",
-          askSize: "13",
-        },
-        signal: {
-          provider: "BINANCE_SPOT",
-          price: "67842.31",
-          sourceTime: "2026-07-21T00:00:00.800Z",
-          serverTime: "2026-07-21T00:00:00.850Z",
-          receiveTime: "2026-07-21T00:00:00.895Z",
-        },
-        feeEvidence: {
-          schemaVersion: "paper-fee-evidence-v1",
-          model: "POLYMARKET_TAKER_CURVE_V1",
-          conditionId: "condition-real",
-          rate: "0.01",
-          effectiveFromUtc: "2026-07-21T00:00:00.000Z",
-          effectiveToUtc: "2026-07-21T00:05:00.000Z",
-          evidenceStatus: "UNVERIFIED",
-          evidenceReference: "test-fixture",
-        },
-      },
-    });
-    const user = userEvent.setup();
-    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /实时驾驶舱/ }));
-    expect(await screen.findByText("67842.31")).toBeInTheDocument();
-    expect(screen.getByText("0.49 / 10")).toBeInTheDocument();
-    expect(screen.getByText(/8 \/ 5 ms/)).toBeInTheDocument();
+    await screen.findByRole("button", { name: "启动自动 Paper" });
+    await user.clear(screen.getByLabelText("初始资金 USDC"));
+    await user.type(screen.getByLabelText("初始资金 USDC"), "2500");
+    await user.clear(screen.getByLabelText("最大仓位 USDC"));
+    await user.type(screen.getByLabelText("最大仓位 USDC"), "125");
+    await user.clear(screen.getByLabelText("最低净优势"));
+    await user.type(screen.getByLabelText("最低净优势"), "0.04");
+    await user.click(screen.getByRole("button", { name: "启动自动 Paper" }));
+    expect(client.startPaperRunner).toHaveBeenCalledWith({ strategyId: "J_FEE_AWARE", strategyVersion: "1.0.0", initialCash: "2500", maximumPosition: "125", minimumNetEdge: "0.04" });
+    expect(await screen.findByText(/市场发现、行情、决策、风控、模拟成交、结算和轮转/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Paper 会话 ID")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("精确 BTC 5 分钟 slug")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建 Paper 订单" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "手动模拟结算" })).not.toBeInTheDocument();
   });
 
   it("loads the selected completed run's paged decision ledger only through backend commands", async () => {
@@ -867,6 +611,7 @@ describe("workbench command interactions", () => {
         schemaVersion: "backtest-job-v1",
         runId: "run-complete",
         requestId: "request-complete",
+        displayName: "费用感知概率策略 · BTC 验证",
         status: "succeeded",
         progressPermille: 1000,
         error: null,
@@ -909,6 +654,7 @@ describe("workbench command interactions", () => {
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
     await user.click(screen.getByRole("button", { name: /决策记录/ }));
+    expect((await screen.findAllByText("费用感知概率策略 · BTC 验证")).length).toBeGreaterThan(0);
     expect(
       (await screen.findAllByText("decision-real-1")).length,
     ).toBeGreaterThan(0);
@@ -932,6 +678,7 @@ describe("workbench command interactions", () => {
         schemaVersion: "backtest-job-v1",
         runId: "replay-complete",
         requestId: "request-replay",
+        displayName: "双波动率概率策略 · BTC 验证",
         status: "succeeded",
         progressPermille: 1000,
         error: null,
@@ -963,8 +710,9 @@ describe("workbench command interactions", () => {
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
     await user.click(screen.getByRole("button", { name: /市场回放/ }));
+    expect((await screen.findAllByText("双波动率概率策略 · BTC 验证")).length).toBeGreaterThan(0);
     expect(
-      await screen.findByRole("heading", { name: "replay-real-1" }),
+      await screen.findByRole("heading", { name: "HOLD" }),
     ).toBeInTheDocument();
     expect(client.getBacktestReplay).toHaveBeenCalledWith("replay-complete", {
       page: 1,
@@ -972,27 +720,27 @@ describe("workbench command interactions", () => {
     });
     await user.click(screen.getByRole("button", { name: "下一事件 ▶" }));
     expect(
-      await screen.findByRole("heading", { name: "replay-real-2" }),
+      await screen.findByRole("heading", { name: "冻结事件" }),
     ).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("BTCUSDT 67,837.20");
     expect(document.body).not.toHaveTextContent("23:17:00.250");
   });
 
-  it("shows a locked, explicit demo for an empty verified-local DTO and can return to verified data", async () => {
+  it("shows immediate progress and a visible backend error when comparing selected runs", async () => {
+    const client = commands();
+    vi.mocked(client.listBacktestJobs).mockResolvedValue([
+      { schemaVersion: "backtest-job-v1", runId: "arena-run-1", requestId: "request-1", status: "succeeded", progressPermille: 1000, error: null },
+      { schemaVersion: "backtest-job-v1", runId: "arena-run-2", requestId: "request-2", status: "succeeded", progressPermille: 1000, error: null },
+    ]);
+    vi.mocked(client.compareBacktests).mockRejectedValue(new Error("运行的费用模型不一致"));
     const user = userEvent.setup();
-    render(<App initialData={EMPTY_VERIFIED_DATA} />);
-    expect(screen.getByText("DEMO DATA · 非真实数据")).toBeInTheDocument();
-    expect(screen.getByText(/\+214\.80/)).toBeInTheDocument();
-    expect(screen.getByText(/所有输入与操作均已锁定/)).toBeInTheDocument();
-    await user.selectOptions(screen.getByRole("combobox", { name: "页面数据视图" }), "verified");
-    expect(screen.queryByText(/\+214\.80/)).not.toBeInTheDocument();
-    const navigation = screen.getByRole("navigation", { name: "主导航" });
-    for (const index of [1, 2, 5, 6, 7, 8]) {
-      await user.click(navigation.querySelectorAll("button")[index]!);
-      expect(document.body).not.toHaveTextContent("+214.80");
-      expect(document.body).not.toHaveTextContent("HEALTHY");
-      expect(document.body).not.toHaveTextContent("8.4M");
-    }
-    expect(screen.getByText("详细健康数据不可用")).toBeInTheDocument();
+    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
+    await user.click(screen.getByRole("button", { name: /策略竞技场/ }));
+    const compareButton = await screen.findByRole("button", { name: "比较所选运行（2）" });
+    await user.click(compareButton);
+    expect(client.compareBacktests).toHaveBeenCalledWith(["arena-run-1", "arena-run-2"]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("比较失败：运行的费用模型不一致");
+    expect(compareButton).toBeEnabled();
   });
+
 });

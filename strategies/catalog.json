@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "strategy-catalog-v1",
+  "strategies": [
+    {
+      "strategyId": "B0_NO_TRADE", "displayName": "永不交易基线（B0）", "summary": "始终输出 NO_TRADE 的冻结基线。", "family": "POLYMARKET_PAPER_BASELINE", "implementationVersion": "batch-3b-v1", "executionStatus":"FROZEN_BASELINE", "researchStatus": "RESEARCH_ONLY", "riskLevel": "LOW", "runtime": "python", "allowedModes": ["backtest"], "executor": "B0_NO_TRADE", "versions": [{"schemaVersion":"strategy-version-v1","strategyId":"B0_NO_TRADE","version":"1.0.0","description":"冻结研究对照，只由自动基线组调用","parameters":{},"createdAtUtc":"2026-07-16T00:00:00Z"}], "parameters": {}
+    },
+    {
+      "strategyId": "B1_MARKET_PROBABILITY", "displayName": "市场概率基线（B1）", "summary": "使用市场概率的冻结基线。", "family": "POLYMARKET_PAPER_BASELINE", "implementationVersion": "batch-3b-v1", "executionStatus":"FROZEN_BASELINE", "researchStatus": "RESEARCH_ONLY", "riskLevel": "LOW", "runtime": "python", "allowedModes": ["backtest"], "executor": "B1_MARKET_PROBABILITY", "versions": [{"schemaVersion":"strategy-version-v1","strategyId":"B1_MARKET_PROBABILITY","version":"1.0.0","description":"冻结研究对照，只由自动基线组调用","parameters":{},"createdAtUtc":"2026-07-16T00:00:00Z"}], "parameters": {}
+    },
+    {
+      "strategyId": "B2_GBM_BINANCE_PROXY", "displayName": "GBM 代理基线（B2）", "summary": "历史 GBM/Binance 代理基线。", "family": "POLYMARKET_PAPER_BASELINE", "implementationVersion": "batch-3b-v1", "executionStatus":"FROZEN_BASELINE", "researchStatus": "RESEARCH_ONLY", "riskLevel": "MEDIUM", "runtime": "python", "allowedModes": ["backtest"], "executor": "B2_GBM_BINANCE_PROXY", "versions": [{"schemaVersion":"strategy-version-v1","strategyId":"B2_GBM_BINANCE_PROXY","version":"1.0.0","description":"冻结研究对照，只由自动基线组调用","parameters":{},"createdAtUtc":"2026-07-16T00:00:00Z"}], "parameters": {}
+    },
+    {
+      "strategyId": "B3_MARKET_PRIOR_LOGISTIC", "displayName": "市场先验逻辑基线（B3）", "summary": "历史逻辑回归基线。", "family": "POLYMARKET_PAPER_BASELINE", "implementationVersion": "batch-3b-v1", "executionStatus":"FROZEN_BASELINE", "researchStatus": "RESEARCH_ONLY", "riskLevel": "MEDIUM", "runtime": "python", "allowedModes": ["backtest"], "executor": "B3_MARKET_PRIOR_LOGISTIC", "versions": [{"schemaVersion":"strategy-version-v1","strategyId":"B3_MARKET_PRIOR_LOGISTIC","version":"1.0.0","description":"冻结研究对照，只由自动基线组调用","parameters":{},"createdAtUtc":"2026-07-16T00:00:00Z"}], "parameters": {}
+    },
+    {
+      "strategyId": "J_FEE_AWARE", "displayName": "费用感知概率策略（J）", "summary": "在可成交价格、费用与盘口深度约束下评估 BTC 5 分钟概率优势。", "family": "费用感知概率", "implementationVersion": "kj-paper-v2", "executionStatus":"FROZEN_RESEARCH", "researchStatus": "PAPER_READY", "riskLevel": "MEDIUM", "runtime": "python", "allowedModes": ["backtest", "paper"], "executor": "KJ_J", "versions": [{"schemaVersion":"strategy-version-v1","strategyId":"J_FEE_AWARE","version":"2.0.0","description":"内置 Paper-ready 冻结版本","parameters":{"edgeThreshold":0.05,"maxEdge":0.25,"maxStakeUsdc":400,"bookParticipation":0.5},"createdAtUtc":"2026-07-22T00:00:00Z"}], "parameters": {
+        "edgeThreshold": {"type":"number","required":true,"defaultValue":0.05,"minimum":0,"maximum":0.25,"displayName":"最低净优势","description":"扣除费用后允许提出交易的最低优势。","unit":"概率"},
+        "maxEdge": {"type":"number","required":true,"defaultValue":0.25,"minimum":0,"maximum":1,"displayName":"最大信号优势","description":"超过该值的信号按异常值处理。","unit":"概率"},
+        "maxStakeUsdc": {"type":"number","required":true,"defaultValue":400,"minimum":1,"maximum":100000,"displayName":"单次最大投入","description":"单次模拟决策允许使用的最大名义金额。","unit":"USDC"},
+        "bookParticipation": {"type":"number","required":true,"defaultValue":0.5,"minimum":0.000001,"maximum":1,"displayName":"盘口参与比例","description":"模拟成交量相对可见盘口深度的上限。","unit":"比例"}
+      }
+    },
+    {
+      "strategyId": "K_DUAL_VOL", "displayName": "双波动率概率策略（K）", "summary": "利用快慢波动率估计 BTC 5 分钟方向概率，并以可执行成本过滤。", "family": "双尺度波动率", "implementationVersion": "kj-paper-v2", "executionStatus":"FROZEN_RESEARCH", "researchStatus": "PAPER_READY", "riskLevel": "MEDIUM", "runtime": "python", "allowedModes": ["backtest", "paper"], "executor": "KJ_K", "versions": [{"schemaVersion":"strategy-version-v1","strategyId":"K_DUAL_VOL","version":"2.0.0","description":"内置 Paper-ready 冻结版本","parameters":{"edgeThreshold":0.05,"maxEdge":0.25,"maxStakeUsdc":400,"bookParticipation":0.5},"createdAtUtc":"2026-07-22T00:00:00Z"}], "parameters": {
+        "edgeThreshold": {"type":"number","required":true,"defaultValue":0.05,"minimum":0,"maximum":0.25,"displayName":"最低净优势","description":"扣除费用后允许提出交易的最低优势。","unit":"概率"},
+        "maxEdge": {"type":"number","required":true,"defaultValue":0.25,"minimum":0,"maximum":1,"displayName":"最大信号优势","description":"超过该值的信号按异常值处理。","unit":"概率"},
+        "maxStakeUsdc": {"type":"number","required":true,"defaultValue":400,"minimum":1,"maximum":100000,"displayName":"单次最大投入","description":"单次模拟决策允许使用的最大名义金额。","unit":"USDC"},
+        "bookParticipation": {"type":"number","required":true,"defaultValue":0.5,"minimum":0.000001,"maximum":1,"displayName":"盘口参与比例","description":"模拟成交量相对可见盘口深度的上限。","unit":"比例"}
+      }
+    },
+    {
+      "strategyId": "L_ADAPTIVE_EXECUTION_V1", "displayName": "自适应执行（L V1 · 历史门失败）", "summary": "保留用于审计，不能运行。", "family": "自适应执行", "implementationVersion": "l-adaptive-execution-v1-preregistered", "executionStatus":"RESEARCH_GATE_FAILED", "researchStatus": "RESEARCH_GATE_FAILED", "riskLevel": "HIGH", "runtime": "python", "allowedModes": [], "executor": "L_V1", "parameters": {
+        "maxSignalEdge":{"type":"number","required":true,"defaultValue":0.25,"minimum":0,"maximum":1,"displayName":"最大信号优势","unit":"概率"},
+        "maxStakeUsdc":{"type":"number","required":true,"defaultValue":400,"minimum":1,"maximum":100000,"displayName":"单次最大投入","unit":"USDC"},
+        "bookParticipation":{"type":"number","required":true,"defaultValue":0.5,"minimum":0.000001,"maximum":1,"displayName":"盘口参与比例","unit":"比例"}
+      }
+    },
+    {
+      "strategyId": "L_ADAPTIVE_EXECUTION_V2", "displayName": "自适应执行（L V2 · 研究候选）", "summary": "冻结训练选择的候选，只允许验证集离线回测。", "family": "自适应执行", "implementationVersion": "l-adaptive-execution-v2-candidate", "executionStatus":"RESEARCH_ONLY_CANDIDATE", "researchStatus": "RESEARCH_ONLY", "riskLevel": "HIGH", "runtime": "python", "allowedModes": ["backtest"], "executor": "L_V2", "parameters": {
+        "maxSignalEdge":{"type":"number","required":true,"defaultValue":0.25,"minimum":0,"maximum":1,"displayName":"最大信号优势","unit":"概率"},
+        "maxStakeUsdc":{"type":"number","required":true,"defaultValue":400,"minimum":1,"maximum":100000,"displayName":"单次最大投入","unit":"USDC"},
+        "bookParticipation":{"type":"number","required":true,"defaultValue":0.5,"minimum":0.000001,"maximum":1,"displayName":"盘口参与比例","unit":"比例"}
+      }
+    }
+  ]
+}

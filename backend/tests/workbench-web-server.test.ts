@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
-import { createWorkbenchWebServer } from "../../scripts/workbench-web-server.js";
+import { createWorkbenchWebServer, validateWorkbenchEnvironment } from "../../scripts/workbench-web-server.js";
 import { PaperRuntimeEvidenceStore } from "../paper-session/runtime-evidence.js";
 
 async function fixture() {
@@ -42,6 +42,29 @@ test("Web API rejects unknown commands, cross-origin calls and non-fixed clients
     assert.equal((await fetch(`${runtime.base}/api/commands/get_workbench_view_v1`, { method:"POST", headers:{"content-type":"application/json"}, body:"{}" })).status, 405);
     assert.equal((await fetch(`${runtime.base}/api/commands/get_workbench_view_v1`, { method:"POST", headers:{"content-type":"application/json","x-workbench-client":"web-v1","origin":"https://attacker.invalid"}, body:"{}" })).status, 403);
   } finally { await runtime.close(); }
+});
+
+test("simulation environments fail closed when their data roots are crossed", () => {
+  assert.equal(validateWorkbenchEnvironment("staging-sim", "/tmp/workbench/staging-sim", "candidate-1"), "staging-sim");
+  assert.equal(validateWorkbenchEnvironment("production-sim", "/tmp/workbench/production-sim", "stable-1"), "production-sim");
+  assert.throws(() => validateWorkbenchEnvironment("staging-sim", "/tmp/workbench/production-sim", "candidate-1"), /staging-sim data root/u);
+  assert.throws(() => validateWorkbenchEnvironment("production-sim", "/tmp/workbench/staging-sim", "stable-1"), /production-sim data root/u);
+  assert.throws(() => validateWorkbenchEnvironment("production-sim", "/tmp/workbench/production-sim", "bad release"), /RELEASE_ID/u);
+});
+
+test("candidate release refreshes 4273 and any active 4174 frontend", async () => {
+  const source = await readFile(resolve("scripts/local-environments.mjs"), "utf8");
+  assert.match(source, /async function refreshCandidate\(\)/u);
+  assert.match(source, /async function restartOrStartCandidateService\(\)/u);
+  assert.match(source, /async function restartActiveDevelopmentFrontend\(\)/u);
+  assert.match(source, /systemctl", \["--user", "stop", candidateUnit\]/u);
+  assert.match(source, /systemctl", \["--user", "restart", developmentFrontendUnit\]/u);
+  assert.match(source, /systemd-run", \["--user", "--unit=polymarket-staging-4273"/u);
+  assert.match(source, /\["--use-env-proxy", resolve\(releaseRoot, "dist", "scripts", "workbench-web-server\.js"\)\]/u);
+  assert.match(source, /\["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"\]/u);
+  assert.match(source, /waitForCandidateRelease\(releaseId\)/u);
+  assert.match(source, /assertWarningRegression\(\)/u);
+  assert.match(source, /restartActiveDevelopmentFrontend\(\)/u);
 });
 
 test("Web API normalizes an explicit raw file through one fixed path-free command",async()=>{const runtime=await fixture(),rawRoot=await mkdtemp(join(tmpdir(),"workbench-web-raw-")),input=join(rawRoot,"events.ndjson");await writeFile(input,JSON.stringify({event_type:"binance_price",event_time_utc:"2026-01-01T00:00:01Z",market_id:"btc-web",provider:"BINANCE_SPOT",symbol:"BTCUSDT",price:"100000"})+"\n");try{const response=await command(runtime.base,"normalize_raw_dataset_v1",{request:{schemaVersion:"raw-dataset-normalization-request-v1",inputPath:input,datasetId:"btc-web-raw"}});assert.equal(response.status,200);const envelope=await response.json() as {result:{datasetId:string;rowCount:number;versionHash:string}};assert.equal(envelope.result.datasetId,"btc-web-raw");assert.equal(envelope.result.rowCount,1);assert.equal(JSON.stringify(envelope).includes(input),false);const listed=await(await command(runtime.base,"list_datasets_v1")).json() as {result:{datasets:Array<{datasetId:string}>}};assert.equal(listed.result.datasets[0]?.datasetId,"btc-web-raw");}finally{await runtime.close();}});

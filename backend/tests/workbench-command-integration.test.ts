@@ -26,11 +26,11 @@ async function invoke(root: string, mode: string, payload: unknown = {}): Promis
 test("fixed desktop backend command provides a path-free strategy round trip", async () => {
   const root = await mkdtemp(join(tmpdir(), "workbench-command-"));
   const definitions = await invoke(root, "list-strategy-definitions") as Array<{ strategyId: string }>;
-  assert.deepEqual(definitions.map((item) => item.strategyId), ["J_FEE_AWARE", "K_DUAL_VOL", "L_ADAPTIVE_EXECUTION_V2"]);
+  assert.deepEqual(definitions.map((item) => item.strategyId), ["B0_NO_TRADE", "B1_MARKET_PROBABILITY", "B2_GBM_BINANCE_PROXY", "B3_MARKET_PRIOR_LOGISTIC", "J_FEE_AWARE", "K_DUAL_VOL", "L_ADAPTIVE_EXECUTION_V1", "L_ADAPTIVE_EXECUTION_V2"]);
   const value = { schemaVersion: "strategy-version-v1", strategyId: "K_DUAL_VOL", version: "1.0.0", description: "frozen desktop version",
     parameters: { edgeThreshold: 0.05, maxEdge: 0.25, maxStakeUsdc: 400, bookParticipation: 0.5 }, createdAtUtc: "2026-07-21T12:00:00Z" };
   assert.deepEqual(await invoke(root, "save-strategy-version", { value }), value);
-  assert.deepEqual(await invoke(root, "list-strategy-versions", { strategyId: "K_DUAL_VOL" }), ["1.0.0"]);
+  assert.deepEqual(await invoke(root, "list-strategy-versions", { strategyId: "K_DUAL_VOL" }), ["1.0.0", "2.0.0"]);
   assert.deepEqual(await invoke(root, "get-strategy-version", { strategyId: "K_DUAL_VOL", version: "1.0.0" }), value);
   assert.equal(JSON.stringify(await invoke(root, "view")).includes(root), false);
 });
@@ -47,6 +47,7 @@ test("fixed desktop backend exposes integrity-checked backtest queries and hones
     schemaVersion: "backtest-result-v1", runId: "run-query-1",
     request: { schemaVersion: "backtest-request-v1", requestId: "request-query-1", strategyId: "K_DUAL_VOL", strategyVersion: "1.0.0", datasetId: "btc", datasetVersionHash: "a".repeat(64), feeModel: "fee-v2", latencyMs: 1000, initialCash: "1000", maxPosition: "100" },
     startedAtUtc: "2026-07-21T12:00:00Z", completedAtUtc: "2026-07-21T12:05:00Z",
+    evaluationScope: { schemaVersion: "backtest-evaluation-scope-v1", split: "FINAL_TEST", horizonSeconds: 30, scenario: "BASE_1S", cohortHash: "c".repeat(64), cohortSize: 1 },
     metrics: { netPnl: "1", fees: "0.1", maxDrawdown: "0.2", fillRate: "0.5", winRate: "1", brier: "0.1" },
     equityCurve: [{ timeUtc: "2026-07-21T12:05:00Z", equity: "1001" }],
     events: [

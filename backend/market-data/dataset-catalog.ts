@@ -17,6 +17,11 @@ export type DatasetSummaryV1 = Readonly<{
   rowCount: number;
   quarantineCount: number;
   status: "available";
+  displayName: string;
+  description: string;
+  publishedAtUtc: string | null;
+  source: string;
+  tags: readonly string[];
 }>;
 
 function canonical(value: unknown): string {
@@ -74,23 +79,32 @@ async function verifyManifest(path: string): Promise<DatasetSummaryV1> {
   const versionHash = text(manifest.dataset_hash, "dataset_hash");
   if (!HASH.test(versionHash)) throw new Error("dataset_hash is invalid");
   const core = { ...manifest }; delete core.dataset_hash;
+  if (manifest.schema_version === "normalized-dataset-manifest-v2") delete core.metadata;
   if (createHash("sha256").update(canonical(core)).digest("hex") !== versionHash) throw new Error("dataset manifest hash mismatch");
   const directory = resolve(path, "..");
   const outputs = object(manifest.outputs);
   const schema = manifest.schema_version;
-  if (schema === "normalized-dataset-manifest-v1") {
+  if (schema === "normalized-dataset-manifest-v1" || schema === "normalized-dataset-manifest-v2") {
     const rowCount = await verifyOutputs(directory, outputs, "byte_count", "row_count");
+    const metadata = schema === "normalized-dataset-manifest-v2" ? object(manifest.metadata) : null;
+    const tags = metadata === null ? [] : (Array.isArray(metadata.tags) && metadata.tags.every((tag) => typeof tag === "string") ? metadata.tags as string[] : (() => { throw new Error("metadata.tags is invalid"); })());
     return Object.freeze({ schemaVersion: "dataset-summary-v1", datasetId: text(manifest.dataset_id, "dataset_id"), versionHash,
       format: "normalized-events-v1", continuity: "UNVERIFIED", startTimeUtc: typeof manifest.min_source_time === "string" ? manifest.min_source_time : null,
       endTimeUtc: typeof manifest.max_source_time === "string" ? manifest.max_source_time : null, rowCount,
-      quarantineCount: integer(manifest.quarantine_count, "quarantine_count"), status: "available" });
+      quarantineCount: integer(manifest.quarantine_count, "quarantine_count"), status: "available",
+      displayName: metadata === null ? text(manifest.dataset_id, "dataset_id") : text(metadata.name, "metadata.name"),
+      description: metadata === null ? "旧版发布未记录说明" : text(metadata.description, "metadata.description"),
+      publishedAtUtc: metadata === null ? null : text(metadata.published_at_utc, "metadata.published_at_utc"),
+      source: metadata === null ? "legacy-normalizer" : text(metadata.source, "metadata.source"), tags: Object.freeze([...tags]) });
   }
   if (schema === "external-historical-normalized-v1") {
     const rowCount = await verifyOutputs(directory, outputs, "bytes", "rows");
     const window = object(manifest.study_window);
     return Object.freeze({ schemaVersion: "dataset-summary-v1", datasetId: text(manifest.dataset_id, "dataset_id"), versionHash,
       format: "external-historical-v1", continuity: "UNVERIFIED", startTimeUtc: text(window.start, "study_window.start"),
-      endTimeUtc: text(window.end_exclusive, "study_window.end_exclusive"), rowCount, quarantineCount: 0, status: "available" });
+      endTimeUtc: text(window.end_exclusive, "study_window.end_exclusive"), rowCount, quarantineCount: 0, status: "available",
+      displayName: text(manifest.dataset_id, "dataset_id"), description: "外部只读历史样本", publishedAtUtc: null,
+      source: "external-historical", tags: Object.freeze(["historical", "read-only"]) });
   }
   throw new Error("unsupported dataset manifest");
 }

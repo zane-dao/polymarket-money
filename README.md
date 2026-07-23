@@ -67,6 +67,47 @@ HTML、CSS、JavaScript 和 source map；它不是数据库，也不是源码目
 `/api/commands/*` 白名单。React 只能调用这些版本化 JSON 命令；数据库、文件路径、原始历史数据
 和 Paper journal 均留在后端。API 拒绝跨来源请求、任意 shell、SQL、任意 URL 和未知命令。
 
+### 本地开发与服务器模拟
+
+本地只保留两个运行环境，Vite 不算部署环境：
+
+| 命令 | 地址 | 用途 | 数据根 |
+|---|---|---|---|
+| `npm run dev` | `4174`（Vite）+ `4273`（后端） | 前端热更新和当前工作区开发 | `/root/polymarket-money-data/staging-sim` |
+| `npm run sim:staging` | `4273` | 运行构建后的候选 release | `/root/polymarket-money-data/staging-sim` |
+| `npm run sim:production` | `4173` | 运行已晋升、不可变的 stable release | `/root/polymarket-money-data/production-sim` |
+
+日常可用一个本机快捷器统一管理三个端口；它只管理自己的 user systemd 临时服务，若端口被其他
+进程占用会拒绝误杀：
+
+```bash
+npm run ports:start     # 启动 4173、4273、4174；单个失败不妨碍继续尝试其余端口
+npm run ports:status    # 查看三个 unit 和端口状态
+npm run ports:restart   # 只重启快捷器管理的三个服务
+npm run ports:stop      # 只停止快捷器管理的三个服务
+```
+
+4173 仍会执行 production-sim 安全门：没有来自干净 `main` 的已晋升 stable release 时会拒绝启动，
+快捷器不会绕过该限制。服务启动本身不会批准或启动公开行情采集。
+
+候选发布流程：
+
+```bash
+npm run release:candidate   # 构建一次并写入本地不可变 candidate release
+npm run sim:staging         # 在 4273 验证该 release
+npm run release:promote     # 验证通过后把同一个 release 指针晋升为 stable
+npm run sim:production      # 在 4173 启动 stable
+```
+
+开发分支的 candidate 可以在4273验证，但不能直接晋升。合并完成后必须在干净的 `main` checkout
+重新生成 candidate，并在4273做最后一次服务器模拟；只有这份来源为干净 `main` 提交的 release
+可以执行 `release:promote`。4173因此绑定一个明确的 main 提交，而不是跟随 main 分支自动漂移。
+
+本地产物位于 Git 忽略的 `.local/releases/`，`candidate`/`stable` 指针位于 `.local/pointers/`。
+重新修改源码或执行普通 `npm run build` 不会改写已有 release。4174 默认只把
+`/api/commands/*` 代理到 4273；它不保存数据，也不应作为服务器部署入口。环境身份与数据根后缀
+不匹配时后端拒绝启动，防止 staging 写入 production-sim。
+
 服务启动不会联网采集。只有实时页提交精确 BTC 五分钟 slug，并明确勾选本次公开行情联网批准后，
 长期 Paper runtime 才能连接公开 Gamma/CLOB/Binance 行情；它仍不连接钱包、私有用户频道、签名或
 真实订单。停止 Web 服务会优雅关闭 runtime，持久 Paper 会话和账本可在下次启动时恢复。

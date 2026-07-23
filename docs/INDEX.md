@@ -4,16 +4,16 @@
 
 ## 最小必读包
 
-每个实质性项目任务先完整读取：
+<!-- codex-context-orchestrator:index-start -->
+先判断任务范围，不再把同一组文档固定塞进每个实质任务：
 
-1. 本文件：权威来源、边界和路由；
-2. [当前状态](plan/CURRENT.md)：现在做到哪里、下一步和授权边界；
-3. 当前任务涉及 Batch 时，再读取 [Batch 索引](batches/BATCHES-INDEX.md) 和对应设计。
+1. **窄范围实现、修复或测试：** 从目标文件和邻近测试开始；除非需要当前授权、Batch 验收或跨模块约束，不读取本索引和 `plan/CURRENT.md`。
+2. **当前状态、计划、跨模块或文档任务：** 先读本索引，再按需读 `plan/CURRENT.md`，并只跟随一个直接相关入口。
+3. **具体 Batch：** 在上一步基础上读取 `batches/BATCHES-INDEX.md` 与对应设计、交接或报告。
+4. **背景、目标、架构、决定、归档：** 只有任务明确需要时才读取，不作为固定前置。
 
-项目规范、背景、架构和决定只在任务需要时按下表读取，不作为每次任务的固定前置。普通
-闲聊、单句解释和无关任务不必加载本包。当前状态只有 [plan/CURRENT.md](plan/CURRENT.md)
-一份权威来源；跨会话决定只有 [decisions/DECISIONS.md](decisions/DECISIONS.md) 一份权威来源。
-
+普通闲聊、单句解释和无关任务不加载本包。当前状态只有 `plan/CURRENT.md` 一份权威来源；跨会话决定只有 `decisions/DECISIONS.md` 一份权威来源。Hook 相同路由且来源文件未变化时不重复注入，以保留上下文缓存命中。
+<!-- codex-context-orchestrator:index-end -->
 ## 当前状态入口
 
 当前阶段、活跃 Batch、下一步和授权边界只看 [plan/CURRENT.md](plan/CURRENT.md)。稳定的
@@ -71,3 +71,7 @@ reports/
 | 历史过程 | [archive/ARCHIVE-INDEX.md](archive/ARCHIVE-INDEX.md) |
 
 代码/API/schema/测试事实以当前工作树和验证结果为最高权威；时效性协议必须重新核对官方来源。完成实质任务后按 [维护协议](operations/MAINTENANCE.md) 更新当前状态、决定和摘要。
+
+<!-- codex-context-orchestrator:docs-start -->
+- [Codex 缓存感知上下文编排](operations/CODEX-CONTEXT.md)
+<!-- codex-context-orchestrator:docs-end -->

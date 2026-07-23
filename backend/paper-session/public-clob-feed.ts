@@ -39,6 +39,7 @@ export type PublicClobPaperFeedOptions = Readonly<{
   staleAfterMilliseconds?: number;
   httpTimeoutMilliseconds?: number;
   maxResponseBytes?: number;
+  useWebSocket?: boolean;
 }>;
 
 export type PublicClobStrategyObservationV1 = Readonly<{
@@ -98,6 +99,7 @@ export class PublicClobPaperMarketFeed implements PublicClobStrategySource {
   #abort: AbortController | null = null;
   #socket: ReadOnlyMarketSocket | null = null;
   #heartbeat: unknown = null;
+  #restPolling: unknown = null;
   #market: PublicBtcFiveMinuteMarket | null = null;
   #book: PublicOrderBook | null = null;
   #connectionId: string | null = null;
@@ -112,6 +114,7 @@ export class PublicClobPaperMarketFeed implements PublicClobStrategySource {
       staleAfterMilliseconds: options.staleAfterMilliseconds ?? 15_000,
       httpTimeoutMilliseconds: options.httpTimeoutMilliseconds ?? 10_000,
       maxResponseBytes: options.maxResponseBytes ?? 5 * 1024 * 1024,
+      useWebSocket: options.useWebSocket ?? true,
     });
     this.#runtime = runtime;
   }
@@ -147,7 +150,8 @@ export class PublicClobPaperMarketFeed implements PublicClobStrategySource {
       this.#book.connected(this.#connectionId, this.#runtime.now());
       await this.#bootstrapBooks(httpRuntime, httpOptions);
       if (abort.signal.aborted) throw new Error("public CLOB feed start aborted");
-      this.#openSocket(market);
+      this.#startRestPolling(httpRuntime, httpOptions);
+      if (this.#options.useWebSocket) this.#openSocket(market);
     } catch (error) {
       await this.stop();
       throw error;
@@ -160,6 +164,8 @@ export class PublicClobPaperMarketFeed implements PublicClobStrategySource {
     abort?.abort();
     if (this.#heartbeat !== null) this.#runtime.clearInterval(this.#heartbeat);
     this.#heartbeat = null;
+    if (this.#restPolling !== null) this.#runtime.clearInterval(this.#restPolling);
+    this.#restPolling = null;
     const socket = this.#socket;
     this.#socket = null;
     if (socket !== null) socket.close(1000, "caller stopped read-only feed");
@@ -207,6 +213,8 @@ export class PublicClobPaperMarketFeed implements PublicClobStrategySource {
     this.#socket = socket;
     const onOpen = (): void => {
       if (this.#socket !== socket || this.#abort?.signal.aborted !== false) return;
+      if (this.#restPolling !== null) this.#runtime.clearInterval(this.#restPolling);
+      this.#restPolling = null;
       socket.send(JSON.stringify(plan.subscription));
       this.#observer?.connection(true, this.#runtime.now(), "public CLOB market WebSocket connected");
       this.#heartbeat = this.#runtime.setInterval(() => {
@@ -220,17 +228,56 @@ export class PublicClobPaperMarketFeed implements PublicClobStrategySource {
     };
     const onError = (): void => {
       this.#observer?.error(new Error("public CLOB market WebSocket error"), this.#runtime.now());
+      const abort = this.#abort;
+      if (abort !== null) {
+        this.#startRestPolling({
+          now: this.#runtime.now,
+          fetch: (input, init = {}) => this.#runtime.fetch(input, {
+            ...init,
+            signal: init.signal == null ? abort.signal : AbortSignal.any([init.signal, abort.signal]),
+          }),
+        }, {
+          timeoutMilliseconds: this.#options.httpTimeoutMilliseconds,
+          maxResponseBytes: this.#options.maxResponseBytes,
+        });
+      }
     };
     const onClose = (): void => {
       if (this.#heartbeat !== null) this.#runtime.clearInterval(this.#heartbeat);
       this.#heartbeat = null;
-      this.#book?.disconnected();
-      this.#observer?.connection(false, this.#runtime.now(), "public CLOB market WebSocket disconnected");
+      const abort = this.#abort;
+      if (abort !== null) this.#startRestPolling({
+        now: this.#runtime.now,
+        fetch: (input, init = {}) => this.#runtime.fetch(input, {
+          ...init,
+          signal: init.signal == null ? abort.signal : AbortSignal.any([init.signal, abort.signal]),
+        }),
+      }, {
+        timeoutMilliseconds: this.#options.httpTimeoutMilliseconds,
+        maxResponseBytes: this.#options.maxResponseBytes,
+      });
+      if (this.#restPolling === null) {
+        this.#book?.disconnected();
+        this.#observer?.connection(false, this.#runtime.now(), "public CLOB market feed disconnected");
+      }
     };
     socket.addEventListener("open", onOpen);
     socket.addEventListener("message", onMessage);
     socket.addEventListener("error", onError);
     socket.addEventListener("close", onClose);
+  }
+
+  #startRestPolling(
+    runtime: PublicHttpRuntime,
+    options: Readonly<{ timeoutMilliseconds: number; maxResponseBytes: number }>,
+  ): void {
+    if (this.#restPolling !== null || this.#abort?.signal.aborted !== false) return;
+    this.#observer?.connection(true, this.#runtime.now(), this.#options.useWebSocket ? "public CLOB REST polling active (WebSocket upgrade pending)" : "public CLOB REST polling active");
+    this.#restPolling = this.#runtime.setInterval(() => {
+      void this.#bootstrapBooks(runtime, options).catch((error: unknown) => {
+        if (this.#abort?.signal.aborted === false) this.#observer?.error(new Error(`CLOB REST polling failed: ${error instanceof Error ? error.message : String(error)}`), this.#runtime.now());
+      });
+    }, 1_000);
   }
 
   async #handleFrame(rawPayload: string): Promise<void> {
@@ -265,11 +312,12 @@ export class PublicClobPaperMarketFeed implements PublicClobStrategySource {
     const yesBid = book.bestBid(market.upTokenId); const yesBidSize = book.bestBidSize(market.upTokenId);
     const noBid = book.bestBid(market.downTokenId); const noBidSize = book.bestBidSize(market.downTokenId);
     const receivedAtUtc = this.#runtime.now();
+    const normalizedObservedAtUtc = Date.parse(observedAtUtc) > Date.parse(receivedAtUtc) ? receivedAtUtc : observedAtUtc;
     if (yesPrice !== null && yesQuantity !== null && noPrice !== null && noQuantity !== null && yesBid !== null && yesBidSize !== null && noBid !== null && noBidSize !== null) this.#strategyObservation = Object.freeze({ market, receivedAtUtc, state: "ACTIVE_UNVERIFIED", continuity: "UNVERIFIED", up: Object.freeze({ bid: yesBid, ask: yesPrice, bidSize: yesBidSize, askSize: yesQuantity }), down: Object.freeze({ bid: noBid, ask: noPrice, bidSize: noBidSize, askSize: noQuantity }) });
     const snapshot: PaperMarketSnapshotV1 = Object.freeze({
       schemaVersion: "paper-market-snapshot-v1",
       marketId: market.marketId,
-      observedAtUtc,
+      observedAtUtc: normalizedObservedAtUtc,
       receivedAtUtc,
       eligible: market.collectible,
       yesAsks: yesPrice === null || yesQuantity === null ? Object.freeze([]) : Object.freeze([{ price: yesPrice, quantity: yesQuantity }]),

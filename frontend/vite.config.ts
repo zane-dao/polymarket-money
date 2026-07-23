@@ -12,6 +12,16 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     port: 4174,
+    strictPort: true,
+    proxy: {
+      "/api/commands": {
+        target: process.env.POLYMARKET_DEV_BACKEND ?? "http://127.0.0.1:4273",
+        changeOrigin: true,
+        configure(proxy) {
+          proxy.on("proxyReq", (request) => request.setHeader("origin", process.env.POLYMARKET_DEV_BACKEND ?? "http://127.0.0.1:4273"));
+        },
+      },
+    },
   },
   test: {
     environment: "jsdom",

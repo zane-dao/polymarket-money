@@ -80,13 +80,19 @@ export async function executeWorkbenchCommand(command: string, payload: unknown 
   if (command === "list-strategy-versions") return store.list(text(input.strategyId, "strategyId"));
   if (command === "get-strategy-version") return store.load(catalog, text(input.strategyId, "strategyId"), text(input.version, "version"));
   if (command === "validate-strategy-parameters") {
-    try { catalog.validateParameters(text(input.strategyId, "strategyId"), parameterMap(input.parameters)); return { schemaVersion: "strategy-validation-v1", valid: true, errors: [] }; }
-    catch (error: unknown) { return { schemaVersion: "strategy-validation-v1", valid: false, errors: [error instanceof Error ? error.message : "invalid parameters"] }; }
+    try { const strategyId = text(input.strategyId, "strategyId"); const parameters = parameterMap(input.parameters); catalog.validateParameters(strategyId, parameters); return { schemaVersion: "strategy-validation-v1", valid: true, errors: [], warnings: catalog.parameterWarnings(strategyId, parameters) }; }
+    catch (error: unknown) { return { schemaVersion: "strategy-validation-v1", valid: false, errors: [error instanceof Error ? error.message : "invalid parameters"], warnings: [] }; }
   }
   if (command === "save-strategy-version") {
     const value = object(input.value, "value") as StrategyVersionV1;
     await store.save(catalog, value);
     return store.load(catalog, value.strategyId, value.version);
+  }
+  if (command === "delete-strategy-version") {
+    const strategyId=text(input.strategyId,"strategyId"),version=text(input.version,"version");
+    if(await backtests.usesStrategyVersion(strategyId,version))throw new Error("strategy version is referenced by a persisted backtest");
+    await store.delete(catalog,strategyId,version,text(input.confirmation,"confirmation"));
+    return {schemaVersion:"deletion-receipt-v1",entityType:"strategy-version",entityId:`${strategyId}:${version}`,deletedAtUtc:generatedAtUtc};
   }
   if (command === "register-dataset-source") return datasets.registerSource(input.request as never);
   if (command === "normalize-raw-dataset") return normalizeRawDataset(dataRoot(dataRootOverride), process.cwd(), input.request as never);
@@ -102,11 +108,21 @@ export async function executeWorkbenchCommand(command: string, payload: unknown 
     await datasets.scan();
     return datasets.validateSelection(input.selection as never);
   }
+  if(command==="delete-dataset"){
+    const datasetId=text(input.datasetId,"datasetId"),versionHash=text(input.versionHash,"versionHash");
+    if(await backtests.usesDataset(datasetId,versionHash))throw new Error("dataset version is referenced by a persisted backtest");
+    await datasets.deleteManagedPublication(datasetId,versionHash,text(input.confirmation,"confirmation"));
+    return {schemaVersion:"deletion-receipt-v1",entityType:"dataset",entityId:`${datasetId}:${versionHash}`,deletedAtUtc:generatedAtUtc};
+  }
   if (command === "start-backtest") return backtests.start(object(input.request, "request") as BacktestRequestV1);
   if (command === "get-backtest-job") return backtests.get(text(input.runId, "runId"));
   if (command === "list-backtest-jobs") return backtests.list();
   if (command === "stop-backtest") return backtests.stop(text(input.runId, "runId"));
   if (command === "get-backtest-result") return backtests.result(text(input.runId, "runId"));
+  if(command==="delete-backtest"){
+    const runId=text(input.runId,"runId");await backtests.delete(runId,text(input.confirmation,"confirmation"));
+    return {schemaVersion:"deletion-receipt-v1",entityType:"backtest",entityId:runId,deletedAtUtc:generatedAtUtc};
+  }
   if (command === "get-backtest-decisions") return queries.decisions(text(input.runId, "runId"), pageRequest(input.page));
   if (command === "get-backtest-orders") return queries.orders(text(input.runId, "runId"), pageRequest(input.page));
   if (command === "get-backtest-fills") return queries.fills(text(input.runId, "runId"), pageRequest(input.page));

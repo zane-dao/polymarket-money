@@ -21,6 +21,7 @@ export class PublicBtcPaperMarketFeed implements PublicPaperMarketFeed {
   #snapshot: PaperMarketSnapshotV1 | null = null;
   #book: Readonly<{ value: PublicClobStrategyObservationV1; stamp: ReceiveStamp }> | null = null;
   #signal: Readonly<{ value: BinanceSpotObservationV1; stamp: ReceiveStamp }> | null = null;
+  #lastPublishedAtMilliseconds: number | null = null;
   readonly #clock: ReceiveClock;
 
   constructor(feedId: string, clob: PublicClobStrategySource, binance: PublicBinanceSpotSource, options: { maximumSignalAgeMs?: number; now?: () => string; receiveClock?: ReceiveClock } = {}) {
@@ -32,7 +33,7 @@ export class PublicBtcPaperMarketFeed implements PublicPaperMarketFeed {
 
   async start(observer: PublicPaperFeedObserver): Promise<void> {
     if (this.#observer !== null) throw new Error("combined public BTC feed is already started");
-    this.#observer = observer; this.#snapshot = null; this.#book = null; this.#signal = null; this.#clobConnected = false; this.#binanceConnected = false; this.#lastPublishedConnection = false;
+    this.#observer = observer; this.#snapshot = null; this.#book = null; this.#signal = null; this.#clobConnected = false; this.#binanceConnected = false; this.#lastPublishedConnection = false; this.#lastPublishedAtMilliseconds = null;
     try {
       await Promise.all([
         this.#clob.start({
@@ -55,12 +56,12 @@ export class PublicBtcPaperMarketFeed implements PublicPaperMarketFeed {
     await Promise.allSettled([this.#clob.stop(), this.#binance.stop()]);
     this.#snapshot = null; this.#book = null; this.#signal = null; this.#clobConnected = false; this.#binanceConnected = false;
     if (observer !== null && this.#lastPublishedConnection) observer.connection(false, this.#now(), "combined public BTC feed stopped");
-    this.#lastPublishedConnection = false;
+    this.#lastPublishedConnection = false; this.#lastPublishedAtMilliseconds = null;
   }
 
   latestBinance(): BinanceSpotObservationV1 | null { const value = this.#binance.latest(); return value !== null && this.#signalFresh(value) ? value : null; }
   #signalFresh(value: BinanceSpotObservationV1): boolean { const age = Date.parse(this.#now()) - Date.parse(value.receivedAtUtc); return Number.isFinite(age) && age >= 0 && age <= this.#maximumSignalAgeMs; }
-  #publish(): void { const snapshot = this.#snapshot; const book=this.#book; const signal=this.#signal; if (snapshot === null || book===null || signal===null || !this.#clobConnected || !this.#binanceConnected || this.latestBinance()===null)return; this.#observer?.snapshot(snapshot); const midpoint=Money.from(signal.value.bid).plus(Money.from(signal.value.ask)).dividedBy(Money.from("2")).toCanonical(); const result=createKJStrategyContext({decisionTime:this.#now(),market:book.value.market,book:{state:book.value.state,continuity:book.value.continuity,up:book.value.up,down:book.value.down,receiveStamp:book.stamp},signal:{provider:"BINANCE_SPOT",price:midpoint,sourceTime:signal.value.sourceTime,serverTime:signal.value.serverTime,receiveTime:signal.stamp.localWallReceiveTime,receiveStamp:signal.stamp,connectionId:signal.value.connectionId,inputHash:signal.value.inputHash}}); if(result.ready)this.#observer?.strategyContext?.(result.context); else this.#observer?.gap(book.value.market.marketId,this.#now(),result.reason); }
+  #publish(): void { const snapshot = this.#snapshot; const book=this.#book; const signal=this.#signal; if (snapshot === null || book===null || signal===null || !this.#clobConnected || !this.#binanceConnected || this.latestBinance()===null)return; const now=this.#now();const nowMs=Date.parse(now);if(!Number.isFinite(nowMs)||(this.#lastPublishedAtMilliseconds!==null&&nowMs-this.#lastPublishedAtMilliseconds<1_000))return;this.#lastPublishedAtMilliseconds=nowMs;this.#observer?.snapshot(snapshot); const midpoint=Money.from(signal.value.bid).plus(Money.from(signal.value.ask)).dividedBy(Money.from("2")).toCanonical(); const result=createKJStrategyContext({decisionTime:now,market:book.value.market,book:{state:book.value.state,continuity:book.value.continuity,up:book.value.up,down:book.value.down,receiveStamp:book.stamp},signal:{provider:"BINANCE_SPOT",price:midpoint,sourceTime:signal.value.sourceTime,serverTime:signal.value.serverTime,receiveTime:signal.stamp.localWallReceiveTime,receiveStamp:signal.stamp,connectionId:signal.value.connectionId,inputHash:signal.value.inputHash}}); if(result.ready)this.#observer?.strategyContext?.(result.context); else this.#observer?.gap(book.value.market.marketId,now,result.reason); }
   #connection(at: string, detail: string): void { const connected = this.#clobConnected && this.#binanceConnected; if (connected !== this.#lastPublishedConnection) { this.#lastPublishedConnection = connected; this.#observer?.connection(connected, at, detail); } }
 }
 
@@ -205,7 +206,7 @@ export function parseBtcFiveMinuteSlug(slug: string): number {
 }
 
 function createSinglePublicBtcPaperMarketFeed(slug: string): PublicBtcPaperMarketFeed {
-  return new PublicBtcPaperMarketFeed(`public-btc-${slug}`, new PublicClobPaperMarketFeed({ slug }), new PublicBinanceSpotFeed());
+  return new PublicBtcPaperMarketFeed(`public-btc-${slug}`, new PublicClobPaperMarketFeed({ slug, useWebSocket: false }), new PublicBinanceSpotFeed(undefined, { useWebSocket: false }));
 }
 
 export function createPublicBtcPaperMarketFeed(slug: string): RotatingPublicBtcPaperMarketFeed {

@@ -31,10 +31,11 @@ class WorkbenchEventMappingTests(unittest.TestCase):
             "side": "DOWN", "probability_up": "0.4", "decision_ask": "0.55",
             "edge": "0.05", "winner": "UP", "net_pnl": "0",
         }]
-        events, _ = build_public_events(source, "run-2", Decimal("100"))
+        events, equity = build_public_events(source, "run-2", Decimal("100"))
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0]["payload"]["action"], "HOLD")
         self.assertEqual(events[0]["payload"]["reason"], "EDGE_BELOW_FEE_AWARE_THRESHOLD")
+        self.assertEqual([item["equity"] for item in equity], ["100", "100"])
 
 
 if __name__ == "__main__":

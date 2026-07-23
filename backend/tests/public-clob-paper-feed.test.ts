@@ -91,24 +91,25 @@ test("credential-free public feed discovers tokens, seeds REST books, handles ma
   assert.equal(requested.length, 0, "construction must be inert");
   await feed.start(observer);
   assert.equal(requested.length, 3);
+  assert.deepEqual(connections, [true], "REST polling makes the seeded public book usable before WebSocket upgrade");
   assert.equal(snapshots.length, 1);
   assert.equal(snapshots[0]?.eligible, true);
   assert.deepEqual(snapshots[0]?.yesAsks, [{ price: "0.52", quantity: "25" }]);
   assert.deepEqual(snapshots[0]?.noAsks, [{ price: "0.51", quantity: "25" }]);
 
   socket.open();
-  assert.deepEqual(connections, [true]);
+  assert.deepEqual(connections, [true, true]);
   const subscription = JSON.parse(socket.sent[0] ?? "null") as Record<string, unknown>;
   assert.equal(subscription.type, "market");
   assert.deepEqual(subscription.assets_ids, [UP, DOWN]);
   assert.equal(Object.hasOwn(subscription, "auth"), false);
-  intervalCallbacks[0]?.();
+  intervalCallbacks.at(-1)?.();
   assert.equal(socket.sent.at(-1), "PING");
   socket.message("PONG");
   socket.message(JSON.stringify({
     event_type: "price_change",
     market: "0x29789033e9636c68c85f55bc4731d6ffbe8f41d37caf0df655a383b626e29c23",
-    timestamp: "1775181000950",
+    timestamp: "1775181002000",
     price_changes: [{
       asset_id: UP, price: "0.52", size: "0", side: "SELL", hash: "up-2", best_bid: "0.48", best_ask: "0.53",
     }, {
@@ -118,11 +119,12 @@ test("credential-free public feed discovers tokens, seeds REST books, handles ma
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(snapshots.length, 2);
   assert.deepEqual(snapshots.at(-1)?.yesAsks, [{ price: "0.53", quantity: "30" }]);
+  assert.equal(snapshots.at(-1)?.observedAtUtc, NOW, "future provider clocks are clamped to local receive time");
   assert.deepEqual(gaps, []);
   assert.deepEqual(errors, []);
 
   await feed.stop();
-  assert.deepEqual(connections, [true, false]);
+  assert.deepEqual(connections, [true, true, false]);
 });
 
 test("feed fails closed on discovery/REST status and stop aborts an in-flight injected request", async () => {

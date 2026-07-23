@@ -30,7 +30,21 @@ def _public_payload(event: dict[str, Any], kind: str, base: str) -> dict[str, st
         return {**common, "decisionId": f"decision-{base}",
                 "action": "BUY" if status == "FILLED" else "SKIP" if status == "UNFILLED" else "HOLD",
                 "reason": event.get("reason"), "probability": event.get("probability_up"),
-                "price": event.get("decision_ask"), "edge": event.get("edge"),
+                "price": event.get("decision_ask"), "decisionAsk": event.get("decision_ask"),
+                "executablePrice": event.get("fill_price"), "edge": event.get("edge"),
+                "netEdge": event.get("net_edge"), "requiredEdge": event.get("required_edge"),
+                "feeRate": event.get("fee_rate"), "estimatedFee": event.get("intended_fee"),
+                "intendedQuantity": event.get("intended_quantity"),
+                "intendedStake": event.get("intended_stake"),
+                "targetPositionQuantity": event.get("target_position_quantity"),
+                "currentPositionQuantity": event.get("position_before"),
+                "openOrderQuantity": event.get("open_order_quantity"),
+                "approvedOrderQuantity": event.get("intended_quantity"),
+                "riskStatus": event.get("risk_status"),
+                "riskReasonCodes": event.get("risk_reason_codes"),
+                "visibleAskQuantity": event.get("visible_ask_size"),
+                "decisionVisibleAskQuantity": event.get("decision_visible_ask_size"),
+                "bookParticipation": event.get("book_participation"),
                 "outcome": event.get("winner"), "pnl": event.get("net_pnl")}
     if kind == "order":
         return {**common, "orderId": event.get("intent_id") or f"order-{base}",
@@ -51,6 +65,7 @@ def _public_payload(event: dict[str, Any], kind: str, base: str) -> dict[str, st
 def build_public_events(source_events: list[dict[str, Any]], run_id: str, initial_cash: Decimal) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     events: list[dict[str, Any]] = []
     equity = [{"timeUtc": source_events[0]["decision_time"], "equity": str(initial_cash)}] if source_events else []
+    current_equity = str(initial_cash)
     for ordinal, event in enumerate(source_events, 1):
         base = f"{run_id}-{ordinal}"
         events.append({"eventId": f"decision-{base}", "eventTimeUtc": event["decision_time"], "kind": "decision", "payload": _public_payload(event, "decision", base)})
@@ -59,7 +74,13 @@ def build_public_events(source_events: list[dict[str, Any]], run_id: str, initia
         if event["status"] == "FILLED":
             events.append({"eventId": f"fill-{base}", "eventTimeUtc": event["fill_time"], "kind": "fill", "payload": _public_payload(event, "fill", base)})
             events.append({"eventId": f"settlement-{base}", "eventTimeUtc": event["settlement_evidence_time"], "kind": "settlement", "payload": _public_payload(event, "settlement", base)})
-            equity.append({"timeUtc": event["settlement_evidence_time"], "equity": event["bankroll_after"]})
+            current_equity = str(event["bankroll_after"])
+            equity.append({"timeUtc": event["settlement_evidence_time"], "equity": current_equity})
+        else:
+            # NO_TRADE is still an observed account state. Keeping the unchanged balance on the
+            # common decision timeline makes the cash baseline a real horizontal comparison line.
+            current_equity = str(event.get("bankroll_after", current_equity))
+            equity.append({"timeUtc": event["decision_time"], "equity": current_equity})
     return events, equity
 
 
@@ -72,7 +93,8 @@ def run(input_value: dict[str, Any]) -> dict[str, Any]:
     parameters = input_value["parameters"]
     initial_cash = Decimal(input_value["initialCash"])
     result, result_strategy_id = run_registered_workbench_backtest(
-        strategy_id, receipt, rows, parameters, initial_cash, Decimal(input_value["maxPosition"])
+        strategy_id, receipt, rows, parameters, initial_cash, Decimal(input_value["maxPosition"]),
+        input_value["request"].get("evaluationSplit"),
     )
     summary = result["runs"][result_strategy_id]
     source_events = [event for event in result["events"] if event["strategy"] == result_strategy_id]
@@ -82,6 +104,9 @@ def run(input_value: dict[str, Any]) -> dict[str, Any]:
     return {
         "schemaVersion": "backtest-result-v1", "runId": input_value["runId"], "request": input_value["request"],
         "startedAtUtc": input_value["startedAtUtc"], "completedAtUtc": input_value["completedAtUtc"],
+        "evaluationScope": {"schemaVersion": "backtest-evaluation-scope-v1", "split": result["split"],
+                            "horizonSeconds": result["horizon_seconds"], "scenario": result["scenario"],
+                            "cohortHash": result["cohort_hash"], "cohortSize": result["cohort_size"]},
         "metrics": {"netPnl": summary["net_pnl"], "fees": summary["fees"], "maxDrawdown": summary["max_drawdown"], "fillRate": format(fill_rate, "f"), "winRate": summary["win_rate"], "brier": summary["brier_score"]},
         "equityCurve": equity, "events": events,
     }

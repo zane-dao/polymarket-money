@@ -67,6 +67,47 @@ export function humanizeIdentifier(value: string): string {
   return value.replace(/[_-]+/gu, " ").replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }
 
+export function PaginationControls({
+  label,
+  page,
+  totalPages,
+  pageSize,
+  totalItems,
+  busy = false,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  label: string;
+  page: number;
+  totalPages: number;
+  pageSize: 10 | 20 | 50;
+  totalItems: number;
+  busy?: boolean;
+  onPageChange(page: number): void;
+  onPageSizeChange(pageSize: 10 | 20 | 50): void;
+}) {
+  const pageCount = Math.max(1, totalPages);
+  const currentPage = Math.min(page, pageCount);
+  return <nav className="event-pagination" aria-label={`${label}分页`}>
+    <span>共 <b>{formatCount(totalItems)}</b> 条</span>
+    <label>每页
+      <select aria-label={`${label}每页条数`} value={pageSize} disabled={busy} onChange={(event) => onPageSizeChange(Number(event.target.value) as 10 | 20 | 50)}>
+        <option value={10}>10 条</option>
+        <option value={20}>20 条</option>
+        <option value={50}>50 条</option>
+      </select>
+    </label>
+    <button className="button" disabled={busy || currentPage <= 1} onClick={() => onPageChange(currentPage - 1)}>上一页</button>
+    <label>页码
+      <select aria-label={`${label}页码`} value={currentPage} disabled={busy || totalPages === 0} onChange={(event) => onPageChange(Number(event.target.value))}>
+        {Array.from({ length: pageCount }, (_, index) => <option key={index + 1} value={index + 1}>第 {index + 1} 页</option>)}
+      </select>
+    </label>
+    <span>/ {pageCount} 页</span>
+    <button className="button" disabled={busy || totalPages === 0 || currentPage >= totalPages} onClick={() => onPageChange(currentPage + 1)}>下一页</button>
+  </nav>;
+}
+
 export function CopyButton({ value, label = "复制" }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   async function copy() { await navigator.clipboard.writeText(value); setCopied(true); window.setTimeout(() => setCopied(false), 1200); }

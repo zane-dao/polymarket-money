@@ -2,21 +2,476 @@ import { useEffect, useState } from "react";
 import { useWorkbenchData } from "../app/WorkbenchDataContext.js";
 import { useWorkbenchCommands } from "../app/WorkbenchCommandContext.js";
 import type { AppStatusV1 } from "../../types/app-status.js";
-import type { PaperMarketHostStatusV1, QueryPageV1, SystemHealthV1, SystemIncidentV1 } from "../services/workbench-commands.js";
+import type {
+  PaperMarketHostStatusV1,
+  QueryPageV1,
+  SystemHealthV1,
+  SystemIncidentV1,
+} from "../services/workbench-commands.js";
 import { LineChart } from "../components/LineChart.js";
-import { Badge, EmptyState, formatEventUtc, PageHeader, Panel } from "../components/ui.js";
+import { VerifiedHealthDashboard } from "../components/VerifiedHealthDashboard.js";
+import {
+  Badge,
+  EmptyState,
+  formatEventUtc,
+  PageHeader,
+  Panel,
+} from "../components/ui.js";
 
 export function HealthPage() {
-  const commands = useWorkbenchCommands(); const [status, setStatus] = useState<AppStatusV1 | null>(null); const [health, setHealth] = useState<SystemHealthV1 | null>(null); const [incidents, setIncidents] = useState<QueryPageV1<SystemIncidentV1> | null>(null); const [host, setHost] = useState<PaperMarketHostStatusV1 | null>(null); const [statusError, setStatusError] = useState<string | null>(null);
-  useEffect(() => { if (commands === null) return; let active = true; Promise.all([commands.getAppStatus(), commands.getSystemHealth(), commands.listSystemIncidents({page:1,pageSize:100}), commands.getPaperMarketHostStatus()]).then(([app, system, nextIncidents, nextHost]) => { if (!active) return; setStatus(app); setHealth(system); setIncidents(nextIncidents); setHost(nextHost); setStatusError(null); }).catch((error: unknown) => { if (active) setStatusError(error instanceof Error ? error.message : "状态探针失败"); }); return () => { active = false; }; }, [commands]);
+  const commands = useWorkbenchCommands();
+  const [status, setStatus] = useState<AppStatusV1 | null>(null);
+  const [health, setHealth] = useState<SystemHealthV1 | null>(null);
+  const [incidents, setIncidents] =
+    useState<QueryPageV1<SystemIncidentV1> | null>(null);
+  const [host, setHost] = useState<PaperMarketHostStatusV1 | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  useEffect(() => {
+    if (commands === null) return;
+    let active = true;
+    Promise.all([
+      commands.getAppStatus(),
+      commands.getSystemHealth(),
+      commands.listSystemIncidents({ page: 1, pageSize: 100 }),
+      commands.getPaperMarketHostStatus(),
+    ])
+      .then(([app, system, nextIncidents, nextHost]) => {
+        if (!active) return;
+        setStatus(app);
+        setHealth(system);
+        setIncidents(nextIncidents);
+        setHost(nextHost);
+        setStatusError(null);
+      })
+      .catch(() => {
+        if (active)
+          setStatusError("后端状态探针查询失败；请确认本地候选服务可访问。");
+      });
+    return () => {
+      active = false;
+    };
+  }, [commands]);
   const { sourceKind, chartSeries } = useWorkbenchData();
-  if (sourceKind === "verified-local") return <><PageHeader title="系统健康（System Health）" subtitle="应用、数据、任务、实时主机和异常全部来自固定后端探针。" /><Panel title="应用安全状态" english="Application Safety Status">{status === null || health === null ? <EmptyState title="详细健康数据不可用" detail={statusError ?? "正在等待后端状态探针。"} /> : <div className="validation-list"><span>模式 <b>{status.mode}</b></span><span>总状态 <b className={health.status === "healthy" ? "positive" : "amber"}>{health.status}</b></span><span>数据库 <b className={health.database === "healthy" ? "positive" : "amber"}>{health.database}</b></span><span>数据集 <b>{health.datasets}</b></span><span>回测任务 <b>{health.jobs}</b></span><span>活动 / 失败任务 <b>{health.activeJobs} / {health.failedJobs}</b></span><span>真实交易 <b className={status.liveTradingEnabled ? "negative" : "positive"}>{status.liveTradingEnabled ? "异常启用" : "禁用"}</b></span><span>数据根 <b>{status.dataRootConfigured ? "已配置" : "未配置"}</b></span><span>应用版本 <b>{status.appVersion}</b></span>{status.modules.map((module) => <span key={module.moduleId}><span>{module.moduleId}</span> <b className={module.availability === "available" ? "positive" : "amber"}>{module.availability}</b></span>)}</div>}</Panel><Panel title="实时连接" english="Paper Market Host">{host === null ? <EmptyState title="实时主机状态不可用" detail={statusError ?? "正在等待 Paper host 状态。"} /> : <div className="validation-list"><span>生命周期 <b>{host.lifecycle}</b></span><span>连接 <b>{host.connection}</b></span><span>可执行快照 <b className={host.ready ? "positive" : "amber"}>{host.ready ? "已就绪" : "未就绪"}</b></span><span>缓存市场 <b>{host.cachedMarketCount}</b></span><span>快照 / 缺口 / 错误 <b>{host.snapshotCount} / {host.gapCount} / {host.errorCount}</b></span><span>最后快照 <b>{host.lastSnapshotAtUtc === null ? "不可用" : formatEventUtc(host.lastSnapshotAtUtc)}</b></span></div>}</Panel><Panel title="运行时异常" english="Runtime Incidents">{incidents === null ? <EmptyState title="异常查询不可用" detail={statusError ?? "正在等待异常仓库。"} /> : incidents.items.length === 0 ? <EmptyState title="没有已记录的系统异常" detail="后端异常仓库当前为空；不会从日志文字推断或伪造异常。" /> : <div className="incident-list">{incidents.items.map((incident) => <article key={incident.incidentId} className={incident.severity === "error" ? "incident-list__critical" : incident.severity === "warning" ? "incident-list__warning" : "incident-list__info"}><Badge tone={incident.severity === "error" ? "bad" : incident.severity === "warning" ? "warn" : "info"}>{incident.severity.toUpperCase()}</Badge><div><strong>{incident.code} · {incident.component}</strong><p>{incident.message}</p></div><time>{formatEventUtc(incident.occurredAtUtc)}</time><span>{incident.resolved ? "已解决" : "未解决"}</span><details className="technical-details"><summary>查看异常 ID</summary>{incident.incidentId}</details></article>)}</div>}</Panel></>;
-  return <><PageHeader title="系统健康（System Health）" subtitle="判断实时数据、市场轮换、事件记录和模拟执行是否可信。" action={<div className="toolbar"><button className="button">下载诊断信息</button><button className="button">停止模拟</button></div>} />
-    <div className="health-top"><HealthKpi title="Polymarket WebSocket" badge="HEALTHY 健康" value="18 ms" rows={[["连接 ID","pm-8f2a"],["重连次数","2"],["最后事件","23:18:42.341"]]} /><HealthKpi title="Binance WebSocket" badge="HEALTHY 健康" value="11 ms" rows={[["连接 ID","bn-c117"],["重连次数","1"],["最后事件","23:18:42.347"]]} /><HealthKpi title="盘口连续性（Book Continuity）" badge="UNVERIFIED 未验证" value="TAGGED 已标记" tone="warn" rows={[["时钟域","local-mono"],["接收序号","8,412,220"],["缺口异常","3"]]} /><HealthKpi title="市场轮换（Market Rotation）" badge="READY 就绪" value="23:20" rows={[["当前市场","ACTIVE"],["下一市场","FOUND"],["Token IDs","READY"]]} /></div>
-    <div className="health-control-grid"><Panel title="进程与服务控制" english="Process & Service Control" action={<Badge tone="warn">模拟环境</Badge>}><div className="service-grid">{[["采集器 Collector","当前停止，开关只模拟联机状态",false],["前端 Frontend","运行中 · PID 14692",true],["模拟展示 Simulator","运行中 · PAPER 模式",true],["自动巡检 Watchdog","禁用，不会自动拉起进程",false],["事件记录器 Recorder","运行中 · 单写入器",true],["真实下单 Live Trading","禁用，本原型不会发送订单",false]].map(([name,detail,on])=><div key={String(name)}><span><strong>{name}</strong><small>{detail}</small></span><button className={`switch ${on?"on":""}`} disabled={String(name).includes("Live")}/></div>)}</div></Panel><Panel title="信号源开关" english="Signal Sources"><div className="source-list">{[["Binance 成交价",true],["Binance 盘口",true],["Binance USD 中间价",true],["Coinbase",false],["Chainlink 结算源",true],["OKX",false],["Bybit",false],["Kraken",false]].map(([name,on])=><div key={String(name)}><span>{name}</span><button className={`switch ${on?"on":""}`}/></div>)}</div></Panel></div>
-    <div className="health-control-grid"><Panel title="数据质量计数器" english="Data Quality Counters"><div className="counter-grid">{[["空盘口事件","4"],["单边为空","7"],["阈值观测","19"],["丢弃异常数据","2"],["运行时异常","3"],["不可交易窗口","11"],["已记录事件","8.4M"],["写入队列","0"],["写入器状态","SINGLE 单写入"]].map(([label,value])=><article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div></Panel><Panel title="本地处理延迟" english="Local Processing Latency"><div className="latency-kpis"><span>接收→标准化 p50<b>2.9 ms</b></span><span>接收→标准化 p95<b>10.8 ms</b></span><span>特征→决策 p95<b>4.2 ms</b></span><span>决策→模拟订单 p95<b>3.1 ms</b></span><span>本地接收时钟<b className="positive">正常</b></span><span>连接 ID<b className="positive">稳定</b></span></div><LineChart height={170} series={[{label:"latency",values:chartSeries.raw.map(value=>value/3),color:"#4f91ff"},{label:"threshold",values:chartSeries.raw.map(()=>30),color:"#35d1c0"}]} /></Panel></div>
-    <Panel title="运行时异常" english="Runtime Incidents & Alerts" action={<Badge tone="bad">3 ACTIVE 报警</Badge>}><div className="incident-list"><article className="incident-list__critical"><Badge tone="bad">CRITICAL 严重</Badge><div><strong>BOOK_GAP · 盘口序列出现缺口</strong><p>Polymarket market channel 的接收序号不连续；该窗口已标记为不可交易。</p></div><time>23:18:39.204</time><button className="button">查看事件</button></article><article className="incident-list__warning"><Badge tone="warn">WARNING 警告</Badge><div><strong>STALE_BOOK · 盘口年龄超过门槛</strong><p>数据年龄达到 1,248 ms，策略资格门已自动关闭。</p></div><time>23:17:58.771</time><button className="button">确认报警</button></article><article className="incident-list__info"><Badge tone="info">INFO 提示</Badge><div><strong>RECONNECT · Binance WebSocket 已重连</strong><p>连接 ID 已更新，旧连接的 point-in-time 状态不再复用。</p></div><time>23:16:12.090</time><button className="button">查看详情</button></article></div></Panel>
-  </>;
+  if (sourceKind === "verified-local")
+    return (
+      <>
+        <PageHeader
+          title="准入与健康（System Health）"
+          subtitle="用真实后端探针核对 Paper 安全边界、数据、任务、公共行情主机和运行时异常。"
+          action={<Badge tone="good">VERIFIED LOCAL</Badge>}
+        />
+        <VerifiedHealthDashboard
+          status={status}
+          health={health}
+          host={host}
+          incidents={incidents}
+          statusError={statusError}
+        />
+      </>
+    );
+  if (sourceKind === "verified-local")
+    return (
+      <>
+        <PageHeader
+          title="系统健康（System Health）"
+          subtitle="应用、数据、任务、实时主机和异常全部来自固定后端探针。"
+        />
+        <Panel title="应用安全状态" english="Application Safety Status">
+          {status === null || health === null ? (
+            <EmptyState
+              title="详细健康数据不可用"
+              detail={statusError ?? "正在等待后端状态探针。"}
+            />
+          ) : (
+            <div className="validation-list">
+              <span>
+                模式 <b>{status.mode}</b>
+              </span>
+              <span>
+                总状态{" "}
+                <b
+                  className={health.status === "healthy" ? "positive" : "amber"}
+                >
+                  {health.status}
+                </b>
+              </span>
+              <span>
+                数据库{" "}
+                <b
+                  className={
+                    health.database === "healthy" ? "positive" : "amber"
+                  }
+                >
+                  {health.database}
+                </b>
+              </span>
+              <span>
+                数据集 <b>{health.datasets}</b>
+              </span>
+              <span>
+                回测任务 <b>{health.jobs}</b>
+              </span>
+              <span>
+                活动 / 失败任务{" "}
+                <b>
+                  {health.activeJobs} / {health.failedJobs}
+                </b>
+              </span>
+              <span>
+                真实交易{" "}
+                <b
+                  className={
+                    status.liveTradingEnabled ? "negative" : "positive"
+                  }
+                >
+                  {status.liveTradingEnabled ? "异常启用" : "禁用"}
+                </b>
+              </span>
+              <span>
+                数据根 <b>{status.dataRootConfigured ? "已配置" : "未配置"}</b>
+              </span>
+              <span>
+                应用版本 <b>{status.appVersion}</b>
+              </span>
+              {status.modules.map((module) => (
+                <span key={module.moduleId}>
+                  <span>{module.moduleId}</span>{" "}
+                  <b
+                    className={
+                      module.availability === "available" ? "positive" : "amber"
+                    }
+                  >
+                    {module.availability}
+                  </b>
+                </span>
+              ))}
+            </div>
+          )}
+        </Panel>
+        <Panel title="实时连接" english="Paper Market Host">
+          {host === null ? (
+            <EmptyState
+              title="实时主机状态不可用"
+              detail={statusError ?? "正在等待 Paper host 状态。"}
+            />
+          ) : (
+            <div className="validation-list">
+              <span>
+                生命周期 <b>{host.lifecycle}</b>
+              </span>
+              <span>
+                连接 <b>{host.connection}</b>
+              </span>
+              <span>
+                可执行快照{" "}
+                <b className={host.ready ? "positive" : "amber"}>
+                  {host.ready ? "已就绪" : "未就绪"}
+                </b>
+              </span>
+              <span>
+                缓存市场 <b>{host.cachedMarketCount}</b>
+              </span>
+              <span>
+                快照 / 缺口 / 错误{" "}
+                <b>
+                  {host.snapshotCount} / {host.gapCount} / {host.errorCount}
+                </b>
+              </span>
+              <span>
+                最后快照{" "}
+                <b>
+                  {host.lastSnapshotAtUtc === null
+                    ? "不可用"
+                    : formatEventUtc(host.lastSnapshotAtUtc)}
+                </b>
+              </span>
+            </div>
+          )}
+        </Panel>
+        <Panel title="运行时异常" english="Runtime Incidents">
+          {incidents === null ? (
+            <EmptyState
+              title="异常查询不可用"
+              detail={statusError ?? "正在等待异常仓库。"}
+            />
+          ) : incidents.items.length === 0 ? (
+            <EmptyState
+              title="没有已记录的系统异常"
+              detail="后端异常仓库当前为空；不会从日志文字推断或伪造异常。"
+            />
+          ) : (
+            <div className="incident-list">
+              {incidents.items.map((incident) => (
+                <article
+                  key={incident.incidentId}
+                  className={
+                    incident.severity === "error"
+                      ? "incident-list__critical"
+                      : incident.severity === "warning"
+                        ? "incident-list__warning"
+                        : "incident-list__info"
+                  }
+                >
+                  <Badge
+                    tone={
+                      incident.severity === "error"
+                        ? "bad"
+                        : incident.severity === "warning"
+                          ? "warn"
+                          : "info"
+                    }
+                  >
+                    {incident.severity.toUpperCase()}
+                  </Badge>
+                  <div>
+                    <strong>
+                      {incident.code} · {incident.component}
+                    </strong>
+                    <p>{incident.message}</p>
+                  </div>
+                  <time>{formatEventUtc(incident.occurredAtUtc)}</time>
+                  <span>{incident.resolved ? "已解决" : "未解决"}</span>
+                  <details className="technical-details">
+                    <summary>查看异常 ID</summary>
+                    {incident.incidentId}
+                  </details>
+                </article>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </>
+    );
+  return (
+    <>
+      <PageHeader
+        title="系统健康（System Health）"
+        subtitle="判断实时数据、市场轮换、事件记录和模拟执行是否可信。"
+        action={
+          <div className="toolbar">
+            <button className="button">下载诊断信息</button>
+            <button className="button">停止模拟</button>
+          </div>
+        }
+      />
+      <div className="health-top">
+        <HealthKpi
+          title="Polymarket WebSocket"
+          badge="HEALTHY 健康"
+          value="18 ms"
+          rows={[
+            ["连接 ID", "pm-8f2a"],
+            ["重连次数", "2"],
+            ["最后事件", "23:18:42.341"],
+          ]}
+        />
+        <HealthKpi
+          title="Binance WebSocket"
+          badge="HEALTHY 健康"
+          value="11 ms"
+          rows={[
+            ["连接 ID", "bn-c117"],
+            ["重连次数", "1"],
+            ["最后事件", "23:18:42.347"],
+          ]}
+        />
+        <HealthKpi
+          title="盘口连续性（Book Continuity）"
+          badge="UNVERIFIED 未验证"
+          value="TAGGED 已标记"
+          tone="warn"
+          rows={[
+            ["时钟域", "local-mono"],
+            ["接收序号", "8,412,220"],
+            ["缺口异常", "3"],
+          ]}
+        />
+        <HealthKpi
+          title="市场轮换（Market Rotation）"
+          badge="READY 就绪"
+          value="23:20"
+          rows={[
+            ["当前市场", "ACTIVE"],
+            ["下一市场", "FOUND"],
+            ["Token IDs", "READY"],
+          ]}
+        />
+      </div>
+      <div className="health-control-grid">
+        <Panel
+          title="进程与服务控制"
+          english="Process & Service Control"
+          action={<Badge tone="warn">模拟环境</Badge>}
+        >
+          <div className="service-grid">
+            {[
+              ["采集器 Collector", "当前停止，开关只模拟联机状态", false],
+              ["前端 Frontend", "运行中 · PID 14692", true],
+              ["模拟展示 Simulator", "运行中 · PAPER 模式", true],
+              ["自动巡检 Watchdog", "禁用，不会自动拉起进程", false],
+              ["事件记录器 Recorder", "运行中 · 单写入器", true],
+              ["真实下单 Live Trading", "禁用，本原型不会发送订单", false],
+            ].map(([name, detail, on]) => (
+              <div key={String(name)}>
+                <span>
+                  <strong>{name}</strong>
+                  <small>{detail}</small>
+                </span>
+                <button
+                  className={`switch ${on ? "on" : ""}`}
+                  disabled={String(name).includes("Live")}
+                />
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel title="信号源开关" english="Signal Sources">
+          <div className="source-list">
+            {[
+              ["Binance 成交价", true],
+              ["Binance 盘口", true],
+              ["Binance USD 中间价", true],
+              ["Coinbase", false],
+              ["Chainlink 结算源", true],
+              ["OKX", false],
+              ["Bybit", false],
+              ["Kraken", false],
+            ].map(([name, on]) => (
+              <div key={String(name)}>
+                <span>{name}</span>
+                <button className={`switch ${on ? "on" : ""}`} />
+              </div>
+            ))}
+          </div>
+        </Panel>
+      </div>
+      <div className="health-control-grid">
+        <Panel title="数据质量计数器" english="Data Quality Counters">
+          <div className="counter-grid">
+            {[
+              ["空盘口事件", "4"],
+              ["单边为空", "7"],
+              ["阈值观测", "19"],
+              ["丢弃异常数据", "2"],
+              ["运行时异常", "3"],
+              ["不可交易窗口", "11"],
+              ["已记录事件", "8.4M"],
+              ["写入队列", "0"],
+              ["写入器状态", "SINGLE 单写入"],
+            ].map(([label, value]) => (
+              <article key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </article>
+            ))}
+          </div>
+        </Panel>
+        <Panel title="本地处理延迟" english="Local Processing Latency">
+          <div className="latency-kpis">
+            <span>
+              接收→标准化 p50<b>2.9 ms</b>
+            </span>
+            <span>
+              接收→标准化 p95<b>10.8 ms</b>
+            </span>
+            <span>
+              特征→决策 p95<b>4.2 ms</b>
+            </span>
+            <span>
+              决策→模拟订单 p95<b>3.1 ms</b>
+            </span>
+            <span>
+              本地接收时钟<b className="positive">正常</b>
+            </span>
+            <span>
+              连接 ID<b className="positive">稳定</b>
+            </span>
+          </div>
+          <LineChart
+            height={170}
+            series={[
+              {
+                label: "latency",
+                values: chartSeries.raw.map((value) => value / 3),
+                color: "#4f91ff",
+              },
+              {
+                label: "threshold",
+                values: chartSeries.raw.map(() => 30),
+                color: "#35d1c0",
+              },
+            ]}
+          />
+        </Panel>
+      </div>
+      <Panel
+        title="运行时异常"
+        english="Runtime Incidents & Alerts"
+        action={<Badge tone="bad">3 ACTIVE 报警</Badge>}
+      >
+        <div className="incident-list">
+          <article className="incident-list__critical">
+            <Badge tone="bad">CRITICAL 严重</Badge>
+            <div>
+              <strong>BOOK_GAP · 盘口序列出现缺口</strong>
+              <p>
+                Polymarket market channel
+                的接收序号不连续；该窗口已标记为不可交易。
+              </p>
+            </div>
+            <time>23:18:39.204</time>
+            <button className="button">查看事件</button>
+          </article>
+          <article className="incident-list__warning">
+            <Badge tone="warn">WARNING 警告</Badge>
+            <div>
+              <strong>STALE_BOOK · 盘口年龄超过门槛</strong>
+              <p>数据年龄达到 1,248 ms，策略资格门已自动关闭。</p>
+            </div>
+            <time>23:17:58.771</time>
+            <button className="button">确认报警</button>
+          </article>
+          <article className="incident-list__info">
+            <Badge tone="info">INFO 提示</Badge>
+            <div>
+              <strong>RECONNECT · Binance WebSocket 已重连</strong>
+              <p>连接 ID 已更新，旧连接的 point-in-time 状态不再复用。</p>
+            </div>
+            <time>23:16:12.090</time>
+            <button className="button">查看详情</button>
+          </article>
+        </div>
+      </Panel>
+    </>
+  );
 }
 
-function HealthKpi({title,badge,value,rows,tone="good"}:{title:string;badge:string;value:string;rows:readonly (readonly [string,string])[];tone?:"good"|"warn"}){return <article className="health-kpi"><strong>{title}</strong><Badge tone={tone}>{badge}</Badge><b className={tone==="warn"?"amber":"positive"}>{value}</b><dl>{rows.map(([label,item])=><span key={label}><dt>{label}</dt><dd>{item}</dd></span>)}</dl></article>}
+function HealthKpi({
+  title,
+  badge,
+  value,
+  rows,
+  tone = "good",
+}: {
+  title: string;
+  badge: string;
+  value: string;
+  rows: readonly (readonly [string, string])[];
+  tone?: "good" | "warn";
+}) {
+  return (
+    <article className="health-kpi">
+      <strong>{title}</strong>
+      <Badge tone={tone}>{badge}</Badge>
+      <b className={tone === "warn" ? "amber" : "positive"}>{value}</b>
+      <dl>
+        {rows.map(([label, item]) => (
+          <span key={label}>
+            <dt>{label}</dt>
+            <dd>{item}</dd>
+          </span>
+        ))}
+      </dl>
+    </article>
+  );
+}

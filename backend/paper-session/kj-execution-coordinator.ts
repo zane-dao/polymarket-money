@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdir, open, readFile, lstat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { mkdir, open, readFile, lstat, type FileHandle } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { Decimal } from "decimal.js";
 
-import type { KJPaperEvent, KJPaperStrategy } from "../core/src/runtime/kj-paper-engine.js";
+import type { KJPaperEvent, PaperRuntimeStrategy } from "../core/src/runtime/kj-paper-engine.js";
 import {
   assertAutomatedPaperOrderRequestV2,
   type PaperFeeEvidenceV1,
@@ -20,7 +21,7 @@ export type KJExecutionProposalV1 = Readonly<{
   intentId: string;
   proposalEventId: string;
   contextHash: string;
-  strategy: KJPaperStrategy;
+  strategy: PaperRuntimeStrategy;
   marketId: string;
   outcome: "UP" | "DOWN";
   sideProbability: string;
@@ -35,7 +36,7 @@ export type KJExecutionLinkV1 = Readonly<{
   schemaVersion: "kj-execution-link-v1";
   identity: string;
   proposalFingerprint: string;
-  strategy: KJPaperStrategy;
+  strategy: PaperRuntimeStrategy;
   intentId: string;
   sessionId: string;
   idempotencyKey: string;
@@ -58,10 +59,12 @@ export type KJExecutionOutboxRecordV1 = Readonly<{
 
 export interface KJExecutionOutboxStore {
   load(): Promise<readonly KJExecutionOutboxRecordV1[]>;
+  prepare?(): Promise<void>;
   append(record: KJExecutionOutboxRecordV1): Promise<void>;
+  close?(): Promise<void>;
 }
 
-export type KJExecutionAccountsV1 = Readonly<Record<KJPaperStrategy, string>>;
+export type KJExecutionAccountsV1 = Readonly<Partial<Record<PaperRuntimeStrategy, string>>>;
 
 function stableJson(value: unknown): string {
   if (value === null || typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
@@ -141,6 +144,7 @@ export class InMemoryKJExecutionOutboxStore implements KJExecutionOutboxStore {
 
 export class FileKJExecutionOutboxStore implements KJExecutionOutboxStore {
   readonly #path: string;
+  #handle: FileHandle | null = null;
   constructor(dataRoot: string) {
     if (!isAbsolute(dataRoot)) throw new Error("K/J execution outbox data root must be absolute");
     this.#path = resolve(dataRoot, "workbench", "paper-sessions", "kj-execution-links.jsonl");
@@ -158,13 +162,35 @@ export class FileKJExecutionOutboxStore implements KJExecutionOutboxStore {
     }
   }
   async append(record: KJExecutionOutboxRecordV1): Promise<void> {
+    const handle = await this.#openHandle();
+    await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
+    await handle.sync();
+  }
+
+  async prepare(): Promise<void> {
+    await this.#openHandle();
+  }
+
+  async close(): Promise<void> {
+    const handle = this.#handle;
+    this.#handle = null;
+    if (handle !== null) await handle.close();
+  }
+
+  async #openHandle(): Promise<FileHandle> {
+    if (this.#handle !== null) return this.#handle;
     const directory = resolve(this.#path, "..");
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const state = await lstat(this.#path).catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? null : Promise.reject(error));
-    if (state?.isSymbolicLink()) throw new Error("K/J execution outbox must not be a symlink");
-    const handle = await open(this.#path, "a", 0o600);
-    try { await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8"); await handle.sync(); }
-    finally { await handle.close(); }
+    if (state !== null && (state.isSymbolicLink() || !state.isFile())) {
+      throw new Error("K/J execution outbox must be a regular non-symlink file");
+    }
+    this.#handle = await open(
+      this.#path,
+      constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,
+      0o600,
+    );
+    return this.#handle;
   }
 }
 
@@ -177,10 +203,20 @@ export class KJPaperExecutionCoordinator {
   #lastRecordHash: string | null = null;
   #tail: Promise<void> = Promise.resolve();
   #initialized = false;
+  #closed = false;
 
   constructor(paper: PaperSessionService, outbox: KJExecutionOutboxStore, accounts: KJExecutionAccountsV1) {
-    for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) if (!SAFE_ID.test(accounts[strategy])) throw new Error(`invalid ${strategy} Paper sessionId`);
-    if (accounts.J_FEE_AWARE === accounts.K_DUAL_VOL) throw new Error("J and K require independent canonical Paper sessions");
+    const values = Object.entries(accounts);
+    if (values.length === 0) throw new Error("at least one canonical Paper session is required");
+    for (const [strategy, sessionId] of values) {
+      if (!["J_FEE_AWARE", "K_DUAL_VOL", "L_ADAPTIVE_EXECUTION_V2"].includes(strategy)
+        || typeof sessionId !== "string" || !SAFE_ID.test(sessionId)) {
+        throw new Error(`invalid ${strategy} Paper sessionId`);
+      }
+    }
+    if (new Set(values.map(([, sessionId]) => sessionId)).size !== values.length) {
+      throw new Error("strategies require independent canonical Paper sessions");
+    }
     this.#paper = paper; this.#outbox = outbox; this.#accounts = Object.freeze({ ...accounts });
   }
 
@@ -188,11 +224,17 @@ export class KJPaperExecutionCoordinator {
     if (this.#initialized) return;
     const records = await this.#outbox.load();
     for (const raw of records) this.#recoverRecord(raw);
+    for (const sessionId of new Set([...this.#links.values()].map((link) => link.sessionId))) {
+      try { await this.#paper.status(sessionId); }
+      catch { throw new Error(`K/J execution outbox references missing Paper session: ${sessionId}`); }
+    }
+    await this.#outbox.prepare?.();
     this.#initialized = true;
     for (const link of [...this.#links.values()]) if (link.state === "PENDING") await this.#submitPending(link);
   }
 
   coordinate(proposal: KJExecutionProposalV1): Promise<KJExecutionLinkV1> {
+    if (this.#closed) return Promise.reject(new Error("K/J execution coordinator is closed"));
     let output: KJExecutionLinkV1 | undefined;
     const operation = this.#tail.then(async () => { output = await this.#coordinate(proposal); });
     this.#tail = operation.then(() => undefined, () => undefined);
@@ -201,6 +243,13 @@ export class KJPaperExecutionCoordinator {
 
   links(): readonly KJExecutionLinkV1[] {
     return Object.freeze([...this.#links.values()].sort((a, b) => a.identity.localeCompare(b.identity)));
+  }
+
+  async close(): Promise<void> {
+    if (this.#closed) return;
+    this.#closed = true;
+    await this.#tail;
+    await this.#outbox.close?.();
   }
 
   async #coordinate(proposal: KJExecutionProposalV1): Promise<KJExecutionLinkV1> {
@@ -214,6 +263,7 @@ export class KJPaperExecutionCoordinator {
       return existing.state === "PENDING" ? this.#submitPending(existing) : existing;
     }
     const sessionId = this.#accounts[proposal.strategy];
+    if (sessionId === undefined) throw new Error(`no canonical Paper session configured for ${proposal.strategy}`);
     const idempotencyKey = `kjexec:v1:${proposal.strategy}:${proposal.intentId}`;
     const probability = new Decimal(proposal.sideProbability);
     const modelProbabilityYes = proposal.outcome === "UP" ? probability : new Decimal(1).minus(probability);
@@ -275,7 +325,7 @@ export class KJPaperExecutionCoordinator {
   #validateProposal(value: KJExecutionProposalV1): void {
     if (value.schemaVersion !== "kj-execution-proposal-v1" || !INTENT_ID.test(value.intentId)
       || !/^[a-f0-9]{64}$/u.test(value.contextHash) || !/^[a-f0-9]{64}$/u.test(value.proposalEventId)
-      || !SAFE_ID.test(value.marketId) || (value.strategy !== "J_FEE_AWARE" && value.strategy !== "K_DUAL_VOL")) {
+      || !SAFE_ID.test(value.marketId) || !["J_FEE_AWARE", "K_DUAL_VOL", "L_ADAPTIVE_EXECUTION_V2"].includes(value.strategy)) {
       throw new Error("K/J execution proposal identity is invalid");
     }
     if (Object.keys(value).sort().join(",") !== "contextHash,feeEvidence,intentId,marketId,maximumFillPrice,outcome,proposalEventId,proposedAtUtc,quantity,schemaVersion,sideProbability,strategy") throw new Error("K/J execution proposal fields are invalid");
@@ -298,8 +348,8 @@ export class KJPaperExecutionCoordinator {
 
   #validateRecoveredLink(link: KJExecutionLinkV1): void {
     if (link.schemaVersion !== "kj-execution-link-v1" || !/^[a-f0-9]{64}$/u.test(link.proposalFingerprint)
-      || !INTENT_ID.test(link.intentId) || (link.strategy !== "J_FEE_AWARE" && link.strategy !== "K_DUAL_VOL")
-      || link.identity !== `${link.strategy}:${link.intentId}` || link.sessionId !== this.#accounts[link.strategy]) {
+      || !INTENT_ID.test(link.intentId) || !["J_FEE_AWARE", "K_DUAL_VOL", "L_ADAPTIVE_EXECUTION_V2"].includes(link.strategy)
+      || link.identity !== `${link.strategy}:${link.intentId}` || !SAFE_ID.test(link.sessionId)) {
       throw new Error("K/J execution outbox link identity is invalid");
     }
     const expectedKey = `kjexec:v1:${link.strategy}:${link.intentId}`;

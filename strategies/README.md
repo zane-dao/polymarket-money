@@ -21,12 +21,13 @@
 
 - `L_ADAPTIVE_EXECUTION_V1`：版本 `l-adaptive-execution-v1-preregistered`，历史 gate 已失败，
   状态固定为 `RESEARCH_GATE_FAILED`。
-- `L_ADAPTIVE_EXECUTION_V2`：版本 `l-adaptive-execution-v2-candidate`，仅限离线研究，状态固定为
-  `RESEARCH_ONLY_CANDIDATE`。
+- `L_ADAPTIVE_EXECUTION_V2`：版本 `l-adaptive-execution-v2-candidate`，允许公开行情驱动的
+  `PAPER_ONLY` 验证，状态为 `PAPER_CANDIDATE`；不具备真实下单权限。
 
-两者共用经过审查的纯决策函数，但使用不同冻结配置和注册表身份。L 不得混入 K/J 实时路径，
-不得打开 `FINAL_TEST`，也不得因已有结果事后调参。进入实时 Paper 之前仍需连续 CLOB quote
-velocity 与 point-in-time Chainlink boundary 证据。
+V2 的 TypeScript 实时实现仍是显式输入、无 I/O 的纯决策函数，通过既有 Paper engine 合同运行。
+K/J/L 可分别选择，但每个新的去重订单簿状态只触发所选策略一次；Binance 单独变化与心跳不触发
+正式决策。不得打开 `FINAL_TEST`，也不得因已看到的验证结果事后调参。实时 Paper 只能形成执行与
+稳定性证据，不能把稀疏历史参数扫描或短时在线结果称为盈利证明。
 
 ## 修改规则
 

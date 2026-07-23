@@ -173,7 +173,9 @@ function executionCounters(
   }]));
   for (const event of events) {
     if (!targetMarketIds.has(event.marketId) || event.strategy === null) continue;
-    if (!STRATEGIES.includes(event.strategy)) throw new Error("paper event strategy is unsupported");
+    if (event.strategy !== "J_FEE_AWARE" && event.strategy !== "K_DUAL_VOL") {
+      throw new Error("paper event strategy is unsupported");
+    }
     const total = totals.get(event.strategy)!;
     if (event.eventType === "INTENT") total.intents += 1;
     else if (event.eventType === "FILL") {

@@ -62,16 +62,31 @@ function RoutedWorkbench() {
 export function App({ dataSource, commands = null, initialData }: { dataSource?: WorkbenchDataSource; commands?: WorkbenchCommands | null; initialData?: WorkbenchViewData }) {
   const [data, setData] = useState<WorkbenchViewData | null>(dataSource === undefined ? initialData ?? null : null);
   const [error, setError] = useState<string | null>(null);
-  const refresh = async () => { if (dataSource === undefined) return; setData(await dataSource.loadViewData()); };
+  const [attempt, setAttempt] = useState(0);
+  const refresh = async () => { if (dataSource === undefined) return; setError(null); setData(await dataSource.loadViewData()); };
   useEffect(() => {
     if (dataSource === undefined) return;
     const controller = new AbortController();
-    dataSource.loadViewData(controller.signal).then(setData).catch((reason: unknown) => {
+    const timeout = globalThis.setTimeout(() => controller.abort("本地后端连接超时"), 8000);
+    setError(null);
+    dataSource.loadViewData(controller.signal).then((next) => {
+      globalThis.clearTimeout(timeout);
+      setData(next);
+    }).catch((reason: unknown) => {
+      globalThis.clearTimeout(timeout);
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "工作台数据不可用");
+      else setError("本地后端在 8 秒内没有返回数据。请确认候选服务与固定 Web API 均已启动。");
     });
-    return () => controller.abort();
-  }, [dataSource]);
-  if (data === null && error === null) return <main className="boot-state"><h1>正在连接本地后端</h1><p>通过本机固定 Web API 加载已校验的只读数据；连接完成前不会把演示数据当作真实数据。</p></main>;
+    return () => { globalThis.clearTimeout(timeout); controller.abort(); };
+  }, [dataSource, attempt]);
+  if (data === null) return <ThemeProvider><main className="boot-state" aria-live="polite" aria-busy={error === null}>
+    <div className="boot-state__mark">P</div>
+    <span>LOCAL RESEARCH WORKBENCH</span>
+    <h1>{error === null ? "正在连接本地后端" : "本地后端暂时不可用"}</h1>
+    <p>{error ?? "正在通过固定 Web API 加载已校验的只读数据；连接完成前不会把演示数据当作真实数据。"}</p>
+    <div className="boot-state__status"><i className={error === null ? "loading" : "failed"} />{error === null ? "连接中 · 最长等待 8 秒" : "连接失败 · 未加载演示数据"}</div>
+    {error === null ? null : <button type="button" className="button button--primary" onClick={() => setAttempt((value) => value + 1)}>重新连接本地后端</button>}
+  </main></ThemeProvider>;
   const resolvedData = data ?? EMPTY_VERIFIED_WORKBENCH_DATA;
   return <ThemeProvider><WorkbenchDataProvider data={resolvedData} refresh={refresh} loadError={error}><WorkbenchCommandProvider commands={commands}><WorkbenchProvider><RoutedWorkbench /></WorkbenchProvider></WorkbenchCommandProvider></WorkbenchDataProvider></ThemeProvider>;
 }

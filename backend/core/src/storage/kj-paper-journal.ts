@@ -43,6 +43,7 @@ import {
 
 export const KJ_PAPER_JOURNAL_VERSION = "kj-paper-input-journal-v2" as const;
 const KJ_PAPER_CHECKPOINT_VERSION = "kj-paper-input-checkpoint-v2" as const;
+const KJ_PAPER_CHECKPOINT_INTERVAL_RECORDS = 64;
 
 type JournalPayloadType = "HEADER" | "RUN_PLAN" | "WARMUP_SIGNAL" | "CONTEXT" | "GAMMA_RESOLUTION";
 
@@ -93,7 +94,7 @@ interface JournalCheckpoint {
 export interface KJPaperJournalAppendReceipt {
   readonly sequence: string;
   readonly recordHash: string;
-  readonly durable: true;
+  readonly durable: boolean;
   readonly appended: boolean;
 }
 
@@ -408,6 +409,18 @@ function headerPayload(overrides: Partial<KJPaperEngineConfig> = {}): Readonly<R
   });
 }
 
+function legacyHeaderPayload(overrides: Partial<KJPaperEngineConfig> = {}): Readonly<Record<string, unknown>> {
+  const { activeStrategies: _activeStrategies, ...config } = {
+    ...DEFAULT_KJ_PAPER_ENGINE_CONFIG,
+    ...overrides,
+  };
+  return Object.freeze({
+    engineVersion: KJ_PAPER_ENGINE_VERSION,
+    configHash: sha256(stableJson(config)),
+    config: Object.freeze(config),
+  });
+}
+
 function validateRunPlan(value: unknown): KJPaperRunPlanEvidence {
   const candidate = object(value, "K/J run plan");
   const isV2 = candidate.schemaVersion === "kj-paper-run-plan-v2";
@@ -546,8 +559,11 @@ export class KJPaperJournal {
   #firstWarmupReceiveTime: string | null = null;
   #lastWarmupReceiveTime: string | null = null;
   #recordCount = 0;
+  #durableRecordCount = 0;
   #recoveredInputCount = 0;
   #lastHash: string | null = null;
+  #checkpointRecordCount = 0;
+  #lastContextComputationMilliseconds: number | null = null;
   #state: "OPEN" | "FAILED" | "CLOSED" = "OPEN";
   #tail: Promise<void> = Promise.resolve();
 
@@ -567,6 +583,7 @@ export class KJPaperJournal {
     try {
       journal = new KJPaperJournal(absolute, handle, config);
       await journal.#recover();
+      journal.#durableRecordCount = journal.#recordCount;
       const checkpoint = await loadCheckpoint(absolute);
       if (journal.#recordCount === 0) {
         if (checkpoint !== null) throw new Error("K/J journal was truncated behind its checkpoint");
@@ -586,6 +603,7 @@ export class KJPaperJournal {
         if (journal.#recordHashes[checkpointCount - 1] !== currentCheckpoint.lastRecordHash) {
           throw new Error("K/J journal checkpoint does not anchor the current hash chain");
         }
+        journal.#checkpointRecordCount = checkpointCount;
         if (checkpointCount < journal.#recordCount) await journal.#publishCurrentCheckpoint();
       }
       return journal;
@@ -604,6 +622,9 @@ export class KJPaperJournal {
   get recordCount(): number { return this.#recordCount; }
   get recoveredInputCount(): number { return this.#recoveredInputCount; }
   get lastRecordHash(): string | null { return this.#lastHash; }
+  get lastContextComputationMilliseconds(): number | null {
+    return this.#lastContextComputationMilliseconds;
+  }
   get runPlanEvidence(): KJPaperRunPlanEvidence | null { return this.#runPlanEvidence; }
   contexts(): readonly KJStrategyContextV1[] { return Object.freeze([...this.#contexts]); }
   get warmupEvidence(): Readonly<{
@@ -627,7 +648,19 @@ export class KJPaperJournal {
   }
 
   appendContext(context: KJStrategyContextV1): Promise<KJPaperJournalAppendReceipt> {
-    return this.#serialize(() => this.#appendContext(context));
+    return this.#serialize(() => this.#appendContext(context, true));
+  }
+
+  appendContextBuffered(context: KJStrategyContextV1): Promise<KJPaperJournalAppendReceipt> {
+    return this.#serialize(() => this.#appendContext(context, false));
+  }
+
+  flush(): Promise<void> {
+    return this.#serialize(async () => {
+      this.#requireOpen();
+      await this.#handle.sync();
+      this.#durableRecordCount = this.#recordCount;
+    });
   }
 
   appendWarmupSignal(value: KJPaperWarmupSignalV1): Promise<KJPaperJournalAppendReceipt> {
@@ -645,7 +678,13 @@ export class KJPaperJournal {
   close(): Promise<void> {
     return this.#serialize(async () => {
       if (this.#state === "CLOSED") return;
-      if (this.#state === "OPEN") await this.#handle.sync();
+      if (this.#state === "OPEN") {
+        await this.#handle.sync();
+        this.#durableRecordCount = this.#recordCount;
+        if (this.#checkpointRecordCount < this.#recordCount) {
+          await this.#publishCurrentCheckpoint();
+        }
+      }
       await this.#handle.close();
       this.#state = "CLOSED";
     });
@@ -667,7 +706,13 @@ export class KJPaperJournal {
     for (let ordinal = 0; ordinal < lines.length; ordinal += 1) {
       const record = parseRecord(lines[ordinal]!, ordinal, this.#lastHash);
       if (ordinal === 0) {
-        if (record.payloadType !== "HEADER" || stableJson(record.payload) !== stableJson(headerPayload(this.#engineConfig))) {
+        const supplied = stableJson(record.payload);
+        const current = stableJson(headerPayload(this.#engineConfig));
+        const legacyDefault = this.#engineConfig.activeStrategies.length === 2
+          && this.#engineConfig.activeStrategies[0] === "J_FEE_AWARE"
+          && this.#engineConfig.activeStrategies[1] === "K_DUAL_VOL"
+          && supplied === stableJson(legacyHeaderPayload(this.#engineConfig));
+        if (record.payloadType !== "HEADER" || (supplied !== current && !legacyDefault)) {
           throw new Error("K/J journal header does not match the current engine contract");
         }
       } else if (record.payloadType === "CONTEXT") {
@@ -719,8 +764,12 @@ export class KJPaperJournal {
     }
   }
 
-  async #appendContext(value: KJStrategyContextV1): Promise<KJPaperJournalAppendReceipt> {
+  async #appendContext(
+    value: KJStrategyContextV1,
+    forceDurable: boolean,
+  ): Promise<KJPaperJournalAppendReceipt> {
     this.#requireOpen();
+    this.#lastContextComputationMilliseconds = null;
     const context = validateContext(value);
     const identity = kjPaperContextIdentity(context);
     const fingerprint = kjPaperContextFingerprint(context);
@@ -730,9 +779,14 @@ export class KJPaperJournal {
       return this.#duplicateReceipt();
     }
     this.#checkContextRelations(context);
-    const receipt = await this.#appendRaw("CONTEXT", context);
+    const receipt = await this.#appendRaw("CONTEXT", context, forceDurable);
     try {
-      if (!this.engine.ingest(context)) throw new Error("new journal context was not applied");
+      const computationStarted = process.hrtime.bigint();
+      const applied = this.engine.ingest(context);
+      this.#lastContextComputationMilliseconds = Number(
+        process.hrtime.bigint() - computationStarted,
+      ) / 1_000_000;
+      if (!applied) throw new Error("new journal context was not applied");
       this.#rememberContext(context);
       return receipt;
     } catch (error) {
@@ -835,6 +889,7 @@ export class KJPaperJournal {
   async #appendRaw(
     payloadType: JournalPayloadType,
     payload: unknown,
+    forceDurable = true,
   ): Promise<KJPaperJournalAppendReceipt> {
     this.#requireOpen();
     const core = {
@@ -846,9 +901,12 @@ export class KJPaperJournal {
     } as const;
     const digest = recordHash(core);
     const line = `${JSON.stringify({ ...core, recordHash: digest })}\n`;
+    const checkpointDue = payloadType !== "CONTEXT"
+      || this.#recordCount + 1 - this.#checkpointRecordCount >= KJ_PAPER_CHECKPOINT_INTERVAL_RECORDS;
+    const durable = forceDurable || checkpointDue;
     try {
       await this.#handle.writeFile(line, { encoding: "utf8" });
-      await this.#handle.sync();
+      if (durable) await this.#handle.sync();
     } catch (error) {
       this.#state = "FAILED";
       throw error;
@@ -856,16 +914,19 @@ export class KJPaperJournal {
     this.#recordCount += 1;
     this.#lastHash = digest;
     this.#recordHashes.push(digest);
-    try {
-      await this.#publishCurrentCheckpoint();
-    } catch (error) {
-      this.#state = "FAILED";
-      throw error;
+    if (durable) this.#durableRecordCount = this.#recordCount;
+    if (checkpointDue) {
+      try {
+        await this.#publishCurrentCheckpoint();
+      } catch (error) {
+        this.#state = "FAILED";
+        throw error;
+      }
     }
     return Object.freeze({
       sequence: core.sequence,
       recordHash: digest,
-      durable: true,
+      durable,
       appended: true,
     });
   }
@@ -978,16 +1039,17 @@ export class KJPaperJournal {
     this.#lastWarmupReceiveTime = warmup.signal.receiveTime;
   }
 
-  #publishCurrentCheckpoint(): Promise<void> {
+  async #publishCurrentCheckpoint(): Promise<void> {
     if (this.#lastHash === null || this.#recordCount <= 0) {
       throw new Error("cannot publish an empty K/J journal checkpoint");
     }
-    return publishCheckpoint(this.#path, Object.freeze({
+    await publishCheckpoint(this.#path, Object.freeze({
       schemaVersion: KJ_PAPER_CHECKPOINT_VERSION,
       journalVersion: KJ_PAPER_JOURNAL_VERSION,
       recordCount: String(this.#recordCount),
       lastRecordHash: this.#lastHash,
     }));
+    this.#checkpointRecordCount = this.#recordCount;
   }
 
   #rememberSettlement(settlement: KJOfficialSettlement): void {
@@ -1009,7 +1071,7 @@ export class KJPaperJournal {
     return Object.freeze({
       sequence: String(this.#recordCount - 1),
       recordHash: this.#lastHash,
-      durable: true,
+      durable: this.#durableRecordCount === this.#recordCount,
       appended: false,
     });
   }

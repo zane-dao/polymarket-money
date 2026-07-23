@@ -40,13 +40,13 @@ test("strategy backend rejects unknown, missing, out-of-range and path-like inpu
   assert.throws(() => catalog.validateParameters("k-edge", { edge: 0.2, partialFill: true, secret: "x" }), /unknown parameter/u);
 });
 
-test("research-only L V2 cannot be selected for realtime Paper", () => {
+test("L V2 is Paper-ready while failed L V1 remains locked", () => {
   const catalog=createDefaultStrategyCatalog();
   assert.deepEqual(catalog.get("L_ADAPTIVE_EXECUTION_V1").allowedModes,[]);
   assert.equal(catalog.get("L_ADAPTIVE_EXECUTION_V1").researchStatus,"RESEARCH_GATE_FAILED");
   assert.equal(catalog.get("L_ADAPTIVE_EXECUTION_V1").displayName,"自适应执行（L V1 · 历史门失败）");
-  assert.deepEqual(catalog.get("L_ADAPTIVE_EXECUTION_V2").allowedModes,["backtest"]);
-  assert.equal(catalog.get("L_ADAPTIVE_EXECUTION_V2").researchStatus,"RESEARCH_ONLY");
+  assert.deepEqual(catalog.get("L_ADAPTIVE_EXECUTION_V2").allowedModes,["backtest","paper"]);
+  assert.equal(catalog.get("L_ADAPTIVE_EXECUTION_V2").researchStatus,"PAPER_READY");
   assert.equal(catalog.get("L_ADAPTIVE_EXECUTION_V2").parameters.maxStakeUsdc?.displayName,"单次最大投入");
   assert.equal(catalog.get("J_FEE_AWARE").parameters.edgeThreshold?.unit,"概率");
   assert.equal(catalog.get("J_FEE_AWARE").parameters.edgeThreshold?.defaultValue,0.05);

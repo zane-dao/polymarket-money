@@ -10,6 +10,7 @@ import {
   WorkbenchManifestError,
 } from "../src/workbench/services/workbench-manifest.js";
 import { parseWorkbenchViewV1 } from "../src/workbench/services/tauri-workbench-data-source.js";
+import { INITIAL_RESEARCH_SESSION, researchSessionFromUrl, researchSessionToSearch, workbenchRouteFromUrl, workbenchSearch } from "../src/workbench/domain/research-session.js";
 
 const capabilities = [
   ["overview", "总览", "O"],
@@ -82,6 +83,41 @@ test("workbench reducer switches between automatic, verified and locked demo vie
   const verified = reduceWorkbenchState(demo, { type: "set-data-view", dataView: "verified" });
   assert.equal(verified.dataView, "verified");
   assert.equal(INITIAL_WORKBENCH_STATE.dataView, "auto");
+});
+
+test("research session survives navigation and round-trips through a shareable URL", () => {
+  const configured = reduceWorkbenchState(INITIAL_WORKBENCH_STATE, {
+    type: "update-research-session",
+    patch: {
+      datasetId: "btc-5m",
+      datasetVersionHash: "abc123",
+      strategyId: "J_FEE_AWARE",
+      strategyVersion: "2.0.0",
+      runId: "run-42",
+      comparisonRunIds: ["run-42", "baseline-0"],
+      feeModel: "fee-audit-v3",
+      latencyMs: 750,
+      initialCash: "2500",
+      maxPosition: "125",
+      analysisFromUtc: "2026-07-01T00:00:00Z",
+      analysisToUtc: "2026-07-02T00:00:00Z",
+    },
+  });
+  const replay = reduceWorkbenchState(configured, { type: "navigate", routeId: "replay" });
+  assert.equal(replay.researchSession.runId, "run-42");
+  assert.equal(replay.researchSession.stage, "analysis");
+  const restored = { ...INITIAL_RESEARCH_SESSION, ...researchSessionFromUrl(researchSessionToSearch(replay.researchSession)) };
+  assert.equal(restored.datasetId, "btc-5m");
+  assert.equal(restored.strategyVersion, "2.0.0");
+  assert.equal(restored.runId, "run-42");
+  assert.deepEqual(restored.comparisonRunIds, ["run-42", "baseline-0"]);
+  assert.equal(restored.feeModel, "fee-audit-v3");
+  assert.equal(restored.latencyMs, 750);
+  assert.equal(restored.initialCash, "2500");
+  assert.equal(restored.maxPosition, "125");
+  assert.equal(restored.analysisFromUtc, "2026-07-01T00:00:00Z");
+  const deepLink = workbenchSearch(replay.researchSession, "replay");
+  assert.equal(workbenchRouteFromUrl(deepLink), "replay");
 });
 
 test("desktop view parser accepts verified DTOs and rejects preview or path leakage", () => {

@@ -156,11 +156,13 @@ export function LivePage() {
         >
           <LineChart
             height={430}
+            xLabel="公开市场快照序号 · 概率 0–1 · Paper 观察"
             series={[
               {
                 label: "原始概率 p_raw",
                 values: chartSeries.raw,
                 color: "#7890a8",
+                lineStyle: "dashed",
               },
               {
                 label: "校准概率 p_cal",
@@ -313,12 +315,13 @@ export function LivePage() {
 }
 
 function VerifiedLivePage({ commands }: { commands: WorkbenchCommands | null }) {
+  const { state, dispatch } = useWorkbench();
   const [definitions, setDefinitions] = useState<readonly import("../services/workbench-commands.js").StrategyDefinitionV1[]>([]);
-  const [strategyId, setStrategyId] = useState<"J_FEE_AWARE" | "K_DUAL_VOL">("J_FEE_AWARE");
+  const [strategyId, setStrategyId] = useState<"J_FEE_AWARE" | "K_DUAL_VOL" | "L_ADAPTIVE_EXECUTION_V2">("J_FEE_AWARE");
   const [versions, setVersions] = useState<readonly string[]>([]);
   const [strategyVersion, setStrategyVersion] = useState("");
-  const [initialCash, setInitialCash] = useState("10000");
-  const [maximumPosition, setMaximumPosition] = useState("400");
+  const [initialCash, setInitialCash] = useState(state.researchSession.initialCash);
+  const [maximumPosition, setMaximumPosition] = useState(state.researchSession.maxPosition);
   const [minimumNetEdge, setMinimumNetEdge] = useState("0.05");
   const [host, setHost] = useState<PaperMarketHostStatusV1 | null>(null);
   const [market, setMarket] = useState<PaperMarketRuntimeV1 | null>(null);
@@ -331,14 +334,22 @@ function VerifiedLivePage({ commands }: { commands: WorkbenchCommands | null }) 
     if (commands === null) return;
     const [nextHost, nextMarket, nextRuntime] = await Promise.all([commands.getPaperMarketHostStatus(), commands.getPaperMarketRuntime(), commands.getPaperStrategyRuntime()]);
     setHost(nextHost); setMarket(nextMarket); setRuntime(nextRuntime);
-    const account = nextRuntime.canonicalAccounts.find((item) => item.strategy === strategyId);
+    const activeStrategy = nextRuntime.canonicalAccounts.length === 1
+      ? nextRuntime.canonicalAccounts[0]!.strategy
+      : strategyId;
+    if (activeStrategy !== strategyId) setStrategyId(activeStrategy);
+    const account = nextRuntime.canonicalAccounts.find((item) => item.strategy === activeStrategy);
     setDetail(account === undefined ? null : await commands.getPaperSessionDetail(account.session.sessionId));
   }
   useEffect(() => {
     if (commands === null) return;
     let active = true;
     commands.listStrategyDefinitions().then((items) => {
-      if (active) setDefinitions(items.filter((item) => item.allowedModes.includes("paper")));
+      if (!active) return;
+      const available = items.filter((item) => item.allowedModes.includes("paper"));
+      setDefinitions(available);
+      const requested = state.researchSession.strategyId;
+      if ((requested === "J_FEE_AWARE" || requested === "K_DUAL_VOL" || requested === "L_ADAPTIVE_EXECUTION_V2") && available.some((item) => item.strategyId === requested)) setStrategyId(requested);
     }).catch((error: unknown) => { if (active) setNotice(message(error, "策略目录不可用。")); });
     void refresh().catch((error: unknown) => { if (active) setNotice(message(error, "Paper Runner 状态不可用。")); });
     return () => { active = false; };
@@ -346,7 +357,7 @@ function VerifiedLivePage({ commands }: { commands: WorkbenchCommands | null }) 
   useEffect(() => {
     if (commands === null) return;
     let active = true;
-    commands.listStrategyVersions(strategyId).then((items) => { if (active) { setVersions(items); setStrategyVersion(items.at(-1) ?? ""); } }).catch((error: unknown) => { if (active) setNotice(message(error, "策略版本不可用。")); });
+    commands.listStrategyVersions(strategyId).then((items) => { if (active) { setVersions(items); const requested = state.researchSession.strategyVersion; const restored = state.researchSession.strategyId === strategyId && requested !== null && items.includes(requested) ? requested : items.at(-1) ?? ""; setStrategyVersion(restored); dispatch({ type: "update-research-session", patch: { strategyId, strategyVersion: restored, stage: "paper-review" } }); } }).catch((error: unknown) => { if (active) setNotice(message(error, "策略版本不可用。")); });
     return () => { active = false; };
   }, [commands, strategyId]);
   useEffect(() => {
@@ -385,18 +396,18 @@ function VerifiedLivePage({ commands }: { commands: WorkbenchCommands | null }) 
       : Number(position.cost) / Number(position.quantity);
     return total + Number(position.quantity) * bid;
   }, 0) ?? 0;
-  const pnl = detail === null ? "—" : (Number(detail.session.cash) + markValue - Number(initialCash)).toFixed(2);
+  const paperEquity = detail === null ? "—" : (Number(detail.session.cash) + markValue).toFixed(2);
   return <>
     <PageHeader title="自动 Paper Runner" subtitle="选择策略和风险，启动后由系统自动跨 BTC 五分钟市场运行；全程 PAPER ONLY。" action={<div className="toolbar"><button className="button" disabled={busy || !running} onClick={() => commands && void run(() => commands.stopPublicPaperMarketHost(), "Paper Runner 已停止。")}>停止</button><button className="button button--danger" disabled={busy || commands === null} onClick={() => commands && void run(async () => { await commands.setPaperKillSwitch(true, "OPERATOR_EMERGENCY_STOP"); return commands.stopPublicPaperMarketHost(); }, "紧急停止已启用，模拟执行与公开行情均已停止。")}>紧急停止</button></div>} />
     <Panel title="运行设置" english="Strategy & Risk">
       <div className="form-grid form-grid--12">
         <label className="field span-4"><span>策略</span><select aria-label="Paper 策略" value={strategyId} disabled={busy || running} onChange={(event) => setStrategyId(event.target.value as typeof strategyId)}>{definitions.map((item) => <option key={item.strategyId} value={item.strategyId}>{item.displayName}</option>)}</select></label>
-        <label className="field span-2"><span>版本</span><select aria-label="Paper 策略版本" value={strategyVersion} disabled={busy || running} onChange={(event) => setStrategyVersion(event.target.value)}>{versions.map((version) => <option key={version}>{version}</option>)}</select></label>
-        <label className="field span-2"><span>初始资金 USDC</span><input value={initialCash} disabled={busy || running} onChange={(event) => setInitialCash(event.target.value)} /></label>
-        <label className="field span-2"><span>最大仓位 USDC</span><input value={maximumPosition} disabled={busy || running} onChange={(event) => setMaximumPosition(event.target.value)} /></label>
+        <label className="field span-2"><span>版本</span><select aria-label="Paper 策略版本" value={strategyVersion} disabled={busy || running} onChange={(event) => { setStrategyVersion(event.target.value); dispatch({ type: "update-research-session", patch: { strategyVersion: event.target.value } }); }}>{versions.map((version) => <option key={version}>{version}</option>)}</select></label>
+        <label className="field span-2"><span>初始资金 USDC</span><input value={initialCash} disabled={busy || running} onChange={(event) => { setInitialCash(event.target.value); dispatch({ type: "update-research-session", patch: { initialCash: event.target.value } }); }} /></label>
+        <label className="field span-2"><span>最大仓位 USDC</span><input value={maximumPosition} disabled={busy || running} onChange={(event) => { setMaximumPosition(event.target.value); dispatch({ type: "update-research-session", patch: { maxPosition: event.target.value } }); }} /></label>
         <label className="field span-2"><span>最低净优势</span><input value={minimumNetEdge} disabled={busy || running} onChange={(event) => setMinimumNetEdge(event.target.value)} /></label>
       </div>
-      <div className="toolbar"><button className="button button--primary" disabled={busy || running || commands === null || strategyVersion === ""} onClick={startRunner}>启动自动 Paper</button><Badge tone={running ? "good" : "warn"}>{running ? "运行中" : "已停止"}</Badge><span>{notice}</span></div>
+      <div className="toolbar paper-runner-action"><button className="button button--primary" disabled={busy || running || commands === null || strategyVersion === ""} onClick={startRunner}>启动自动 Paper</button><Badge tone={running ? "good" : "warn"}>{running ? "运行中" : "已停止"}</Badge><span>{notice}</span></div>
     </Panel>
     <div className="metrics-grid live-metrics">
       <MetricCard label="模型概率" value={String(decision?.details.probabilityUp ?? "—")} />
@@ -404,13 +415,16 @@ function VerifiedLivePage({ commands }: { commands: WorkbenchCommands | null }) 
       <MetricCard label="目标仓位" value={String(decision?.details.targetPositionQuantity ?? "0")} />
       <MetricCard label="风控结果" value={String(decision?.details.riskStatus ?? decision?.details.reason ?? (waitingForNextMarket ? "等待下一市场" : "等待决策"))} />
       <MetricCard label="Paper 现金" value={detail?.session.cash ?? "—"} />
-      <MetricCard label="估值 PnL" value={pnl} tone={pnl !== "—" && Number(pnl) >= 0 ? "positive" : "negative"} />
+      <MetricCard label="Paper 权益估值" value={paperEquity} />
+      <MetricCard label="核心策略计算 P50" value={runtime?.planner.latency?.strategyComputation?.p50Ms == null ? "—" : `${runtime.planner.latency.strategyComputation.p50Ms} ms`} footer={<><span>P95 / 样本 · 目标</span><strong>{runtime?.planner.latency?.strategyComputation?.p95Ms ?? "—"} ms / {runtime?.planner.latency?.strategyComputation?.count ?? 0} · P95&lt;50ms</strong></>} />
+      <MetricCard label="行情→持久化决策 P50" value={runtime?.planner.latency?.inputToDecision.p50Ms == null ? "—" : `${runtime.planner.latency.inputToDecision.p50Ms} ms`} footer={<><span>P95 / 样本</span><strong>{runtime?.planner.latency?.inputToDecision.p95Ms ?? "—"} ms / {runtime?.planner.latency?.inputToDecision.count ?? 0}</strong></>} />
+      <MetricCard label="决策→Paper 锁单 P50" value={runtime?.planner.latency?.decisionToPaperLock.p50Ms == null ? "—" : `${runtime.planner.latency.decisionToPaperLock.p50Ms} ms`} footer={<><span>P95 / 样本</span><strong>{runtime?.planner.latency?.decisionToPaperLock.p95Ms ?? "—"} ms / {runtime?.planner.latency?.decisionToPaperLock.count ?? 0}</strong></>} />
     </div>
     <div className="split-grid">
       <Panel title="当前决策" english="Decision → Risk → Fill"><div className="inspector"><Badge tone={decision?.details.action === "INTENT" ? "good" : "info"}>{String(decision?.details.action ?? "NO_TRADE")}</Badge><h3>{String(decision?.details.reason ?? (waitingForNextMarket ? "当前市场已开始，自动等待下一个完整 5 分钟市场" : "等待标准化市场输入"))}</h3><dl><dt>概率</dt><dd>{String(decision?.details.probabilityUp ?? "—")}</dd><dt>净优势</dt><dd>{String(decision?.details.netEdge ?? decision?.details.edge ?? "—")}</dd><dt>最大可接受价格</dt><dd>{String(decision?.details.maximumFillPrice ?? "—")}</dd><dt>风险批准数量</dt><dd>{String(decision?.details.riskApprovedQuantity ?? "0")}</dd></dl></div></Panel>
       <Panel title="订单、成交与持仓" english="Authoritative Paper Ledger">{detail === null ? <EmptyState title="等待 Runner 建立账本" detail="启动后会自动建立内部会话。" /> : <div className="validation-list"><span>订单 <b>{detail.orders.length}</b></span><span>成交 <b>{detail.fills.length}</b></span><span>持仓 <b>{detail.positions.length}</b></span><span>结算 <b>{detail.settlements.length}</b></span></div>}</Panel>
     </div>
-    <details className="panel"><summary>开发者诊断</summary><div className="validation-list"><span>当前市场 <b>{market?.market?.slug ?? "尚未发现"}</b></span><span>行情状态 <b>{market?.status ?? "STOPPED"}</b></span><span>内部会话 <b>{detail?.session.sessionId ?? "未创建"}</b></span><span>Journal 记录 <b>{runtime?.planner.journalRecordCount ?? 0}</b></span><span>Outbox 链接 <b>{runtime?.executionLinks.length ?? 0}</b></span><span>LIVE_TRADING_ENABLED <b>false</b></span></div></details>
+    <details className="panel"><summary>开发者诊断</summary><div className="validation-list"><span>当前市场 <b>{market?.market?.slug ?? "尚未发现"}</b></span><span>行情状态 <b>{market?.status ?? "STOPPED"}</b></span><span>内部会话 <b>{detail?.session.sessionId ?? "未创建"}</b></span><span>Journal 记录 <b>{runtime?.planner.journalRecordCount ?? 0}</b></span><span>合并的过时盘口 <b>{runtime?.planner.coalescedInputCount ?? 0}</b></span><span>Outbox 链接 <b>{runtime?.executionLinks.length ?? 0}</b></span><span>LIVE_TRADING_ENABLED <b>false</b></span></div></details>
   </>;
 }
 

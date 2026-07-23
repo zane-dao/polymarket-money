@@ -171,6 +171,29 @@ test("K/J journal hash-binds the MVP run plan before market contexts", async () 
   }
 });
 
+test("K/J journal buffers no-trade contexts and makes the current tail durable on demand", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-buffered-"));
+  const path = join(directory, "paper-inputs.ndjson");
+  try {
+    const journal = await KJPaperJournal.open(path);
+    const input = context(0, "100", 1);
+    const buffered = await journal.appendContextBuffered(input);
+    assert.equal(buffered.appended, true);
+    assert.equal(buffered.durable, false);
+    assert.equal((await journal.appendContextBuffered(input)).durable, false);
+    await journal.flush();
+    assert.equal((await journal.appendContextBuffered(input)).durable, true);
+    await journal.close();
+
+    const recovered = await KJPaperJournal.open(path);
+    assert.equal(recovered.recoveredInputCount, 1);
+    assert.deepEqual(recovered.engine.events(), journal.engine.events());
+    await recovered.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("K/J journal replays pre-market warmup signals without creating a market session", async () => {
   const directory = await mkdtemp(join(tmpdir(), "kj-paper-journal-warmup-"));
   const path = join(directory, "paper-inputs.ndjson");

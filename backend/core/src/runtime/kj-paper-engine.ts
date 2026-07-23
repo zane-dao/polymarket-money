@@ -4,10 +4,12 @@ import { Money, minimumMoney } from "../domain/money.js";
 import { reviewTargetPositionV1 } from "../risk/index.js";
 import type { KJStrategyContextV1 } from "../../../../strategies/src/kj-context.js";
 import type { KJPaperWarmupSignalV1 } from "../../../../strategies/src/kj-warmup.js";
+import { decideLAdaptiveV2 } from "../../../../strategies/src/l-adaptive.js";
 
 export const KJ_PAPER_ENGINE_VERSION = "kj-paper-engine-v2" as const;
 
 export type KJPaperStrategy = "J_FEE_AWARE" | "K_DUAL_VOL";
+export type PaperRuntimeStrategy = KJPaperStrategy | "L_ADAPTIVE_EXECUTION_V2";
 export type KJMarketLifecycleState = "INIT" | "RUNNING" | "STOPPING" | "DONE";
 
 export interface KJPaperEngineConfig {
@@ -26,6 +28,7 @@ export interface KJPaperEngineConfig {
   readonly fillLatencyMilliseconds: number;
   readonly maximumSlippage: string;
   readonly anchorToleranceMilliseconds: number;
+  readonly activeStrategies: readonly PaperRuntimeStrategy[];
 }
 
 export const DEFAULT_KJ_PAPER_ENGINE_CONFIG: KJPaperEngineConfig = Object.freeze({
@@ -40,10 +43,11 @@ export const DEFAULT_KJ_PAPER_ENGINE_CONFIG: KJPaperEngineConfig = Object.freeze
   maximumMarketFraction: "0.04",
   bookParticipation: "0.5",
   minimumStake: "1",
-  decisionIntervalMilliseconds: 15_000,
+  decisionIntervalMilliseconds: 0,
   fillLatencyMilliseconds: 1_000,
   maximumSlippage: "0.01",
   anchorToleranceMilliseconds: 5_000,
+  activeStrategies: Object.freeze(["J_FEE_AWARE", "K_DUAL_VOL"] as const),
 });
 
 export interface KJOfficialSettlement {
@@ -65,21 +69,30 @@ export interface KJPaperEvent {
     | "FILL"
     | "NO_FILL"
     | "SETTLEMENT";
-  readonly strategy: KJPaperStrategy | null;
+  readonly strategy: PaperRuntimeStrategy | null;
   readonly marketId: string;
   readonly eventTime: string;
   readonly details: Readonly<Record<string, string | boolean | null>>;
 }
 
+type PaperWalletSnapshot = Readonly<{
+  cash: string;
+  available: string;
+  reserved: string;
+  positions: Readonly<Record<string, string>>;
+}>;
+
+type PaperLedgerSnapshot = Readonly<{
+  spent: string;
+  fees: string;
+  tradeCount: string;
+}>;
+
 export interface KJPaperEngineSnapshot {
   readonly schemaVersion: "kj-paper-engine-snapshot-v1";
   readonly engineVersion: typeof KJ_PAPER_ENGINE_VERSION;
-  readonly wallets: Readonly<Record<KJPaperStrategy, Readonly<{
-    cash: string;
-    available: string;
-    reserved: string;
-    positions: Readonly<Record<string, string>>;
-  }>>>;
+  readonly wallets: Readonly<Record<KJPaperStrategy, PaperWalletSnapshot>
+    & Partial<Record<"L_ADAPTIVE_EXECUTION_V2", PaperWalletSnapshot>>>;
   readonly markets: readonly Readonly<{
     marketId: string;
     conditionId: string;
@@ -90,15 +103,12 @@ export interface KJPaperEngineSnapshot {
     downTokenId: string;
     anchorPrice: string;
     state: KJMarketLifecycleState;
-    ledgers: Readonly<Record<KJPaperStrategy, Readonly<{
-      spent: string;
-      fees: string;
-      tradeCount: string;
-    }>>>;
+    ledgers: Readonly<Record<KJPaperStrategy, PaperLedgerSnapshot>
+      & Partial<Record<"L_ADAPTIVE_EXECUTION_V2", PaperLedgerSnapshot>>>;
   }>[];
   readonly pendingIntents: readonly Readonly<{
     intentId: string;
-    strategy: KJPaperStrategy;
+    strategy: PaperRuntimeStrategy;
     marketId: string;
     tokenId: string;
     outcome: "UP" | "DOWN";
@@ -115,7 +125,7 @@ export interface KJPaperEngineSnapshot {
 
 interface PaperIntent {
   readonly intentId: string;
-  readonly strategy: KJPaperStrategy;
+  readonly strategy: PaperRuntimeStrategy;
   readonly marketId: string;
   readonly tokenId: string;
   readonly outcome: "UP" | "DOWN";
@@ -144,8 +154,8 @@ interface MarketSession {
   readonly downTokenId: string;
   readonly anchorPrice: Money;
   state: KJMarketLifecycleState;
-  lastDecisionByStrategy: Map<KJPaperStrategy, number>;
-  ledgers: Map<KJPaperStrategy, StrategyMarketLedger>;
+  lastDecisionByStrategy: Map<PaperRuntimeStrategy, number>;
+  ledgers: Map<PaperRuntimeStrategy, StrategyMarketLedger>;
 }
 
 class EwmaVolatility {
@@ -201,19 +211,47 @@ class EwmaVolatility {
   }
 }
 
+class RollingVolatility {
+  readonly #returns: Array<{ timeSeconds: number; variancePerSecond: number }> = [];
+  #lastPrice: number | null = null;
+  #lastTimeSeconds: number | null = null;
+
+  update(priceText: string, timeText: string): void {
+    const price = Number(priceText); const timeSeconds = Date.parse(timeText) / 1_000;
+    if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(timeSeconds)) throw new Error("rolling volatility input is invalid");
+    if (this.#lastPrice !== null && this.#lastTimeSeconds !== null) {
+      const elapsed = timeSeconds - this.#lastTimeSeconds;
+      if (elapsed < 0) throw new Error("rolling volatility input time reversed");
+      if (elapsed > 0) this.#returns.push({ timeSeconds, variancePerSecond: Math.log(price / this.#lastPrice) ** 2 / elapsed });
+    }
+    this.#lastPrice = price; this.#lastTimeSeconds = timeSeconds;
+    while (this.#returns.length > 0 && timeSeconds - this.#returns[0]!.timeSeconds > 120) this.#returns.shift();
+  }
+
+  sigma(windowSeconds: number): number | null {
+    if (this.#lastTimeSeconds === null) return null;
+    const selected = this.#returns.filter((item) => this.#lastTimeSeconds! - item.timeSeconds <= windowSeconds);
+    if (selected.length < 2 || this.#lastTimeSeconds - selected[0]!.timeSeconds < windowSeconds * 0.8) return null;
+    return Math.sqrt(selected.reduce((sum, item) => sum + item.variancePerSecond, 0) / selected.length);
+  }
+}
+
 class StrategyVolatility {
   readonly single = new EwmaVolatility(100, 0.00002);
   readonly fast = new EwmaVolatility(180, 0);
   readonly slow = new EwmaVolatility(2700, 0);
+  readonly adaptive = new RollingVolatility();
 
   update(price: string, time: string): void {
     this.single.update(price, time);
     this.fast.update(price, time);
     this.slow.update(price, time);
+    this.adaptive.update(price, time);
   }
 
-  sigma(strategy: KJPaperStrategy): number | null {
+  sigma(strategy: PaperRuntimeStrategy): number | null {
     if (strategy === "J_FEE_AWARE") return this.single.sigma;
+    if (strategy === "L_ADAPTIVE_EXECUTION_V2") return this.adaptive.sigma(120);
     if ((this.fast.elapsedSeconds ?? -1) < 180 || this.fast.sigma === null) return null;
     return Math.max(this.fast.sigma, 0.4 * (this.slow.sigma ?? 0), 0.000012);
   }
@@ -328,9 +366,14 @@ function validateConfig(config: KJPaperEngineConfig): void {
   nonNegativeMoney(config.maximumSlippage, "maximumSlippage");
   safeInteger(config.criticalBandMaximumRemainingSeconds,
     "criticalBandMaximumRemainingSeconds", true);
-  safeInteger(config.decisionIntervalMilliseconds, "decisionIntervalMilliseconds");
+  safeInteger(config.decisionIntervalMilliseconds, "decisionIntervalMilliseconds", true);
   safeInteger(config.fillLatencyMilliseconds, "fillLatencyMilliseconds");
   safeInteger(config.anchorToleranceMilliseconds, "anchorToleranceMilliseconds", true);
+  if (config.activeStrategies.length === 0 || new Set(config.activeStrategies).size !== config.activeStrategies.length
+    || config.activeStrategies.some((strategy) =>
+      !["J_FEE_AWARE", "K_DUAL_VOL", "L_ADAPTIVE_EXECUTION_V2"].includes(strategy))) {
+    throw new Error("activeStrategies is invalid");
+  }
 }
 
 function milliseconds(value: string, field: string): number {
@@ -437,7 +480,7 @@ export function kjPaperProbabilityFromZ(value: number): string {
 
 function event(
   eventType: KJPaperEvent["eventType"],
-  strategy: KJPaperStrategy | null,
+  strategy: PaperRuntimeStrategy | null,
   marketId: string,
   eventTime: string,
   details: Readonly<Record<string, string | boolean | null>>,
@@ -462,7 +505,8 @@ function event(
 
 export class KJPaperEngine {
   readonly #config: KJPaperEngineConfig;
-  readonly #wallets = new Map<KJPaperStrategy, PaperWallet>();
+  readonly #strategies: readonly PaperRuntimeStrategy[];
+  readonly #wallets = new Map<PaperRuntimeStrategy, PaperWallet>();
   readonly #volatility = new StrategyVolatility();
   readonly #sessions = new Map<string, MarketSession>();
   readonly #pending = new Map<string, PaperIntent>();
@@ -473,9 +517,14 @@ export class KJPaperEngine {
   readonly #events: KJPaperEvent[] = [];
 
   constructor(config: Partial<KJPaperEngineConfig> = {}) {
-    this.#config = Object.freeze({ ...DEFAULT_KJ_PAPER_ENGINE_CONFIG, ...config });
+    this.#config = Object.freeze({ ...DEFAULT_KJ_PAPER_ENGINE_CONFIG, ...config, activeStrategies: Object.freeze([...(config.activeStrategies ?? DEFAULT_KJ_PAPER_ENGINE_CONFIG.activeStrategies)]) });
     validateConfig(this.#config);
-    for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) {
+    this.#strategies = this.#config.activeStrategies;
+    for (const strategy of new Set<PaperRuntimeStrategy>([
+      "J_FEE_AWARE",
+      "K_DUAL_VOL",
+      ...this.#strategies,
+    ])) {
       this.#wallets.set(strategy, new PaperWallet(this.#config.initialCash));
     }
   }
@@ -520,8 +569,9 @@ export class KJPaperEngine {
     }
     const session = this.#session(context);
     if (session.state !== "RUNNING") return true;
-    this.#executePending(context, session, now);
-    for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) {
+    const executedStrategies = this.#executePending(context, session, now);
+    for (const strategy of this.#strategies) {
+      if (executedStrategies.has(strategy)) continue;
       this.#decide(context, session, strategy, now);
     }
     return true;
@@ -554,7 +604,7 @@ export class KJPaperEngine {
     }
     this.#stopSession(session, value.settlementTime);
     const winningToken = value.winner === "UP" ? session.upTokenId : session.downTokenId;
-    for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) {
+    for (const strategy of this.#strategies) {
       const wallet = this.#wallet(strategy);
       const ledger = session.ledgers.get(strategy)!;
       const payout = wallet.settle(session.upTokenId, session.downTokenId, winningToken);
@@ -591,7 +641,7 @@ export class KJPaperEngine {
     return this.#sessions.get(marketId)?.state ?? null;
   }
 
-  wallet(strategy: KJPaperStrategy): Readonly<{
+  wallet(strategy: PaperRuntimeStrategy): Readonly<{
     cash: string;
     available: string;
   }> {
@@ -602,13 +652,18 @@ export class KJPaperEngine {
     });
   }
 
-  position(strategy: KJPaperStrategy, tokenId: string): string {
+  position(strategy: PaperRuntimeStrategy, tokenId: string): string {
     return this.#wallet(strategy).position(tokenId).toCanonical();
   }
 
   snapshot(): KJPaperEngineSnapshot {
-    const walletSnapshot = (strategy: KJPaperStrategy) => this.#wallet(strategy).snapshot();
-    const ledgerSnapshot = (session: MarketSession, strategy: KJPaperStrategy) => {
+    const snapshotStrategies = [...new Set<PaperRuntimeStrategy>([
+      "J_FEE_AWARE",
+      "K_DUAL_VOL",
+      ...this.#strategies,
+    ])];
+    const walletSnapshot = (strategy: PaperRuntimeStrategy) => this.#wallet(strategy).snapshot();
+    const ledgerSnapshot = (session: MarketSession, strategy: PaperRuntimeStrategy) => {
       const ledger = session.ledgers.get(strategy)!;
       return Object.freeze({
         spent: ledger.spent.toCanonical(),
@@ -629,10 +684,8 @@ export class KJPaperEngine {
         downTokenId: session.downTokenId,
         anchorPrice: session.anchorPrice.toCanonical(),
         state: session.state,
-        ledgers: Object.freeze({
-          J_FEE_AWARE: ledgerSnapshot(session, "J_FEE_AWARE"),
-          K_DUAL_VOL: ledgerSnapshot(session, "K_DUAL_VOL"),
-        }),
+        ledgers: Object.freeze(Object.fromEntries(snapshotStrategies.map((strategy) =>
+          [strategy, ledgerSnapshot(session, strategy)]))) as KJPaperEngineSnapshot["markets"][number]["ledgers"],
       }));
     const pendingIntents = [...this.#pending.values()]
       .sort((left, right) => left.intentId.localeCompare(right.intentId))
@@ -653,17 +706,15 @@ export class KJPaperEngine {
     return Object.freeze({
       schemaVersion: "kj-paper-engine-snapshot-v1",
       engineVersion: KJ_PAPER_ENGINE_VERSION,
-      wallets: Object.freeze({
-        J_FEE_AWARE: walletSnapshot("J_FEE_AWARE"),
-        K_DUAL_VOL: walletSnapshot("K_DUAL_VOL"),
-      }),
+      wallets: Object.freeze(Object.fromEntries(snapshotStrategies.map((strategy) =>
+        [strategy, walletSnapshot(strategy)]))) as KJPaperEngineSnapshot["wallets"],
       markets: Object.freeze(markets),
       pendingIntents: Object.freeze(pendingIntents),
       eventCount: String(this.#events.length),
     });
   }
 
-  #wallet(strategy: KJPaperStrategy): PaperWallet {
+  #wallet(strategy: PaperRuntimeStrategy): PaperWallet {
     const wallet = this.#wallets.get(strategy);
     if (wallet === undefined) throw new Error("paper wallet is missing");
     return wallet;
@@ -695,10 +746,12 @@ export class KJPaperEngine {
       anchorPrice: Money.from(context.signal.price),
       state: "INIT",
       lastDecisionByStrategy: new Map(),
-      ledgers: new Map([
-        ["J_FEE_AWARE", { spent: Money.from("0"), fees: Money.from("0"), tradeCount: 0 }],
-        ["K_DUAL_VOL", { spent: Money.from("0"), fees: Money.from("0"), tradeCount: 0 }],
-      ]),
+      ledgers: new Map([...new Set<PaperRuntimeStrategy>([
+        "J_FEE_AWARE",
+        "K_DUAL_VOL",
+        ...this.#strategies,
+      ])].map((strategy) =>
+        [strategy, { spent: Money.from("0"), fees: Money.from("0"), tradeCount: 0 }])),
     };
     this.#sessions.set(session.marketId, session);
     this.#events.push(event("MARKET_STATE", null, session.marketId, context.decisionTime, {
@@ -759,9 +812,11 @@ export class KJPaperEngine {
     }));
   }
 
-  #executePending(context: KJStrategyContextV1, session: MarketSession, now: number): void {
+  #executePending(context: KJStrategyContextV1, session: MarketSession, now: number): ReadonlySet<PaperRuntimeStrategy> {
+    const executedStrategies = new Set<PaperRuntimeStrategy>();
     for (const [key, intent] of [...this.#pending]) {
       if (intent.marketId !== session.marketId || now < intent.executableAfter) continue;
+      executedStrategies.add(intent.strategy);
       const book = intent.outcome === "UP" ? context.book.up : context.book.down;
       const price = Money.from(book.ask);
       const visible = Money.from(book.askSize).times(Money.from(this.#config.bookParticipation));
@@ -802,70 +857,114 @@ export class KJPaperEngine {
         executionBookReceiveOrdinal: context.book.receiveStamp.localReceiveOrdinal,
       }));
     }
+    return executedStrategies;
   }
 
   #decide(
     context: KJStrategyContextV1,
     session: MarketSession,
-    strategy: KJPaperStrategy,
+    strategy: PaperRuntimeStrategy,
     now: number,
   ): void {
     const last = session.lastDecisionByStrategy.get(strategy);
-    if (last !== undefined && now - last < this.#config.decisionIntervalMilliseconds) return;
+    if (this.#config.decisionIntervalMilliseconds > 0
+      && last !== undefined
+      && now - last < this.#config.decisionIntervalMilliseconds) return;
     if ([...this.#pending.values()].some((intent) =>
       intent.marketId === session.marketId && intent.strategy === strategy)) return;
-    const sigma = this.#volatility.sigma(strategy);
-    if (sigma === null || sigma <= 0) return;
-    session.lastDecisionByStrategy.set(strategy, now);
     const remainingSeconds = (milliseconds(session.intervalEnd, "intervalEnd") - now) / 1_000;
     const current = Number(context.signal.price);
     const opening = Number(session.anchorPrice.toCanonical());
-    const probability = Money.from(kjPaperProbabilityFromZ(
-      Math.log(current / opening) / (sigma * Math.sqrt(remainingSeconds)),
-    ));
-    const currentMoney = Money.from(context.signal.price);
-    if (remainingSeconds < this.#config.criticalBandMaximumRemainingSeconds
-      && currentMoney.minus(session.anchorPrice).abs()
-        .comparedTo(Money.from(this.#config.criticalBandUsd)) < 0) {
-      this.#events.push(event("DECISION", strategy, session.marketId, context.decisionTime, {
-        action: "NO_TRADE",
-        reason: "CRITICAL_BAND",
-        probabilityUp: probability.toCanonical(),
-        sigma: sigma.toString(),
-      }));
-      return;
-    }
     const upAsk = Money.from(context.book.up.ask);
     const downAsk = Money.from(context.book.down.ask);
-    const downProbability = Money.from("1").minus(probability);
-    const upEdge = probability.minus(upAsk);
-    const downEdge = downProbability.minus(downAsk);
-    const outcome = upEdge.comparedTo(downEdge) >= 0 ? "UP" : "DOWN";
-    const sideProbability = outcome === "UP" ? probability : downProbability;
+    const rate = Money.from(context.feeEvidence.rate);
+    const wallet = this.#wallet(strategy);
+    const available = wallet.available();
+    let sigma: number;
+    let probability: Money;
+    let outcome: "UP" | "DOWN";
+    let sideProbability: Money;
+    let edge: Money;
+    let required: Money;
+    let strategyStake: Money | null = null;
+    let strategyTargetQuantity: Money | null = null;
+    let strategyMaximumFillPrice: Money | null = null;
+    if (strategy === "L_ADAPTIVE_EXECUTION_V2") {
+      const short = this.#volatility.adaptive.sigma(30);
+      const medium = this.#volatility.adaptive.sigma(60);
+      const long = this.#volatility.adaptive.sigma(120);
+      if (short === null || medium === null || long === null) return;
+      const result = decideLAdaptiveV2({
+        currentPrice: context.signal.price, openingPrice: session.anchorPrice.toCanonical(),
+        remainingSeconds: String(remainingSeconds), elapsedSeconds: String((now - milliseconds(session.intervalStart, "intervalStart")) / 1_000),
+        sigmaShort: String(short), sigmaMedium: String(medium), sigmaLong: String(long),
+        upBid: context.book.up.bid, upAsk: context.book.up.ask, upAskSize: context.book.up.askSize,
+        downBid: context.book.down.bid, downAsk: context.book.down.ask, downAskSize: context.book.down.askSize,
+        feeRate: context.feeEvidence.rate, bankroll: available.toCanonical(),
+        maxSignalEdge: this.#config.maxEdge, maxStakeUsdc: this.#config.maximumStakeAmount,
+        bookParticipation: this.#config.bookParticipation,
+      });
+      session.lastDecisionByStrategy.set(strategy, now);
+      sigma = long; probability = Money.from(result.probabilityUp);
+      if (result.action === "NO_TRADE" || result.outcome === null || result.sideProbability === null
+        || result.edge === null || result.requiredEdge === null) {
+        this.#events.push(event("DECISION", strategy, session.marketId, context.decisionTime, {
+          action: "NO_TRADE", reason: result.reason, probabilityUp: result.probabilityUp,
+          sigma: result.audit.sigmaBlended, volatilityShock: result.audit.volatilityShock,
+          volatilityDrag: result.audit.volatilityDrag, edge: result.edge, requiredEdge: result.requiredEdge,
+        }));
+        return;
+      }
+      outcome = result.outcome; sideProbability = Money.from(result.sideProbability);
+      edge = Money.from(result.edge); required = Money.from(result.requiredEdge);
+      strategyStake = Money.from(result.targetStake);
+      strategyTargetQuantity = Money.from(result.targetPositionQuantity);
+      strategyMaximumFillPrice = Money.from(result.maximumAcceptablePrice!);
+    } else {
+      const selectedSigma = this.#volatility.sigma(strategy);
+      if (selectedSigma === null || selectedSigma <= 0) return;
+      sigma = selectedSigma;
+      session.lastDecisionByStrategy.set(strategy, now);
+      probability = Money.from(kjPaperProbabilityFromZ(
+        Math.log(current / opening) / (sigma * Math.sqrt(remainingSeconds)),
+      ));
+      const currentMoney = Money.from(context.signal.price);
+      if (remainingSeconds < this.#config.criticalBandMaximumRemainingSeconds
+        && currentMoney.minus(session.anchorPrice).abs()
+          .comparedTo(Money.from(this.#config.criticalBandUsd)) < 0) {
+        this.#events.push(event("DECISION", strategy, session.marketId, context.decisionTime, {
+          action: "NO_TRADE", reason: "CRITICAL_BAND",
+          probabilityUp: probability.toCanonical(), sigma: sigma.toString(),
+        }));
+        return;
+      }
+      const downProbability = Money.from("1").minus(probability);
+      const upEdge = probability.minus(upAsk); const downEdge = downProbability.minus(downAsk);
+      outcome = upEdge.comparedTo(downEdge) >= 0 ? "UP" : "DOWN";
+      sideProbability = outcome === "UP" ? probability : downProbability;
+      const selectedAsk = outcome === "UP" ? upAsk : downAsk;
+      edge = sideProbability.minus(selectedAsk);
+      const fee = rate.times(selectedAsk).times(Money.from("1").minus(selectedAsk));
+      const overround = upAsk.plus(downAsk).minus(Money.from("1"));
+      const spread = overround.isPositive() ? overround.dividedBy(Money.from("2")) : Money.from("0");
+      required = Money.from(this.#config.edgeThreshold).plus(fee).plus(spread);
+      if (edge.comparedTo(required) <= 0 || edge.comparedTo(Money.from(this.#config.maxEdge)) > 0) {
+        this.#events.push(event("DECISION", strategy, session.marketId, context.decisionTime, {
+          action: "NO_TRADE",
+          reason: edge.comparedTo(required) <= 0 ? "EDGE_BELOW_THRESHOLD" : "EDGE_ABOVE_STALE_GUARD",
+          outcome, probabilityUp: probability.toCanonical(), sigma: sigma.toString(),
+          edge: edge.toCanonical(), requiredEdge: required.toCanonical(),
+        }));
+        return;
+      }
+    }
     const ask = outcome === "UP" ? upAsk : downAsk;
     const askSize = Money.from(outcome === "UP" ? context.book.up.askSize : context.book.down.askSize);
-    const edge = sideProbability.minus(ask);
-    const rate = Money.from(context.feeEvidence.rate);
     const feePerShare = rate.times(ask).times(Money.from("1").minus(ask));
     const overround = upAsk.plus(downAsk).minus(Money.from("1"));
     const spreadBuffer = overround.isPositive()
       ? overround.dividedBy(Money.from("2"))
       : Money.from("0");
-    const required = Money.from(this.#config.edgeThreshold).plus(feePerShare).plus(spreadBuffer);
-    if (edge.comparedTo(required) <= 0 || edge.comparedTo(Money.from(this.#config.maxEdge)) > 0) {
-      this.#events.push(event("DECISION", strategy, session.marketId, context.decisionTime, {
-        action: "NO_TRADE",
-        reason: edge.comparedTo(required) <= 0 ? "EDGE_BELOW_THRESHOLD" : "EDGE_ABOVE_STALE_GUARD",
-        outcome,
-        probabilityUp: probability.toCanonical(),
-        sigma: sigma.toString(),
-        edge: edge.toCanonical(),
-        requiredEdge: required.toCanonical(),
-      }));
-      return;
-    }
-    const wallet = this.#wallet(strategy);
-    const available = wallet.available();
     const kelly = edge.dividedBy(Money.from("1").minus(ask));
     const fraction = minimumMoney(
       kelly.times(Money.from(this.#config.kellyMultiplier)),
@@ -880,11 +979,11 @@ export class KJPaperEngine {
       .times(Money.from(this.#config.maximumMarketFraction))
       .minus(ledger.spent.plus(ledger.fees));
     if (!marketBudget.isPositive()) return;
-    const stake = minimumMoney(
+    const stake = strategyStake ?? minimumMoney(
       minimumMoney(available.times(fraction), inclusiveCap),
       minimumMoney(Money.from(this.#config.maximumStakeAmount), marketBudget),
     );
-    const maximumFillPrice = minimumMoney(
+    const maximumFillPrice = strategyMaximumFillPrice ?? minimumMoney(
       ask.plus(Money.from(this.#config.maximumSlippage)),
       Money.from("1"),
     );
@@ -893,7 +992,7 @@ export class KJPaperEngine {
     const openQuantity = [...this.#pending.values()]
       .filter((pending) => pending.strategy === strategy && pending.tokenId === tokenId)
       .reduce((total, pending) => total.plus(pending.intendedQuantity), Money.from("0"));
-    const targetQuantity = stake.dividedBy(ask);
+    const targetQuantity = strategyTargetQuantity ?? stake.dividedBy(ask);
     const risk = reviewTargetPositionV1({
       requestedTargetQuantity: targetQuantity.toCanonical(),
       currentPositionQuantity: currentPosition.toCanonical(),

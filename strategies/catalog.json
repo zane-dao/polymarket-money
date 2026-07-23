@@ -37,7 +37,7 @@
       }
     },
     {
-      "strategyId": "L_ADAPTIVE_EXECUTION_V2", "displayName": "自适应执行（L V2 · 研究候选）", "summary": "冻结训练选择的候选，只允许验证集离线回测。", "family": "自适应执行", "implementationVersion": "l-adaptive-execution-v2-candidate", "executionStatus":"RESEARCH_ONLY_CANDIDATE", "researchStatus": "RESEARCH_ONLY", "riskLevel": "HIGH", "runtime": "python", "allowedModes": ["backtest"], "executor": "L_V2", "parameters": {
+      "strategyId": "L_ADAPTIVE_EXECUTION_V2", "displayName": "自适应执行（L V2 · Paper 候选）", "summary": "冻结训练选择参数，并在公开实时盘口上进行 Paper-only 验证。", "family": "自适应执行", "implementationVersion": "l-adaptive-execution-v2-candidate", "executionStatus":"PAPER_CANDIDATE", "researchStatus": "PAPER_READY", "riskLevel": "HIGH", "runtime": "python", "allowedModes": ["backtest", "paper"], "executor": "L_V2", "parameters": {
         "maxSignalEdge":{"type":"number","required":true,"defaultValue":0.25,"minimum":0,"maximum":1,"displayName":"最大信号优势","unit":"概率"},
         "maxStakeUsdc":{"type":"number","required":true,"defaultValue":400,"minimum":1,"maximum":100000,"displayName":"单次最大投入","unit":"USDC"},
         "bookParticipation":{"type":"number","required":true,"defaultValue":0.5,"minimum":0.000001,"maximum":1,"displayName":"盘口参与比例","unit":"比例"}

@@ -6,7 +6,7 @@ const ThemeContext = createContext<Readonly<{ preference: ThemePreference; setPr
 
 function savedPreference(): ThemePreference {
   const value = globalThis.localStorage?.getItem(STORAGE_KEY);
-  return value === "light" || value === "dark" || value === "glass" ? value : "system";
+  return value === "light" || value === "dark" || value === "glass" || value === "system" ? value : "dark";
 }
 
 export function ThemeProvider({ children }: PropsWithChildren) {

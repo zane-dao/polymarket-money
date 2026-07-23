@@ -6,13 +6,54 @@ import type { BacktestJobV1, DatasetListV1, StrategyDefinitionV1, SystemHealthV1
 import { Badge, EmptyState, Panel } from "../components/ui.js";
 
 export function OverviewPage() {
-  const { dispatch } = useWorkbench();
+  const { state, dispatch } = useWorkbench();
   const { sourceKind, runs, decisions } = useWorkbenchData();
   const commands = useWorkbenchCommands();
   const [backendSummary, setBackendSummary] = useState<Readonly<{ strategies: readonly StrategyDefinitionV1[]; datasets: DatasetListV1; jobs: readonly BacktestJobV1[]; health: SystemHealthV1 }> | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   useEffect(() => { if (commands === null || sourceKind !== "verified-local") return; let active = true; Promise.all([commands.listStrategyDefinitions(), commands.listDatasets(), commands.listBacktestJobs(), commands.getSystemHealth()]).then(([strategies, datasets, jobs, health]) => { if (active) { setBackendSummary({strategies,datasets,jobs,health}); setSummaryError(null); } }).catch((error: unknown) => { if (active) setSummaryError(error instanceof Error ? error.message : "后端摘要不可用"); }); return () => { active = false; }; }, [commands, sourceKind]);
-  if (sourceKind === "verified-local") return <><section className="command-hero"><div><span className="eyebrow">RESEARCH & SIMULATION COMMAND CENTER</span><h1>从行情观察，到策略验证，再到逐事件复盘</h1><p>生产工作台只展示后端明确提供并通过 schema 校验的数据。</p><div className="toolbar"><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "strategy" })}>打开策略工作室</button><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "datasets" })}>查看数据集</button><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "backtest" })}>创建模拟回测</button></div></div><Panel title="工作台摘要" english="Workbench Summary">{backendSummary === null ? <EmptyState title="后端摘要数据不可用" detail={summaryError ?? "正在加载策略、数据集、任务与健康状态。"} /> : <div className="session-status"><article><span>注册策略</span><strong>{backendSummary.strategies.length}</strong></article><article><span>可用数据集</span><strong>{backendSummary.datasets.datasets.length}</strong></article><article><span>回测任务</span><strong>{backendSummary.jobs.length}</strong></article><article><span>已验证运行</span><strong>{runs.length}</strong></article><article><span>可复盘事件</span><strong>{decisions.length}</strong></article><article><span>系统状态</span><strong className={backendSummary.health.status === "healthy" ? "positive" : "amber"}>{backendSummary.health.status}</strong></article></div>}</Panel></section></>;
+  if (sourceKind === "verified-local") {
+    const session = state.researchSession;
+    const next = session.datasetId === null
+      ? { label: "选择研究数据", detail: "先绑定一个已处理、已验证的数据集版本。", routeId: "datasets" as const }
+      : session.strategyId === null
+        ? { label: "选择策略版本", detail: "把策略与版本绑定到当前研究会话。", routeId: "strategy" as const }
+        : session.runId === null
+          ? { label: "配置并运行回测", detail: "数据与策略已就绪；检查执行假设后运行。", routeId: "backtest" as const }
+          : { label: "审查运行证据", detail: "回测已绑定；比较基准、回放事件并形成判断。", routeId: "compare" as const };
+    const latestJobs = backendSummary?.jobs.slice(-4).reverse() ?? [];
+    return <div className="research-home">
+      <section className="research-home__hero">
+        <div className="research-home__brief">
+          <span className="eyebrow">ACTIVE RESEARCH TASK · PAPER ONLY</span>
+          <h1>把一个研究判断，推进到可审查的证据</h1>
+          <p>数据、策略、执行假设和运行结果由同一研究会话串联。你只需要决定下一步，不需要记住每个页面里选过什么。</p>
+          <div className="research-home__next">
+            <span>NEXT ACTION</span>
+            <strong>{next.label}</strong>
+            <p>{next.detail}</p>
+            <button className="button button--primary" onClick={() => dispatch({ type: "navigate", routeId: next.routeId })}>{next.label} →</button>
+          </div>
+        </div>
+        <aside className="evidence-spine" aria-label="当前研究证据">
+          <header><span>EVIDENCE SPINE</span><Badge tone={session.runId === null ? "warn" : "good"}>{session.runId === null ? "BUILDING" : "RUN BOUND"}</Badge></header>
+          <ol>
+            <li data-state={session.datasetId === null ? "pending" : "ready"}><i>D</i><span><small>Dataset</small><strong>{session.datasetId ?? "待选择数据版本"}</strong></span></li>
+            <li data-state={session.strategyId === null ? "pending" : "ready"}><i>S</i><span><small>Strategy</small><strong>{session.strategyId === null ? "待选择策略版本" : `${session.strategyId} · ${session.strategyVersion ?? "待选版本"}`}</strong></span></li>
+            <li data-state={session.runId === null ? "pending" : "ready"}><i>R</i><span><small>Experiment</small><strong>{session.runId ?? "尚未生成 Run"}</strong></span></li>
+            <li data-state="blocked"><i>G</i><span><small>Paper Gate</small><strong>等待比较与评审</strong></span></li>
+          </ol>
+        </aside>
+      </section>
+      <section className="research-home__grid">
+        <Panel title="研究资产与运行状态" english="Research Inventory">{backendSummary === null ? <EmptyState title="后端摘要数据不可用" detail={summaryError ?? "正在加载策略、数据集、任务与健康状态。"} /> : <div className="session-status session-status--inventory"><article><span>已注册策略</span><strong>{backendSummary.strategies.length}</strong><small>后端定义</small></article><article><span>可用数据集</span><strong>{backendSummary.datasets.datasets.length}</strong><small>已验证版本</small></article><article><span>历史回测</span><strong>{backendSummary.jobs.length}</strong><small>持久任务</small></article><article><span>当前证据事件</span><strong>{decisions.length}</strong><small>可回放</small></article></div>}</Panel>
+        <Panel title="准入判断" english="Readiness Gate" action={<Badge tone="warn">NOT LIVE READY</Badge>}><div className="gate-ledger"><span><i className="ready" />数据与策略可追溯<b>{session.datasetVersionHash !== null && session.strategyVersion !== null ? "READY" : "PENDING"}</b></span><span><i />独立样本稳定性<b>NOT COMPUTED</b></span><span><i />同口径基准改善<b>NOT REVIEWED</b></span><span><i />真实交易路径<b>DISABLED</b></span></div></Panel>
+      </section>
+      <Panel title="最近研究运行" english="Recent Experiments" action={<button className="button" onClick={() => dispatch({ type: "navigate", routeId: "backtest" })}>查看全部</button>}>
+        {latestJobs.length === 0 ? <EmptyState title="尚无回测运行" detail="完成数据和策略绑定后，从当前研究任务直接创建第一次回测。" /> : <div className="experiment-ledger">{latestJobs.map((item) => <button key={item.runId} onClick={() => dispatch({ type: "navigate", routeId: "backtest" })}><span><b>{item.displayName ?? item.runId}</b><small>{item.strategyId ?? "历史策略"} · {item.strategyVersion ?? "未记录版本"}</small></span><em data-status={item.status}>{item.status}</em><strong>{item.progressPermille / 10}%</strong></button>)}</div>}
+      </Panel>
+    </div>;
+  }
   return <>
     <section className="command-hero">
       <div><span className="eyebrow">RESEARCH & SIMULATION COMMAND CENTER</span><h1>从行情观察，到策略验证，再到逐事件复盘</h1><p>这一版保留旧平台最有价值的首页说明、纸面订单票、实验台账、策略日志、模拟竞技场和进程看护，同时使用更清楚的决策链：市场状态 → 模型概率 → 可执行优势 → 模拟成交 → 最终盈亏。</p><div className="toolbar"><button className="button button--primary" onClick={() => dispatch({ type: "navigate", routeId: "live" })}>进入实时驾驶舱</button><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "strategy" })}>打开策略工作室</button><button className="button" onClick={() => dispatch({ type: "navigate", routeId: "live" })}>打开纸面订单票</button></div></div>

@@ -24,21 +24,25 @@ import {
 } from "../backend/paper-session/index.js";
 import type { PaperOrderRequest, PaperToken } from "../backend/paper-simulation/index.js";
 import { KJPaperJournal } from "../backend/core/src/storage/kj-paper-journal.js";
-import { kjPaperContextFingerprint, type KJPaperEngineConfig, type KJPaperEvent } from "../backend/core/src/runtime/kj-paper-engine.js";
+import { kjPaperContextFingerprint, type KJPaperEngineConfig, type KJPaperEvent, type PaperRuntimeStrategy } from "../backend/core/src/runtime/kj-paper-engine.js";
 import type { KJStrategyContextV1 } from "../strategies/src/kj-context.js";
 import type { PublicBtcFiveMinuteMarket } from "../backend/core/src/adapters/market-data/public-sources.js";
 import { GammaResolutionPending } from "../backend/core/src/adapters/settlement/gamma-resolution.js";
 
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const SAFE_REQUEST_ID = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/u;
-export const DESKTOP_KJ_ACCOUNTS = Object.freeze({ J_FEE_AWARE: "desktop-kj-j", K_DUAL_VOL: "desktop-kj-k" });
+export const DESKTOP_KJ_ACCOUNTS = Object.freeze({
+  J_FEE_AWARE: "desktop-kj-j",
+  K_DUAL_VOL: "desktop-kj-k",
+  L_ADAPTIVE_EXECUTION_V2: "desktop-l-v2",
+});
 export const DESKTOP_KJ_INITIAL_CASH = "10000";
 export const DESKTOP_KJ_RISK = Object.freeze({
   schemaVersion: "paper-risk-config-v1" as const, maximumQuoteAgeMs: 15_000, minimumNetEdge: "0.05",
   maximumOrderNotional: "400", maximumMarketExposure: "400", maximumTotalExposure: "4000",
 });
 type PaperRunnerConfig = Readonly<{
-  strategyId: "J_FEE_AWARE" | "K_DUAL_VOL";
+  strategyId: PaperRuntimeStrategy;
   strategyVersion: string;
   initialCash: string;
   maximumPosition: string;
@@ -91,6 +95,9 @@ export class PaperHostRuntime {
   #journal: KJPaperJournal | null = null;
   #journalFileName: string | null = null;
   #strategyTail: Promise<void> = Promise.resolve();
+  #pendingStrategyContext: KJStrategyContextV1 | null = null;
+  #strategyDrainRunning = false;
+  #coalescedStrategyContextCount = 0;
   #orderLifecycleTail: Promise<void> = Promise.resolve();
   #expiryTimer: ReturnType<typeof setInterval> | null = null;
   #strategyError: string | null = null;
@@ -101,6 +108,10 @@ export class PaperHostRuntime {
   #officialSettlementCoordinator: OfficialGammaPaperSettlementCoordinator | null = null;
   #strategyEventCursor = 0;
   readonly #intents = new Map<string, KJPaperEvent>();
+  readonly #intentObservedNs = new Map<string, bigint>();
+  readonly #inputToDecisionMs: number[] = [];
+  readonly #strategyComputationMs: number[] = [];
+  readonly #decisionToPaperLockMs: number[] = [];
   readonly #feesByContext = new Map<string, KJStrategyContextV1>();
   readonly #feedFactory: (slug: string) => PublicPaperMarketFeed;
   readonly #gammaSource: PublicGammaResolutionSource;
@@ -115,7 +126,7 @@ export class PaperHostRuntime {
   #settlementTail: Promise<void> = Promise.resolve();
   #publicNetworkApproved = false;
   #runner: PaperRunnerConfig | null = null;
-  #accounts: Readonly<Record<"J_FEE_AWARE" | "K_DUAL_VOL", string>> = DESKTOP_KJ_ACCOUNTS;
+  #accounts: Readonly<Record<PaperRuntimeStrategy, string>> = DESKTOP_KJ_ACCOUNTS;
 
   constructor(dataRoot: string, adapter: CallerManagedPublicMarketAdapter = unavailableAdapter(), options: PaperHostRuntimeOptions = {}) {
     this.#dataRoot = dataRoot;
@@ -150,10 +161,10 @@ export class PaperHostRuntime {
       case "host-status": return this.#status();
       case "get-paper-market-runtime": return this.#marketRuntime();
       case "get-paper-strategy-runtime":
-        await this.#strategyTail;
+        await this.#awaitStrategyIdle();
         return this.#strategyStatus();
       case "get-paper-replay":
-        await this.#strategyTail;
+        await this.#awaitStrategyIdle();
         return queryPaperReplay(this.#dataRoot, this.#paper, Number(payload.page), Number(payload.pageSize), this.#journal === null || this.#journalFileName === null ? null : { fileName: this.#journalFileName, journal: this.#journal });
       case "start-public-feed": {
         if (payload.explicitNetworkApproval !== true) throw new Error("explicit network approval is required");
@@ -161,7 +172,9 @@ export class PaperHostRuntime {
         const runnerInput = payload.runner === undefined ? null : object(payload.runner, "runner");
         if (runnerInput !== null) {
           const strategyId = text(runnerInput.strategyId, "runner.strategyId");
-          if (strategyId !== "J_FEE_AWARE" && strategyId !== "K_DUAL_VOL") throw new Error("selected strategy is not Paper-ready");
+          if (strategyId !== "J_FEE_AWARE" && strategyId !== "K_DUAL_VOL" && strategyId !== "L_ADAPTIVE_EXECUTION_V2") {
+            throw new Error("selected strategy is not Paper-ready");
+          }
           const decimal = (value: unknown, field: string, allowZero = false): string => {
             const result = text(value, field);
             if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(result) || (allowZero ? Number(result) < 0 : Number(result) <= 0)) throw new Error(`${field} is invalid`);
@@ -172,7 +185,11 @@ export class PaperHostRuntime {
             : Object.freeze({ ...object(runnerInput.strategyParameters, "runner.strategyParameters") }) as Readonly<Record<string, string | number | boolean>>;
           this.#runner = Object.freeze({ strategyId, strategyVersion: text(runnerInput.strategyVersion, "runner.strategyVersion"), initialCash: decimal(runnerInput.initialCash, "runner.initialCash"), maximumPosition: decimal(runnerInput.maximumPosition, "runner.maximumPosition"), minimumNetEdge: decimal(runnerInput.minimumNetEdge, "runner.minimumNetEdge", true), strategyParameters });
           const runIdentity = `${strategyId.toLowerCase().replaceAll("_", "-")}-${this.#nowMs()}-${randomUUID().slice(0, 8)}`;
-          this.#accounts = Object.freeze({ J_FEE_AWARE: `${runIdentity}-j`, K_DUAL_VOL: `${runIdentity}-k` });
+          this.#accounts = Object.freeze({
+            J_FEE_AWARE: `${runIdentity}-j`,
+            K_DUAL_VOL: `${runIdentity}-k`,
+            L_ADAPTIVE_EXECUTION_V2: `${runIdentity}-l`,
+          });
         }
         const slug = payload.slug === undefined
           ? `btc-updown-5m-${Math.floor(this.#nowMs() / 300_000) * 300}`
@@ -186,9 +203,10 @@ export class PaperHostRuntime {
           return typeof value === "number" && Number.isFinite(value) ? String(value) : fallback;
         };
         const engineConfig: Partial<KJPaperEngineConfig> = runner === null ? {} : {
+          activeStrategies: [runner.strategyId],
           initialCash: runner.initialCash,
           edgeThreshold: versionParameter("edgeThreshold", "0.05"),
-          maxEdge: versionParameter("maxEdge", "0.25"),
+          maxEdge: versionParameter("maxSignalEdge", versionParameter("maxEdge", "0.25")),
           maximumStakeAmount: runner.maximumPosition,
           bookParticipation: versionParameter("bookParticipation", "0.5"),
         };
@@ -203,7 +221,7 @@ export class PaperHostRuntime {
         this.#settlementError = null;
         this.#latestContext = null;
         this.#clearSettlementTimers(); this.#publicNetworkApproved = true;
-        this.#coordinator = null; this.#officialSettlementCoordinator = null; this.#strategyEventCursor = 0; this.#intents.clear(); this.#feesByContext.clear(); this.#settlementMarkets.clear(); this.#settlementAttempts.clear();
+        this.#coordinator = null; this.#officialSettlementCoordinator = null; this.#strategyEventCursor = 0; this.#intents.clear(); this.#intentObservedNs.clear(); this.#inputToDecisionMs.length=0; this.#strategyComputationMs.length=0; this.#decisionToPaperLockMs.length=0; this.#pendingStrategyContext=null; this.#strategyDrainRunning=false; this.#coalescedStrategyContextCount=0; this.#feesByContext.clear(); this.#settlementMarkets.clear(); this.#settlementAttempts.clear();
         const host = new PaperMarketHost(feed, {
           hostId: "desktop-kj-public-market",
           now: () => new Date(this.#nowMs()).toISOString(),
@@ -220,16 +238,9 @@ export class PaperHostRuntime {
           },
           onStrategyContext: (context) => {
             this.#latestContext = context;
-            this.#strategyTail = this.#strategyTail
-              .then(async () => {
-                await journal.appendContext(context);
-                this.#rememberContextFee(context);
-                this.#rememberSettlementMarket(context);
-                if (this.#coordinator !== null) await this.#coordinateNewEvents(journal);
-              })
-              .catch((error: unknown) => {
-                this.#strategyError = error instanceof Error ? error.message : "strategy journal append failed";
-              });
+            if (this.#pendingStrategyContext !== null) this.#coalescedStrategyContextCount += 1;
+            this.#pendingStrategyContext = context;
+            this.#scheduleStrategyDrain(journal);
           },
         });
         try {
@@ -253,11 +264,13 @@ export class PaperHostRuntime {
           const official = new OfficialGammaPaperSettlementCoordinator(this.#paper, new FileOfficialPaperSettlementStore(this.#dataRoot), this.#accounts, this.#gammaSource);
           await official.initialize(); this.#officialSettlementCoordinator = official;
           for (const context of journal.contexts()) { this.#rememberContextFee(context); this.#rememberSettlementMarket(context); }
-          await this.#strategyTail;
+          await this.#awaitStrategyIdle();
           await this.#coordinateNewEvents(journal);
           return host.status();
         } catch (error) {
-          await host.stop().catch(() => undefined); await journal.close().catch(() => undefined);
+          await host.stop().catch(() => undefined);
+          await this.#coordinator?.close().catch(() => undefined);
+          await journal.close().catch(() => undefined);
           this.#clearSettlementTimers(); this.#publicNetworkApproved = false;
           this.#host = null; this.#journal = null; this.#journalFileName = null; this.#coordinator = null; this.#officialSettlementCoordinator = null; this.#strategyLifecycle = "STOPPED";
           throw error;
@@ -268,7 +281,8 @@ export class PaperHostRuntime {
         this.#clearSettlementTimers(); this.#publicNetworkApproved = false;
         const activeHost = this.#host;
         const status = await activeHost.stop();
-        await Promise.all([this.#strategyTail, this.#settlementTail, this.#orderLifecycleTail]);
+        await Promise.all([this.#awaitStrategyIdle(), this.#settlementTail, this.#orderLifecycleTail]);
+        await this.#coordinator?.close();
         for (const accountId of Object.values(this.#accounts)) {
           const session = (await this.#paper.list()).find((item) => item.sessionId === accountId);
           if (session?.status === "RUNNING") await this.#paper.stop(accountId, utcNow());
@@ -302,7 +316,8 @@ export class PaperHostRuntime {
       if (this.#expiryTimer !== null) { clearInterval(this.#expiryTimer); this.#expiryTimer = null; }
       this.#clearSettlementTimers(); this.#publicNetworkApproved = false;
       if (this.#host !== null) await this.#host.stop();
-      await Promise.all([this.#strategyTail, this.#settlementTail, this.#orderLifecycleTail]);
+      await Promise.all([this.#awaitStrategyIdle(), this.#settlementTail, this.#orderLifecycleTail]);
+      await this.#coordinator?.close();
     } finally {
       this.#strategyLifecycle = "STOPPED";
       if (this.#journal !== null) {
@@ -335,7 +350,7 @@ export class PaperHostRuntime {
       schemaVersion: "paper-strategy-runtime-v2",
       status: this.#strategyError === null && this.#settlementError === null ? this.#strategyLifecycle : "DEGRADED",
       executionAuthority: "PAPER_SESSION",
-      planner: Object.freeze({ engineVersion: "kj-paper-engine-v2", journalRecordCount: journal.recordCount, recoveredInputCount: journal.recoveredInputCount, lastRecordHash: journal.lastRecordHash, error: this.#strategyError ?? this.#settlementError }),
+      planner: Object.freeze({ engineVersion: "kj-paper-engine-v2", journalRecordCount: journal.recordCount, recoveredInputCount: journal.recoveredInputCount, lastRecordHash: journal.lastRecordHash, coalescedInputCount:this.#coalescedStrategyContextCount, error: this.#strategyError ?? this.#settlementError, latency:Object.freeze({strategyComputation:this.#latencySummary(this.#strategyComputationMs),inputToDecision:this.#latencySummary(this.#inputToDecisionMs),decisionToPaperLock:this.#latencySummary(this.#decisionToPaperLockMs),semantics:"PROCESS_MONOTONIC_MS"}) }),
       canonicalAccounts: Object.freeze(canonicalAccounts),
       executionLinks: Object.freeze((this.#coordinator?.links() ?? []).filter((link) => this.#runner === null || link.strategy === this.#runner.strategyId)),
       shadow: Object.freeze({ nonAuthoritative: true, snapshot: journal.engine.snapshot(), events: Object.freeze(events.slice(Math.max(0, events.length - 500))) }),
@@ -344,7 +359,10 @@ export class PaperHostRuntime {
 
   async #ensureCanonicalSessions(): Promise<void> {
     const existing = new Map((await this.#paper.list()).map((session) => [session.sessionId, session]));
-    for (const strategy of ["J_FEE_AWARE", "K_DUAL_VOL"] as const) {
+    const strategies: readonly PaperRuntimeStrategy[] = this.#runner === null
+      ? ["J_FEE_AWARE", "K_DUAL_VOL"]
+      : ["J_FEE_AWARE", "K_DUAL_VOL", "L_ADAPTIVE_EXECUTION_V2"];
+    for (const strategy of strategies) {
       const sessionId = this.#accounts[strategy]; const current = existing.get(sessionId);
       const runner = this.#runner;
       const risk = runner === null ? DESKTOP_KJ_RISK : Object.freeze({ ...DESKTOP_KJ_RISK, minimumNetEdge: runner.minimumNetEdge, maximumOrderNotional: runner.maximumPosition, maximumMarketExposure: runner.maximumPosition, maximumTotalExposure: runner.maximumPosition });
@@ -407,7 +425,7 @@ export class PaperHostRuntime {
     while (this.#strategyEventCursor < events.length) {
       const event = events[this.#strategyEventCursor]!;
       if (event.strategy !== null && this.#runner !== null && event.strategy !== this.#runner.strategyId) { this.#strategyEventCursor += 1; continue; }
-      if (event.eventType === "INTENT") { const intentId = event.details.intentId; if (typeof intentId === "string") this.#intents.set(intentId, event); this.#strategyEventCursor += 1; continue; }
+      if (event.eventType === "INTENT") { const intentId = event.details.intentId; if (typeof intentId === "string") { this.#intents.set(intentId, event); this.#intentObservedNs.set(intentId,process.hrtime.bigint()); } this.#strategyEventCursor += 1; continue; }
       if (event.eventType !== "FILL") { this.#strategyEventCursor += 1; continue; }
       const intentId = event.details.intentId; if (typeof intentId !== "string") throw new Error("K/J FILL lacks intentId");
       const intent = this.#intents.get(intentId); if (intent === undefined) throw new Error("K/J FILL lacks its INTENT event");
@@ -419,9 +437,56 @@ export class PaperHostRuntime {
         effectiveFromUtc: new Date(Date.parse(context.market.intervalStart)).toISOString(), effectiveToUtc: new Date(Date.parse(context.market.intervalEnd)).toISOString(),
         evidenceStatus: "UNVERIFIED", evidenceReference: context.feeEvidence.reference,
       })));
+      const intentNs=this.#intentObservedNs.get(intentId);
+      if(intentNs!==undefined){this.#recordLatency(this.#decisionToPaperLockMs,Number(process.hrtime.bigint()-intentNs)/1_000_000);this.#intentObservedNs.delete(intentId);}
       this.#strategyEventCursor += 1;
     }
   }
+
+  #scheduleStrategyDrain(journal: KJPaperJournal): void {
+    if (this.#strategyDrainRunning) return;
+    this.#strategyDrainRunning = true;
+    this.#strategyTail = this.#drainStrategyContexts(journal)
+      .catch((error: unknown) => {
+        this.#strategyError = error instanceof Error ? error.message : "strategy journal append failed";
+      })
+      .finally(() => {
+        this.#strategyDrainRunning = false;
+        if (this.#pendingStrategyContext !== null) this.#scheduleStrategyDrain(journal);
+      });
+  }
+
+  async #awaitStrategyIdle(): Promise<void> {
+    while (this.#strategyDrainRunning || this.#pendingStrategyContext !== null) {
+      await this.#strategyTail;
+    }
+  }
+
+  async #drainStrategyContexts(journal:KJPaperJournal):Promise<void>{
+    while(this.#pendingStrategyContext!==null){
+      const context=this.#pendingStrategyContext;
+      this.#pendingStrategyContext=null;
+      const beforeEventCount=journal.engine.events().length;
+      await journal.appendContextBuffered(context);
+      const completedNs=process.hrtime.bigint(),inputNs=BigInt(context.inputWatermark.localMonotonicReceiveNs);
+      const newEvents=journal.engine.events().slice(beforeEventCount);
+      const decided=newEvents.some((event)=>event.eventType==="DECISION");
+      if(decided){
+        if(completedNs>=inputNs)this.#recordLatency(this.#inputToDecisionMs,Number(completedNs-inputNs)/1_000_000);
+        const computationMs=journal.lastContextComputationMilliseconds;
+        if(computationMs!==null)this.#recordLatency(this.#strategyComputationMs,computationMs);
+      }
+      this.#rememberContextFee(context);
+      this.#rememberSettlementMarket(context);
+      if(this.#coordinator!==null){
+        if(newEvents.some((event)=>event.eventType==="FILL"))await journal.flush();
+        await this.#coordinateNewEvents(journal);
+      }
+    }
+  }
+
+  #recordLatency(target:number[],value:number):void{if(!Number.isFinite(value)||value<0)return;target.push(value);if(target.length>1_000)target.splice(0,target.length-1_000);}
+  #latencySummary(values:readonly number[]):Readonly<Record<string,number|null>>{if(values.length===0)return Object.freeze({count:0,p50Ms:null,p95Ms:null,maxMs:null});const sorted=[...values].sort((a,b)=>a-b);const pick=(fraction:number)=>sorted[Math.min(sorted.length-1,Math.ceil(sorted.length*fraction)-1)]!;return Object.freeze({count:sorted.length,p50Ms:Number(pick(.5).toFixed(3)),p95Ms:Number(pick(.95).toFixed(3)),maxMs:Number(sorted.at(-1)!.toFixed(3))});}
 
   #status(): PaperMarketHostStatusV1 | Readonly<Record<string, unknown>> {
     return this.#host?.status() ?? Object.freeze({
@@ -459,7 +524,7 @@ export function offlineStrategyStatus(error: string | null = null): Readonly<Rec
     schemaVersion: "paper-strategy-runtime-v2",
     status: error === null ? "STOPPED" : "DEGRADED",
     executionAuthority: "PAPER_SESSION",
-    planner: Object.freeze({ engineVersion: "kj-paper-engine-v2", journalRecordCount: 0, recoveredInputCount: 0, lastRecordHash: null, error }),
+    planner: Object.freeze({ engineVersion: "kj-paper-engine-v2", journalRecordCount: 0, recoveredInputCount: 0, lastRecordHash: null, coalescedInputCount:0, error, latency:Object.freeze({strategyComputation:Object.freeze({count:0,p50Ms:null,p95Ms:null,maxMs:null}),inputToDecision:Object.freeze({count:0,p50Ms:null,p95Ms:null,maxMs:null}),decisionToPaperLock:Object.freeze({count:0,p50Ms:null,p95Ms:null,maxMs:null}),semantics:"PROCESS_MONOTONIC_MS"}) }),
     canonicalAccounts: Object.freeze([]), executionLinks: Object.freeze([]),
     shadow: Object.freeze({ nonAuthoritative: true, snapshot: null, events: Object.freeze([]) }),
   });

@@ -143,6 +143,34 @@ test("paper engine freezes intents, reserves cash, fills once, and deduplicates 
   assert.equal(snapshot.pendingIntents.length, 0);
 });
 
+test("J and K decide on consecutive unique order-book contexts without a fixed time window", () => {
+  const engine = new KJPaperEngine();
+  warmEngine(engine);
+  engine.ingest(context(185, "100.2", 40, market(1), { upAsk: "0.95", downAsk: "0.95" }));
+  const before = engine.events().filter((event) => event.eventType === "DECISION").length;
+  engine.ingest(context(185.001, "100.2", 41, market(1), { upAsk: "0.94", downAsk: "0.95" }));
+  const after = engine.events().filter((event) => event.eventType === "DECISION").length;
+  assert.equal(after - before, 2, "one changed context produces one immediate decision per strategy");
+});
+
+test("L V2 runs on every unique order-book context without activating J or K", () => {
+  const engine = new KJPaperEngine({
+    activeStrategies: ["L_ADAPTIVE_EXECUTION_V2"],
+    maxEdge: "0.25",
+    maximumStakeAmount: "300",
+    bookParticipation: "1",
+  });
+  warmEngine(engine);
+  engine.ingest(context(185, "100.2", 40, market(1), { upBid: "0.54", upAsk: "0.55", downBid: "0.45", downAsk: "0.46" }));
+  const before = engine.events().filter((event) => event.eventType === "DECISION").length;
+  engine.ingest(context(185.001, "100.2", 41, market(1), { upBid: "0.53", upAsk: "0.54", downBid: "0.46", downAsk: "0.47" }));
+  const decisions = engine.events().filter((event) => event.eventType === "DECISION");
+  assert.equal(decisions.length - before, 1);
+  assert.ok(decisions.every((event) => event.strategy === "L_ADAPTIVE_EXECUTION_V2"));
+  assert.equal(engine.wallet("J_FEE_AWARE").cash, "10000");
+  assert.equal(engine.wallet("K_DUAL_VOL").cash, "10000");
+});
+
 test("target-position review nets existing and resting quantity before applying depth and risk caps", () => {
   const review = reviewTargetPositionV1({
     requestedTargetQuantity: "100", currentPositionQuantity: "30", openOrderQuantity: "20",

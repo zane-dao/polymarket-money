@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../src/app/App.js";
 import { PREVIEW_WORKBENCH_DATA } from "../src/workbench/data/preview-data.js";
@@ -23,6 +23,8 @@ const EMPTY_VERIFIED_DATA: WorkbenchViewData = {
     brier: [],
   },
 };
+
+beforeEach(() => window.history.replaceState(null, "", "/"));
 const READY_PAPER_MARKET = {
   schemaVersion: "paper-market-runtime-v1" as const,
   status: "READY" as const,
@@ -359,7 +361,7 @@ describe("workbench command interactions", () => {
     await user.click(
       screen
         .getByRole("navigation", { name: "主导航" })
-        .querySelectorAll("button")[3]!,
+        .querySelectorAll("a")[3]!,
     );
     await screen.findByDisplayValue("费用感知概率策略（J）");
     expect(screen.getByLabelText("版本")).toHaveValue("1.0.1");
@@ -385,7 +387,7 @@ describe("workbench command interactions", () => {
     });
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("navigation", { name: "主导航" }).querySelectorAll("button")[3]!);
+    await user.click(screen.getByRole("navigation", { name: "主导航" }).querySelectorAll("a")[3]!);
     await screen.findByDisplayValue("费用感知概率策略（J）");
     await user.click(screen.getByRole("button", { name: "验证参数" }));
     expect(await screen.findByLabelText("研究告警")).toHaveTextContent("可交易优势区间很窄");
@@ -400,7 +402,7 @@ describe("workbench command interactions", () => {
     await user.click(
       screen
         .getByRole("navigation", { name: "主导航" })
-        .querySelectorAll("button")[3]!,
+        .querySelectorAll("a")[3]!,
     );
     await screen.findByRole("option", { name: "1.0.0" });
     await user.click(screen.getByRole("button", { name: "加载版本" }));
@@ -428,7 +430,7 @@ describe("workbench command interactions", () => {
     await user.click(
       screen
         .getByRole("navigation", { name: "主导航" })
-        .querySelectorAll("button")[3]!,
+        .querySelectorAll("a")[3]!,
     );
     const modes = await screen.findByLabelText("允许模式");
     expect(modes).toHaveValue("backtest");
@@ -444,7 +446,7 @@ describe("workbench command interactions", () => {
     ]);
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("navigation", { name: "主导航" }).querySelectorAll("button")[3]!);
+    await user.click(screen.getByRole("navigation", { name: "主导航" }).querySelectorAll("a")[3]!);
     const selector = await screen.findByLabelText("策略 ID");
     expect(selector).toHaveValue("J_FEE_AWARE");
     expect(selector.querySelector('option[value="B0_NO_TRADE"]')).toBeNull();
@@ -458,7 +460,7 @@ describe("workbench command interactions", () => {
     const client = commands();
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("button", { name: /数据集管理/ }));
+    await user.click(screen.getByRole("link", { name: /数据集管理/ }));
     await screen.findByRole("heading", { name: "Btc" });
     expect(screen.getByText("生成时间").parentElement).toHaveTextContent("未记录");
     await user.click(screen.getByRole("button", { name: "重新扫描" }));
@@ -471,18 +473,24 @@ describe("workbench command interactions", () => {
       versionHash: "a".repeat(64),
     });
     expect(await screen.findByText("read-only-not-copied")).toBeInTheDocument();
+    expect(screen.getByLabelText("当前研究会话")).toHaveTextContent("btc");
+    await user.click(screen.getByRole("button", { name: /下一步：选择策略/ }));
+    await screen.findByRole("heading", { name: /策略工作室/ });
+    await user.click(await screen.findByRole("button", { name: "使用此版本回测" }));
+    expect(await screen.findByRole("heading", { name: /回测实验室/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("回测数据集")).toHaveValue(`btc:${"a".repeat(64)}`);
   });
 
   it("registers an explicit absolute normalized root only through the backend", async () => {
     const client = commands();
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("button", { name: /数据集管理/ }));
+    await user.click(screen.getByRole("link", { name: /数据集管理/ }));
     await user.type(
       await screen.findByLabelText("外部 normalized 发布根"),
       "/mnt/history/normalized",
     );
-    await user.click(screen.getByRole("button", { name: "后端操作" }));
+    await user.click(screen.getByRole("button", { name: "登记标准化数据源" }));
     expect(client.registerDatasetSource).toHaveBeenCalledWith({
       schemaVersion: "dataset-source-registration-request-v1",
       sourceDirectory: "/mnt/history/normalized",
@@ -495,13 +503,13 @@ describe("workbench command interactions", () => {
     const client = commands(),
       user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("button", { name: /数据集管理/ }));
+    await user.click(screen.getByRole("link", { name: /数据集管理/ }));
     await user.type(await screen.findByLabelText("原始数据集 ID"), "btc-raw");
     await user.type(
       screen.getByLabelText("原始历史数据路径"),
       "/mnt/history/events.ndjson",
     );
-    await user.click(screen.getByRole("button", { name: "Web 后端操作" }));
+    await user.click(screen.getByRole("button", { name: "归一化并发布历史数据" }));
     expect(client.normalizeRawDataset).toHaveBeenCalledWith({
       schemaVersion: "raw-dataset-normalization-request-v1",
       inputPath: "/mnt/history/events.ndjson",
@@ -516,7 +524,7 @@ describe("workbench command interactions", () => {
     const client = commands();
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("button", { name: /回测实验室/ }));
+    await user.click(screen.getByRole("link", { name: /回测实验室/ }));
     expect(screen.getByLabelText("回测数据分组")).toHaveValue("VALIDATION");
     await user.click(screen.getByRole("button", { name: "运行回测" }));
     expect(client.startBacktest).toHaveBeenCalledWith(
@@ -528,6 +536,78 @@ describe("workbench command interactions", () => {
     expect(await screen.findByText(/running · 50%/)).toBeInTheDocument();
   });
 
+  it("enters a completed run, exposes all evidence layers, and carries its frozen context into Paper review", async () => {
+    const client = commands();
+    vi.mocked(client.listBacktestJobs).mockResolvedValue([{
+      schemaVersion: "backtest-job-v1",
+      runId: "run-evidence",
+      requestId: "request-evidence",
+      strategyId: "J_FEE_AWARE",
+      strategyVersion: "1.0.0",
+      displayName: "J · BTC 验证",
+      status: "succeeded",
+      progressPermille: 1000,
+      error: null,
+    }]);
+    vi.mocked(client.getBacktestResult).mockResolvedValue({
+      schemaVersion: "backtest-result-v1",
+      runId: "run-evidence",
+      request: {
+        schemaVersion: "backtest-request-v1",
+        requestId: "request-evidence",
+        strategyId: "J_FEE_AWARE",
+        strategyVersion: "1.0.0",
+        datasetId: "btc",
+        datasetVersionHash: "a".repeat(64),
+        feeModel: "fee-v2",
+        latencyMs: 1000,
+        initialCash: "1000",
+        maxPosition: "100",
+        evaluationSplit: "VALIDATION",
+      },
+      startedAtUtc: "2026-07-21T00:00:00Z",
+      completedAtUtc: "2026-07-21T01:00:00Z",
+      evaluationScope: {
+        schemaVersion: "backtest-evaluation-scope-v1",
+        split: "VALIDATION",
+        horizonSeconds: 300,
+        scenario: "BASE_1S",
+        cohortHash: "c".repeat(64),
+        cohortSize: 120,
+      },
+      metrics: { netPnl: "12.5", fees: "1.2", maxDrawdown: "-3.1", fillRate: "0.6", winRate: "0.55", brier: "0.19" },
+      equityCurve: [{ timeUtc: "2026-07-21T00:00:00Z", equity: "1000" }, { timeUtc: "2026-07-21T01:00:00Z", equity: "1012.5" }],
+      events: [
+        { eventId: "decision-cal-1", eventTimeUtc: "2026-07-21T00:10:00Z", kind: "decision", payload: { marketId: "m-1", probability: 0.22, outcome: "Down", reason: "EDGE" } },
+        { eventId: "decision-cal-2", eventTimeUtc: "2026-07-21T00:20:00Z", kind: "decision", payload: { marketId: "m-2", probability: 0.74, outcome: "Up", reason: "EDGE" } },
+        { eventId: "settlement-cal-1", eventTimeUtc: "2026-07-21T00:40:00Z", kind: "settlement", payload: { marketId: "m-1", pnl: -1.5, status: "SETTLED" } },
+        { eventId: "settlement-cal-2", eventTimeUtc: "2026-07-21T00:50:00Z", kind: "settlement", payload: { marketId: "m-2", pnl: 3.2, status: "SETTLED" } },
+      ],
+    });
+    const user = userEvent.setup();
+    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
+    await user.click(screen.getByRole("link", { name: /回测实验室/ }));
+    expect(await screen.findByLabelText("回测决策总览")).toHaveTextContent(
+      "Paper 准入未通过",
+    );
+    expect(client.getBacktestResult).toHaveBeenCalledWith("run-evidence");
+    expect(screen.getByRole("navigation", { name: "结果分析目录" })).toHaveTextContent("核心收益风险概率质量交易与执行参数稳健性");
+    expect(screen.queryByText("参数敏感性")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "训练、验证与最终测试时间带" })).not.toBeInTheDocument();
+    expect(screen.getByText("概率校准图")).toBeInTheDocument();
+    expect(screen.getByText("Brier 分解")).toBeInTheDocument();
+    expect(screen.getByText("概率分桶明细")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "分桶 Brier" })).toBeInTheDocument();
+    expect(screen.getByText("单市场 PnL 分布")).toBeInTheDocument();
+    expect(screen.getAllByText("未计算").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "进入 Paper 评审" }));
+    expect(await screen.findByRole("heading", { name: "自动 Paper Runner" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Paper 策略")).toHaveValue("J_FEE_AWARE");
+    expect(screen.getByLabelText("Paper 策略版本")).toHaveValue("1.0.0");
+    expect(window.location.search).toContain("run=run-evidence");
+    expect(window.location.search).toContain("view=live");
+  });
+
   it("regenerates automatic backtest names after the selected strategy changes", async () => {
     const client = commands();
     vi.mocked(client.listStrategyDefinitions).mockResolvedValue([
@@ -536,7 +616,7 @@ describe("workbench command interactions", () => {
     ]);
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("button", { name: /回测实验室/ }));
+    await user.click(screen.getByRole("link", { name: /回测实验室/ }));
     await screen.findByDisplayValue("费用感知概率策略（J）");
     await user.click(screen.getByRole("button", { name: "运行回测" }));
     await user.selectOptions(screen.getByLabelText("回测策略"), "K_DUAL_VOL");
@@ -550,7 +630,7 @@ describe("workbench command interactions", () => {
     const client = commands();
     const user = userEvent.setup();
     render(<App commands={client} initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("button", { name: /回测实验室/ }));
+    await user.click(screen.getByRole("link", { name: /回测实验室/ }));
     const latency = screen.getByLabelText("延迟毫秒");
     expect(latency).toHaveValue(1000);
     expect(latency).toHaveAttribute("readonly");
@@ -564,9 +644,9 @@ describe("workbench command interactions", () => {
     const client = commands();
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /系统健康/ }));
-    expect(await screen.findByText("unavailable")).toBeInTheDocument();
-    expect(screen.getByText("STOPPED")).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: /系统健康/ }));
+    expect((await screen.findAllByText("不可用")).length).toBeGreaterThan(0);
+    expect(screen.getByText("已停止")).toBeInTheDocument();
     expect(screen.getByText("没有已记录的系统异常")).toBeInTheDocument();
     expect(client.getSystemHealth).toHaveBeenCalled();
     expect(client.listSystemIncidents).toHaveBeenCalledWith({
@@ -578,7 +658,7 @@ describe("workbench command interactions", () => {
   it("fails closed when no command bridge is supplied", async () => {
     const user = userEvent.setup();
     render(<App initialData={PREVIEW_WORKBENCH_DATA} />);
-    await user.click(screen.getByRole("button", { name: /回测实验室/ }));
+    await user.click(screen.getByRole("link", { name: /回测实验室/ }));
     expect(screen.getByRole("button", { name: "运行回测" })).toBeDisabled();
     expect(screen.getByText(/命令桥接不可用/)).toBeInTheDocument();
   });
@@ -587,7 +667,7 @@ describe("workbench command interactions", () => {
     const client = commands();
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /实时驾驶舱/ }));
+    await user.click(screen.getByRole("link", { name: /实时驾驶舱/ }));
     await screen.findByRole("button", { name: "启动自动 Paper" });
     await user.clear(screen.getByLabelText("初始资金 USDC"));
     await user.type(screen.getByLabelText("初始资金 USDC"), "2500");
@@ -639,34 +719,39 @@ describe("workbench command interactions", () => {
       kind: "order" as const,
       data: { status: "OPEN" },
     };
-    const page = <T,>(items: readonly T[]) => ({
+    const page = <T,>(items: readonly T[], pageSize = 10) => ({
       schemaVersion: "query-page-v1" as const,
       page: 1,
-      pageSize: 100,
+      pageSize,
       totalItems: items.length,
       totalPages: items.length === 0 ? 0 : 1,
       items,
     });
+    vi.mocked(client.getBacktestReplay).mockResolvedValue({ ...page([decision, order], 20), totalItems: 42, totalPages: 3 });
     vi.mocked(client.getBacktestDecisions).mockResolvedValue(page([decision]));
     vi.mocked(client.getBacktestOrders).mockResolvedValue(page([order]));
     vi.mocked(client.getBacktestFills).mockResolvedValue(page([]));
     vi.mocked(client.getBacktestSettlements).mockResolvedValue(page([]));
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /决策记录/ }));
+    await user.click(screen.getByRole("link", { name: /决策记录/ }));
     expect((await screen.findAllByText("费用感知概率策略 · BTC 验证")).length).toBeGreaterThan(0);
     expect(
       (await screen.findAllByText("decision-real-1")).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("order-real-1")).toBeInTheDocument();
+    expect(client.getBacktestReplay).toHaveBeenCalledWith("run-complete", {
+      page: 1,
+      pageSize: 20,
+    });
     expect(client.getBacktestDecisions).toHaveBeenCalledWith("run-complete", {
       page: 1,
-      pageSize: 100,
+      pageSize: 10,
     });
-    expect(client.getBacktestOrders).toHaveBeenCalledWith("run-complete", {
-      page: 1,
-      pageSize: 100,
-    });
+    await user.selectOptions(screen.getByLabelText("决策账本每页条数"), "50");
+    await waitFor(() => expect(client.getBacktestReplay).toHaveBeenCalledWith("run-complete", { page: 1, pageSize: 50 }));
+    await user.selectOptions(screen.getByLabelText("决策账本页码"), "2");
+    await waitFor(() => expect(client.getBacktestReplay).toHaveBeenCalledWith("run-complete", { page: 2, pageSize: 50 }));
     expect(document.body).not.toHaveTextContent("K-Edge v0.4");
     expect(document.body).not.toHaveTextContent("0.584 / 0.625");
   });
@@ -687,9 +772,9 @@ describe("workbench command interactions", () => {
     vi.mocked(client.getBacktestReplay).mockResolvedValue({
       schemaVersion: "query-page-v1",
       page: 1,
-      pageSize: 100,
-      totalItems: 2,
-      totalPages: 1,
+      pageSize: 20,
+      totalItems: 42,
+      totalPages: 3,
       items: [
         {
           schemaVersion: "public-backtest-event-v1",
@@ -709,19 +794,23 @@ describe("workbench command interactions", () => {
     });
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /市场回放/ }));
+    await user.click(screen.getByRole("link", { name: /市场回放/ }));
     expect((await screen.findAllByText("双波动率概率策略 · BTC 验证")).length).toBeGreaterThan(0);
     expect(
       await screen.findByRole("heading", { name: "HOLD" }),
     ).toBeInTheDocument();
     expect(client.getBacktestReplay).toHaveBeenCalledWith("replay-complete", {
       page: 1,
-      pageSize: 100,
+      pageSize: 20,
     });
     await user.click(screen.getByRole("button", { name: "下一事件 ▶" }));
     expect(
       await screen.findByRole("heading", { name: "冻结事件" }),
     ).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("运行回放每页条数"), "10");
+    await waitFor(() => expect(client.getBacktestReplay).toHaveBeenCalledWith("replay-complete", { page: 1, pageSize: 10 }));
+    await user.selectOptions(screen.getByLabelText("运行回放页码"), "2");
+    await waitFor(() => expect(client.getBacktestReplay).toHaveBeenCalledWith("replay-complete", { page: 2, pageSize: 10 }));
     expect(document.body).not.toHaveTextContent("BTCUSDT 67,837.20");
     expect(document.body).not.toHaveTextContent("23:17:00.250");
   });
@@ -735,12 +824,34 @@ describe("workbench command interactions", () => {
     vi.mocked(client.compareBacktests).mockRejectedValue(new Error("运行的费用模型不一致"));
     const user = userEvent.setup();
     render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
-    await user.click(screen.getByRole("button", { name: /策略竞技场/ }));
+    await user.click(screen.getByRole("link", { name: /策略竞技场/ }));
     const compareButton = await screen.findByRole("button", { name: "比较所选运行（2）" });
     await user.click(compareButton);
     expect(client.compareBacktests).toHaveBeenCalledWith(["arena-run-1", "arena-run-2"]);
     expect(await screen.findByRole("alert")).toHaveTextContent("比较失败：运行的费用模型不一致");
     expect(compareButton).toBeEnabled();
+  });
+
+  it("automatically combines the latest real strategy candidates with the current baseline group", async () => {
+    const client = commands();
+    window.history.replaceState(null, "", "/?view=compare&run=k-run");
+    vi.mocked(client.listBacktestJobs).mockResolvedValue([
+      { schemaVersion: "backtest-job-v1", runId: "b3-run", requestId: "b3-request", strategyId: "B3_MARKET_PRIOR", strategyVersion: "1.0.0", comparisonGroupId: "group-k", status: "succeeded", progressPermille: 1000, error: null },
+      { schemaVersion: "backtest-job-v1", runId: "k-run", requestId: "k-request", strategyId: "K_DUAL_VOL", strategyVersion: "2.0.0", comparisonGroupId: "group-k", status: "succeeded", progressPermille: 1000, error: null },
+      { schemaVersion: "backtest-job-v1", runId: "l-run", requestId: "l-request", strategyId: "L_ADAPTIVE_EXECUTION", strategyVersion: "1.0.3", comparisonGroupId: "group-l", status: "succeeded", progressPermille: 1000, error: null },
+      { schemaVersion: "backtest-job-v1", runId: "j-run", requestId: "j-request", strategyId: "J_FEE_AWARE", strategyVersion: "2.0.1", comparisonGroupId: "group-j", status: "succeeded", progressPermille: 1000, error: null },
+      { schemaVersion: "backtest-job-v1", runId: "j-old-run", requestId: "j-old-request", strategyId: "J_FEE_AWARE", strategyVersion: "2.0.0", comparisonGroupId: "group-j-old", status: "succeeded", progressPermille: 1000, error: null },
+    ]);
+    render(<App commands={client} initialData={EMPTY_VERIFIED_DATA} />);
+    await waitFor(() =>
+      expect(client.compareBacktests).toHaveBeenCalledWith([
+        "k-run",
+        "b3-run",
+        "l-run",
+        "j-run",
+      ]),
+    );
+    expect(screen.getByText("选择比较运行 · 已选 4 个")).toBeInTheDocument();
   });
 
 });

@@ -73,6 +73,7 @@ runtime-data/
 smoke-data/
 review-packs/
 .local/
+.playwright-cli/
 
 # Temporary files
 .cache/

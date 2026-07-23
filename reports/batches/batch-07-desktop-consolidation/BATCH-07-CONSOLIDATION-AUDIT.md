@@ -194,3 +194,137 @@
   4173进程，在4373临时验证相同 stable release 返回 `production-sim` 后关闭。没有公网采集。
 - 用户随后批准终止旧4173/4174工作区进程。promotion 与 production-sim 进一步限制为只接受干净
   main checkout 构建的release；当前主题分支不得冒充stable，4173保持停止等待合并后最终验证。
+
+## 2026-07-23 L V2 参数扫描证据
+
+- 在哈希
+  `a27d9d1bf4dc5276c7ae5b11abd64250b6e6dc17f01fd432ab0dc10e4425cafc`
+  的 1,440 条 VALIDATION 决策上，按固定 fee-v2、1 秒延迟、10,000 USDC 初始资金扫描
+  45 个执行参数组合。
+- 原始净收益最高组合 `0.20 / 400 / 1.00` 为 `458.2066`，最大回撤 `243.2249`；
+  按至少 30 笔成交且净收益/最大回撤比最高，建议组合 `0.20 / 200 / 0.25`
+  为 `179.4451`，最大回撤 `60.8062`，37 笔成交。
+- 建议组合已保存为 L V2 `1.1.0`。工作台运行 `bt-1784802951813-d8fd8cb7`
+  及同组 B0–B3 均成功，回读指标与扫描一致。
+- 复现入口为 `scripts/sweep_l_parameters.py`；前端策略对比页展示研究口径、代表性候选和建议，
+  1440px/390px 实际浏览器均无页面级横向溢出。
+- 候选 `5145bfa63c35-c2ac2a8f427f` 已加载到 4273；4174 已同步重启。4273 API 回读确认
+  `staging-sim`、`paper-only`、`liveTradingEnabled=false`，实际候选页面自动选中 L 1.1.0
+  与同组 B0–B3，并显示参数扫描建议。
+- 扫描可复现性与同口径比较为 `PASS`；策略有效性为 `DATA_INSUFFICIENT`。选择和评价使用同一
+  VALIDATION，连续性为 `UNVERIFIED`，且剔除最佳两天后净收益为负，不得视为独立样本盈利证据。
+
+## 2026-07-23 订单簿驱动 Paper 与 L 参数复核
+
+- 上一节直接用 VALIDATION 选择参数的结论已被本节替代。扩展扫描为 252 组，只按 2,880 条
+  TRAIN 决策排名，再读取 1,440 条 VALIDATION 持出表现。TRAIN 选定
+  `maxSignalEdge=0.25 / maxStakeUsdc=300 / bookParticipation=1.00`；VALIDATION 净收益
+  `305.9950`、最大回撤 `263.5276`、46 笔成交。去掉最佳一天后净收益为 `-65.2658`，
+  仍为 `DATA_INSUFFICIENT`，不构成盈利证据。
+- 数据发布物虽注明源采样间隔 1 秒，但归一化决策输出每市场仅 T-60/T-30/T-15 三点，
+  `TOP_OF_BOOK_ONLY`、receive time `UNOBSERVED`、连续性 `UNVERIFIED`。因此上述组合只能称为
+  稀疏历史基线，不能称为逐订单簿事件最优参数。
+- K/J 固定决策间隔已改为 0；组合行情只在新的订单簿状态到达时发布，完全相同盘口去重，
+  Binance 单独变化和 PING/PONG 不触发决策。公开 CLOB/Binance 默认启用 WebSocket，
+  断开时保留 1 秒 REST fallback。
+- 干净实时 Paper 的完整市场轮转后约 33 秒产生 56 次 K/J 决策、9 个意图和 7 次模拟成交；
+  WebSocket 实例稳定片段 8 秒从 232 增至 404 个快照，约 21.5 次/秒。配置的模拟 fill latency
+  仍为 1 秒；Paper 不调用官方 `POST /order`，不能测量或声称官方真实接单延迟。
+- 修复动态 Runner outbox 恢复错误：历史 link 使用自身已持久化 session，恢复时验证 session
+  存在；新 proposal 仍只进入本次账户，hash 链、identity 和幂等校验保持。原 staging 数据副本
+  与实际 4273 均从此前 `K/J execution outbox link identity is invalid` 恢复为
+  `RUNNING / CONNECTED / ready=true`。
+- 验证：`npm test` 266/266、前端 Vitest 30/30、Vite production build 通过；4273 浏览器实际
+  显示 252 组 TRAIN→VALIDATION 口径和稀疏数据限制。candidate
+  `5145bfa63c35-4e40351460dd` 已运行，刷新命令尾部的启动 smoke 曾超时，但随后端口、页面和
+  Paper API 均验证可用。
+
+## 2026-07-23 L V2 实时 Paper 与延迟验收
+
+- L V2 增加显式输入、无 I/O 的 TypeScript 决策实现，并经原有 Paper engine、journal、
+  target-position risk、outbox 和 canonical Paper session 运行；没有建立第二套实时框架。
+- `activeStrategies` 只控制实际决策策略；旧 J/K snapshot 与历史 journal header 可恢复。动态
+  runner 的历史 outbox link 仍以已持久化 session、proposal fingerprint、identity、幂等键和
+  hash 链校验，修复不等于取消校验。
+- 实时规则是“订单簿状态改变即判定”：完全相同盘口去重，Binance 单独变化和心跳不触发正式决策。
+  官方 Market Channel 文档是事件驱动接口，并未承诺固定 1 Hz；`price_change` 在新增/取消订单时
+  发送，`book` 在订阅和影响盘口的成交时发送。
+- 4273 从完整市场边界开始的观测，在约 34 秒内记录 494 次 L 决策，实际约 `14.5` 次/秒；更短的
+  首段 10 秒记录 255 次，约 `25.5` 次/秒。频率随真实盘口活动变化，不应硬编码为 1 秒一次。
+- 同一进程单调时钟测量：行情 input watermark 到产生 DECISION 的 502 个样本为 P50
+  `38.239 ms`、P95 `135.227 ms`、最大 `217.894 ms`。意图产生至 canonical Paper submit
+  返回的 3 个样本为 P50 `1114.663 ms`、P95/最大 `1150.020 ms`，其中包含配置的 1 秒 shadow
+  fill 等待。
+- 3 个 canonical Paper 订单均为 `REJECTED / STALE_OR_FUTURE_QUOTE`，没有 canonical fill。
+  因此这组约 1.1 秒只能称为本地 Paper 提交链完成延迟，不能称为 Polymarket 官方锁单延迟或成交
+  延迟。仓库没有凭据、签名或 `POST /order`，官方文档也未给通用延迟 SLA；本轮不越过 Paper-only
+  边界去制造真实订单样本。
+- 前端实时页新增“行情→决策延迟”和“决策→Paper 锁单”P50/P95/样本展示；运行中恢复页面会自动
+  对齐实际策略账户，避免 L Runner 被旧 URL 显示为 J。原先用表单初始资金反推 PnL 的错误展示改为
+  不依赖错误基准的 Paper 权益估值。
+- 验证：`npm test` `269/269`、`npm run frontend:test -- --run` `30/30`、全仓 typecheck、前端
+  production build、`git diff --check` 通过。浏览器录制：
+  `/root/.config/browser-harness/agent-workspace/recordings/l-live-paper-latency`。最终 candidate
+  `5145bfa63c35-235f8a231e7d` 已在 4273 运行，随后重新启动 L V2 Paper；真实交易始终关闭。
+
+## 2026-07-23 决策热路径与持久化背压复验
+
+- 用 `scripts/benchmark-l-decision.mjs` 对无 I/O 的 L 策略计算预热 2,000 次、正式运行
+  20,000 次：P50 `0.3054 ms`、P95 `0.628201 ms`、P99 `0.9614 ms`、最大
+  `10.511001 ms`。P50 ≤20 ms、P95 <50 ms 均通过；证据不支持因 Python/TypeScript 而重写
+  Rust。
+- 运行时把 `engine.ingest(context)` 单独计为 `strategyComputation`。修复前的 1,000 个实时
+  样本中，该核心计算 P50 约 `1.04 ms`、P95 约 `1.95 ms`；相反，包含持久化排队的
+  `inputToDecision` 已增长至 P50 `7000.8 ms`、P95 `10661.996 ms`，定位为背压问题。
+- durable journal 每 64 个 CONTEXT 写 checkpoint；结算等非 CONTEXT 记录与关闭仍强制写，
+  journal 追加、hash 链和重启恢复保持原顺序。host 同时只处理一个上下文并保留一个“最新待处理”
+  槽；发生背压时替换已过时的中间状态。正常容量仍对每个唯一盘口判定，只有已经落后时才执行
+  latest-state-wins，并通过 `coalescedInputCount` 在 API/前端披露。
+- 新压力测试同步送入 100 个唯一上下文，至少 98 个旧中间上下文被合并，journal 记录数保持
+  不超过 4，最后一个上下文的 `decisionTime` 与 journal 尾一致。停止和状态查询会等待最新槽
+  清空，不会在关闭时漏掉最后盘口。
+- 修复 bounded runtime evidence 的旧压缩 hash 链：压缩后从 genesis 重新串链，并只兼容识别
+  旧版精确的 500 条断链形状；任意 record hash、其他断链或内容篡改仍拒绝。501 条事件压缩测试
+  通过。
+- 验证：`npm test` `271/271`；`npm run frontend:test -- --run` `30/30`；TypeScript、
+  Vite production build、`git diff --check` 和正式决策基准通过。candidate
+  `5145bfa63c35-30d85a251454` 已运行在 4273，`LIVE_TRADING_ENABLED=false`。
+- 实时复验未伪造：当前主机访问 Gamma、CLOB 和 Binance 公共端点均在 8 秒内零字节超时，
+  两次 L Paper 启动均因 15 秒内没有完整公开盘口而 fail closed，状态恢复为 STOPPED。因此本节
+  已证明核心计算和背压单测目标，但还没有新候选的联网行情→决策或决策→Paper 锁单分位数。
+
+### Journal 耐久写分级补充
+
+- `appendContextBuffered` 只向已打开 journal 追加并运行确定性 engine，不为普通无交易盘口逐条
+  `fsync`；receipt 明确返回 `durable=false`。`flush()` 同步当前完整 hash 链后，同一重复输入的
+  receipt 变为 durable。
+- 实时 Host 只有在新事件包含 FILL、即将进入 canonical Paper coordinator 时，才先等待
+  `journal.flush()`。coordinator 原有顺序保持为 durable PENDING outbox → Paper submit →
+  durable SUBMITTED outbox，identity、proposal fingerprint、幂等键、hash 链和重启补提均未取消。
+- 无订单上下文在累计 64 条、关键非 CONTEXT 记录或正常关闭时批量同步。硬断电可能丢失尚未 flush
+  的末尾无交易诊断，但不会丢失已开始 canonical 提交的 intent；正常停止会完整 flush 和 checkpoint。
+- 同一 Linux-native 临时文件系统上交替运行 8 轮，每轮 60 个唯一上下文：逐条 durable 总耗时
+  平均 `240.060 ms`（最小 `141.735`、最大 `310.421`），buffered 后一次 flush 平均
+  `193.884 ms`（最小 `118.141`、最大 `249.003`），平均下降约 `19.2%`。该数字是本机文件系统
+  工程基准，不是 Polymarket 官方下单延迟。
+- 验证：Node `272/272`、前端 Vitest `30/30`、TypeScript、Vite production build 和
+  `git diff --check` 通过。candidate `5145bfa63c35-47209465d39e` 已由 4273 API 直接确认运行，
+  `mode=paper-only`、`liveTradingEnabled=false`、Paper host `STOPPED`；刷新命令自身因候选 smoke
+  超时返回非零，故记录为“服务已更新、发布命令未完整成功”。
+
+### Outbox 常开句柄补充
+
+- File outbox 在 coordinator `initialize()` 时预创建并以 `O_APPEND | O_CREAT | O_NOFOLLOW`
+  打开；同一 Runner 生命周期的 PENDING/SUBMITTED 复用该句柄。停止或异常清理会等待 coordinator
+  串行尾后关闭句柄，关闭后的 coordinator 明确拒绝新 proposal。
+- 该改动只移除热路径中的重复 mkdir、lstat、open、close；每个 PENDING 和 SUBMITTED record
+  仍在写入后 `fsync`。因此 Paper submit 前的 PENDING 恢复点、hash 链、proposal fingerprint、
+  identity 和幂等键语义不变。
+- 同一文件系统交替 8 轮、每轮 20 条耐久 record：旧式每条重开平均 `50.456 ms`
+  （最小 `46.269`、最大 `52.681`），常开句柄平均 `18.339 ms`
+  （最小 `17.680`、最大 `19.163`），机械 outbox 写盘总耗时下降约 `63.7%`。它不包含策略、
+  风控、Paper simulator 或网络，不能解释成交易所延迟。
+- 完整验证：Node `272/272`、前端 Vitest `30/30`、TypeScript、Vite production build、
+  `git diff --check` 通过。4273 API 直接回读 candidate `5145bfa63c35-fcc3f0324ba8`、
+  `staging-sim`、paper-only、`liveTradingEnabled=false`、Paper host `STOPPED`；候选刷新命令的
+  内置 smoke 仍超时返回非零，但实际服务身份和安全状态已确认。

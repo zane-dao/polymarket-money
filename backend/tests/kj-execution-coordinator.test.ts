@@ -123,8 +123,41 @@ test("file outbox persists a verifiable hash chain and restores terminal links",
   assert.equal(lines.length, 2);
   const records = lines.map((line) => JSON.parse(line) as KJExecutionOutboxRecordV1);
   assert.equal(records[1]?.previousRecordHash, records[0]?.recordHash);
+  await coordinator.close();
+  await assert.rejects(coordinator.coordinate(proposal("K_DUAL_VOL", "d".repeat(64))), /coordinator is closed/u);
   const restored = new KJPaperExecutionCoordinator(service, new FileKJExecutionOutboxStore(root), accounts); await restored.initialize();
   assert.equal(restored.links()[0]?.state, "SUBMITTED");
+  await restored.close();
+});
+
+test("recovery keeps historical runner sessions while new proposals use the current accounts", async () => {
+  const { service } = await paper();
+  const historical = { J_FEE_AWARE: "historical-runner-j", K_DUAL_VOL: "historical-runner-k" } as const;
+  const current = { J_FEE_AWARE: "current-runner-j", K_DUAL_VOL: "current-runner-k" } as const;
+  for (const sessionId of [...Object.values(historical), ...Object.values(current)]) {
+    await service.start({ schemaVersion: "paper-session-start-v1", sessionId, initialCash: "100", risk, startedAtUtc: NOW });
+  }
+  const outbox = new InMemoryKJExecutionOutboxStore();
+  const first = new KJPaperExecutionCoordinator(service, outbox, historical); await first.initialize();
+  await first.coordinate(proposal("J_FEE_AWARE", HASH_A));
+
+  const recovered = new KJPaperExecutionCoordinator(service, outbox, current); await recovered.initialize();
+  assert.equal(recovered.links()[0]?.sessionId, historical.J_FEE_AWARE);
+  const next = await recovered.coordinate(proposal("K_DUAL_VOL", "d".repeat(64)));
+  assert.equal(next.sessionId, current.K_DUAL_VOL);
+});
+
+test("recovery rejects an outbox whose historical Paper session is missing", async () => {
+  const first = await paper(); await startAccounts(first.service);
+  const outbox = new InMemoryKJExecutionOutboxStore();
+  const coordinator = new KJPaperExecutionCoordinator(first.service, outbox, accounts); await coordinator.initialize();
+  await coordinator.coordinate(proposal("J_FEE_AWARE", HASH_A));
+
+  const empty = await paper();
+  await assert.rejects(
+    new KJPaperExecutionCoordinator(empty.service, outbox, accounts).initialize(),
+    /references missing Paper session: canonical-j/u,
+  );
 });
 
 test("recovery rejects a hash-tampered outbox before replaying an order", async () => {

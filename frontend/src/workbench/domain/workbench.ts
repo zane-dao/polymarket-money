@@ -1,3 +1,5 @@
+import { INITIAL_RESEARCH_SESSION, stageForRoute, type ResearchSession } from "./research-session.js";
+
 export const WORKBENCH_ROUTE_IDS = [
   "overview",
   "live",
@@ -41,6 +43,7 @@ export type WorkbenchState = Readonly<{
   paperTicketOpen: boolean;
   helpOpen: boolean;
   dataView: "auto" | "verified" | "demo";
+  researchSession: ResearchSession;
 }>;
 
 export type WorkbenchAction =
@@ -52,7 +55,9 @@ export type WorkbenchAction =
   | Readonly<{ type: "set-replay-playing"; playing: boolean }>
   | Readonly<{ type: "set-paper-ticket-open"; open: boolean }>
   | Readonly<{ type: "set-help-open"; open: boolean }>
-  | Readonly<{ type: "set-data-view"; dataView: "auto" | "verified" | "demo" }>;
+  | Readonly<{ type: "set-data-view"; dataView: "auto" | "verified" | "demo" }>
+  | Readonly<{ type: "update-research-session"; patch: Partial<ResearchSession> }>
+  | Readonly<{ type: "restore-research-session"; session: ResearchSession }>;
 
 export const INITIAL_WORKBENCH_STATE: WorkbenchState = Object.freeze({
   activeRoute: "overview",
@@ -65,6 +70,7 @@ export const INITIAL_WORKBENCH_STATE: WorkbenchState = Object.freeze({
   paperTicketOpen: false,
   helpOpen: false,
   dataView: "auto",
+  researchSession: INITIAL_RESEARCH_SESSION,
 });
 
 function clampPermille(value: number): number {
@@ -80,7 +86,14 @@ export function reduceWorkbenchState(
 ): WorkbenchState {
   switch (action.type) {
     case "navigate":
-      return { ...state, activeRoute: action.routeId };
+      return {
+        ...state,
+        activeRoute: action.routeId,
+        researchSession: {
+          ...state.researchSession,
+          stage: stageForRoute(action.routeId, state.researchSession.stage),
+        },
+      };
     case "select-decision":
       return { ...state, selectedDecisionId: action.decisionId };
     case "toggle-run": {
@@ -104,5 +117,9 @@ export function reduceWorkbenchState(
       return { ...state, helpOpen: action.open };
     case "set-data-view":
       return { ...state, dataView: action.dataView };
+    case "update-research-session":
+      return { ...state, researchSession: { ...state.researchSession, ...action.patch } };
+    case "restore-research-session":
+      return { ...state, researchSession: action.session };
   }
 }
